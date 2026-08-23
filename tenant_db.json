@@ -1,0 +1,2207 @@
+{
+  "tenant-a": {
+    "sites": [
+      {
+        "id": "site-1",
+        "name": "TechPulse Media (科技脉搏)",
+        "domain": "techpulse.media",
+        "niche": "人工智能与企业SaaS架构",
+        "siteLanguage": "zh-CN",
+        "pagesCount": 1422,
+        "connectorStatus": "CONNECTED",
+        "wpVersion": "6.7.1",
+        "pluginInstalled": true,
+        "whitelistedCategories": [
+          "AI实践案例",
+          "企业架构指南",
+          "开源工具测评"
+        ],
+        "gscConnected": true,
+        "ga4Connected": true,
+        "baiduConnected": true,
+        "autopilotEnabled": true,
+        "weeklyPublishCap": 3,
+        "currentWeeklyPublished": 3,
+        "calibration": {
+          "isCalibrating": false,
+          "daysRemaining": 0,
+          "totalApprovedRequired": 10,
+          "approvedCount": 12,
+          "rejectedCount": 1,
+          "zeroFactErrorStreak": 12,
+          "autoPublishUnlocked": true
+        },
+        "monthlyBudgetLimit": 150,
+        "monthlyBudgetUsed": 38.5,
+        "createdAt": "2026-01-15T08:00:00Z"
+      },
+      {
+        "id": "site-2",
+        "name": "Global Cloud Architecture (英文站)",
+        "domain": "globalcloudarch.io",
+        "niche": "Cloud Native & DevOps Engineering",
+        "siteLanguage": "en",
+        "pagesCount": 881,
+        "connectorStatus": "CONNECTED",
+        "wpVersion": "6.6.2",
+        "pluginInstalled": true,
+        "whitelistedCategories": [
+          "Kubernetes Tutorials",
+          "DevOps Insights",
+          "Cloud Security"
+        ],
+        "gscConnected": true,
+        "ga4Connected": true,
+        "baiduConnected": false,
+        "autopilotEnabled": false,
+        "weeklyPublishCap": 2,
+        "currentWeeklyPublished": 1,
+        "calibration": {
+          "isCalibrating": true,
+          "daysRemaining": 4,
+          "totalApprovedRequired": 10,
+          "approvedCount": 6,
+          "rejectedCount": 0,
+          "zeroFactErrorStreak": 6,
+          "autoPublishUnlocked": false
+        },
+        "monthlyBudgetLimit": 100,
+        "monthlyBudgetUsed": 22.1,
+        "createdAt": "2026-03-01T10:00:00Z"
+      }
+    ],
+    "opportunities": [
+      {
+        "id": "opp-1787466064300",
+        "siteId": "site-1",
+        "title": "2026 DeepSeek 企业级 K8s 容器化私有化部署实战指南（vLLM+GPU集群+弹性调优全流程）",
+        "type": "NEW_CONTENT",
+        "language": "zh-CN",
+        "targetKeyword": "DeepSeek K8s 部署实践",
+        "category": "AI实践案例",
+        "riskLevel": "LOW",
+        "estimatedMonthlyVisitsGain": 3800,
+        "demandEvidence": {
+          "sourceType": "GSC_QUERY",
+          "queryOrTopic": "DeepSeek K8s 部署实践",
+          "monthlyImpressions": 16500,
+          "currentClicks": 140,
+          "currentPosition": 19.2,
+          "evidenceDescription": "GSC 包含该词的增量搜索展现，对应搜索意图：Informational & Commercial Investigation (技术实操与企业级选型落地方案)",
+          "reliabilityConfidence": 0.95
+        },
+        "scoreBreakdown": {
+          "businessValue": 19,
+          "searchDemand": 18,
+          "winProbability": 15,
+          "currentRanking": 10,
+          "engagementPotential": 9,
+          "googleBaiduReuse": 9,
+          "internalLinkValue": 5,
+          "freshness": 5,
+          "dataReliability": 5,
+          "riskPenalty": 0,
+          "costPenalty": 1,
+          "totalScore": 94
+        },
+        "status": "APPROVED",
+        "createdAt": "2026-08-23T06:21:04.300Z",
+        "updatedAt": "2026-08-23T06:21:13.648Z"
+      },
+      {
+        "id": "opp-task-1787419893073",
+        "siteId": "site-1",
+        "title": "深度解析 DeepSeek 私有化部署 & vLLM 性能调优指南：2026年生产环境架构演进与实践指引",
+        "type": "NEW_CONTENT",
+        "language": "zh-CN",
+        "targetKeyword": "DeepSeek 私有化部署 & vLLM 性能调优指南",
+        "category": "AI实践案例",
+        "riskLevel": "LOW",
+        "estimatedMonthlyVisitsGain": 3200,
+        "demandEvidence": {
+          "sourceType": "CONTENT_GAP",
+          "queryOrTopic": "DeepSeek 私有化部署 & vLLM 性能调优指南",
+          "monthlyImpressions": 12000,
+          "currentClicks": 420,
+          "currentPosition": 12.4,
+          "evidenceDescription": "定时任务自动巡检命中高价值长尾词",
+          "reliabilityConfidence": 0.95
+        },
+        "scoreBreakdown": {
+          "businessValue": 18,
+          "searchDemand": 19,
+          "winProbability": 18,
+          "currentRanking": 12,
+          "engagementPotential": 8,
+          "googleBaiduReuse": 8,
+          "internalLinkValue": 5,
+          "freshness": 5,
+          "dataReliability": 5,
+          "riskPenalty": 0,
+          "costPenalty": 0,
+          "totalScore": 98
+        },
+        "status": "AUTO_PUBLISHED",
+        "createdAt": "2026-08-22T17:31:32.736Z",
+        "updatedAt": "2026-08-22T17:31:32.736Z"
+      },
+      {
+        "id": "opp-task-1787419892733",
+        "siteId": "site-2",
+        "title": "Deep Dive into K8s / AI 基础设施最新部署实践与成本优化: 2026 Production Architecture & Best Practices",
+        "type": "NEW_CONTENT",
+        "language": "en",
+        "targetKeyword": "K8s / AI 基础设施最新部署实践与成本优化",
+        "category": "Kubernetes Tutorials",
+        "riskLevel": "LOW",
+        "estimatedMonthlyVisitsGain": 3200,
+        "demandEvidence": {
+          "sourceType": "CONTENT_GAP",
+          "queryOrTopic": "K8s / AI 基础设施最新部署实践与成本优化",
+          "monthlyImpressions": 12000,
+          "currentClicks": 420,
+          "currentPosition": 12.4,
+          "evidenceDescription": "定时任务自动巡检命中高价值长尾词",
+          "reliabilityConfidence": 0.95
+        },
+        "scoreBreakdown": {
+          "businessValue": 18,
+          "searchDemand": 19,
+          "winProbability": 18,
+          "currentRanking": 12,
+          "engagementPotential": 8,
+          "googleBaiduReuse": 8,
+          "internalLinkValue": 5,
+          "freshness": 5,
+          "dataReliability": 5,
+          "riskPenalty": 0,
+          "costPenalty": 0,
+          "totalScore": 98
+        },
+        "status": "AUTO_PUBLISHED",
+        "createdAt": "2026-08-22T17:31:32.197Z",
+        "updatedAt": "2026-08-22T17:31:32.197Z"
+      },
+      {
+        "id": "opp-task-1787419892473",
+        "siteId": "site-1",
+        "title": "深度解析 K8s / AI 基础设施最新部署实践与成本优化：2026年生产环境架构演进与实践指引",
+        "type": "NEW_CONTENT",
+        "language": "zh-CN",
+        "targetKeyword": "K8s / AI 基础设施最新部署实践与成本优化",
+        "category": "AI实践案例",
+        "riskLevel": "LOW",
+        "estimatedMonthlyVisitsGain": 3200,
+        "demandEvidence": {
+          "sourceType": "CONTENT_GAP",
+          "queryOrTopic": "K8s / AI 基础设施最新部署实践与成本优化",
+          "monthlyImpressions": 12000,
+          "currentClicks": 420,
+          "currentPosition": 12.4,
+          "evidenceDescription": "定时任务自动巡检命中高价值长尾词",
+          "reliabilityConfidence": 0.95
+        },
+        "scoreBreakdown": {
+          "businessValue": 18,
+          "searchDemand": 19,
+          "winProbability": 18,
+          "currentRanking": 12,
+          "engagementPotential": 8,
+          "googleBaiduReuse": 8,
+          "internalLinkValue": 5,
+          "freshness": 5,
+          "dataReliability": 5,
+          "riskPenalty": 0,
+          "costPenalty": 0,
+          "totalScore": 98
+        },
+        "status": "AUTO_PUBLISHED",
+        "createdAt": "2026-08-22T17:31:32.197Z",
+        "updatedAt": "2026-08-22T17:31:32.197Z"
+      },
+      {
+        "id": "opp-101",
+        "siteId": "site-1",
+        "title": "针对关键词“企业级 DeepSeek 私有化部署性能调优”的新文章机会",
+        "type": "NEW_CONTENT",
+        "language": "zh-CN",
+        "targetKeyword": "DeepSeek 私有化部署 性能调优",
+        "category": "AI实践案例",
+        "riskLevel": "LOW",
+        "estimatedMonthlyVisitsGain": 2800,
+        "demandEvidence": {
+          "sourceType": "GSC_QUERY",
+          "queryOrTopic": "deepseek 私有化 部署 显存优化",
+          "monthlyImpressions": 14200,
+          "currentClicks": 120,
+          "currentPosition": 18.4,
+          "evidenceDescription": "GSC 显示该关键词近 30 天展现量增长 340%，站内尚无专门的长文深度评测。",
+          "reliabilityConfidence": 0.96
+        },
+        "scoreBreakdown": {
+          "businessValue": 19,
+          "searchDemand": 17,
+          "winProbability": 14,
+          "currentRanking": 10,
+          "engagementPotential": 9,
+          "googleBaiduReuse": 9,
+          "internalLinkValue": 5,
+          "freshness": 5,
+          "dataReliability": 5,
+          "riskPenalty": 0,
+          "costPenalty": 1,
+          "totalScore": 92
+        },
+        "status": "READY_TO_PUBLISH",
+        "createdAt": "2026-08-01T09:30:00Z",
+        "updatedAt": "2026-08-02T14:10:00Z"
+      },
+      {
+        "id": "opp-102",
+        "siteId": "site-1",
+        "title": "高展现低点击页面“2026 年微服务网关选型指南”的 Title 与 Meta 描述优化",
+        "type": "HIGH_IMPRESSION_LOW_CTR",
+        "language": "zh-CN",
+        "targetKeyword": "微服务网关 选型对比 2026",
+        "category": "企业架构指南",
+        "riskLevel": "MEDIUM",
+        "estimatedMonthlyVisitsGain": 1800,
+        "demandEvidence": {
+          "sourceType": "GSC_QUERY",
+          "queryOrTopic": "微服务网关 选型",
+          "monthlyImpressions": 28900,
+          "currentClicks": 310,
+          "currentPosition": 6.2,
+          "evidenceDescription": "排名第 6 位但点击率仅 1.07%（同等排名均值为 3.8%）。因属于已有核心文章，需要人工审批。",
+          "reliabilityConfidence": 0.94
+        },
+        "scoreBreakdown": {
+          "businessValue": 18,
+          "searchDemand": 18,
+          "winProbability": 15,
+          "currentRanking": 12,
+          "engagementPotential": 9,
+          "googleBaiduReuse": 8,
+          "internalLinkValue": 4,
+          "freshness": 4,
+          "dataReliability": 5,
+          "riskPenalty": 5,
+          "costPenalty": 0,
+          "totalScore": 88
+        },
+        "status": "MANUAL_REVIEW",
+        "requiresManualReviewReason": "已有核心文章的 Title/Meta 优化需要人工审核，避免修改原高排名权重词。",
+        "createdAt": "2026-07-28T11:00:00Z",
+        "updatedAt": "2026-08-01T16:00:00Z"
+      },
+      {
+        "id": "opp-103",
+        "siteId": "site-1",
+        "title": "针对“RAG 检索增强生成长文本分块策略”补充新文章并增强集群内链",
+        "type": "NEW_CONTENT",
+        "language": "zh-CN",
+        "targetKeyword": "RAG 长文本分块 策略 评估",
+        "category": "AI实践案例",
+        "riskLevel": "LOW",
+        "estimatedMonthlyVisitsGain": 1950,
+        "demandEvidence": {
+          "sourceType": "CONTENT_GAP",
+          "queryOrTopic": "rag text chunking best practices",
+          "monthlyImpressions": 9800,
+          "currentClicks": 85,
+          "currentPosition": 22.1,
+          "evidenceDescription": "客户知识库与行业问答中高频出现，现有 3 篇 RAG 文章缺少“Chunking”分支内链节点。",
+          "reliabilityConfidence": 0.92
+        },
+        "scoreBreakdown": {
+          "businessValue": 18,
+          "searchDemand": 16,
+          "winProbability": 14,
+          "currentRanking": 8,
+          "engagementPotential": 9,
+          "googleBaiduReuse": 9,
+          "internalLinkValue": 5,
+          "freshness": 4,
+          "dataReliability": 4,
+          "riskPenalty": 0,
+          "costPenalty": 1,
+          "totalScore": 86
+        },
+        "status": "APPROVED",
+        "createdAt": "2026-08-02T08:15:00Z",
+        "updatedAt": "2026-08-02T08:15:00Z"
+      },
+      {
+        "id": "opp-104",
+        "siteId": "site-1",
+        "title": "处理“Postgres vs MySQL 2024”文章流量衰退（Content Decay）并刷新 2026 架构实战",
+        "type": "CONTENT_DECAY",
+        "language": "zh-CN",
+        "targetKeyword": "PostgreSQL vs MySQL 性能选型 2026",
+        "category": "企业架构指南",
+        "riskLevel": "MEDIUM",
+        "estimatedMonthlyVisitsGain": 2100,
+        "demandEvidence": {
+          "sourceType": "IMPRESSION_DECAY",
+          "queryOrTopic": "postgres mysql 对比 选型",
+          "monthlyImpressions": 18500,
+          "currentClicks": 240,
+          "currentPosition": 14.5,
+          "evidenceDescription": "近 90 天流量下滑 42%，版本信息停留在 2024 年，更新后预计可重新夺回前 5 排名。",
+          "reliabilityConfidence": 0.95
+        },
+        "scoreBreakdown": {
+          "businessValue": 17,
+          "searchDemand": 16,
+          "winProbability": 13,
+          "currentRanking": 10,
+          "engagementPotential": 8,
+          "googleBaiduReuse": 8,
+          "internalLinkValue": 4,
+          "freshness": 5,
+          "dataReliability": 5,
+          "riskPenalty": 3,
+          "costPenalty": 1,
+          "totalScore": 82
+        },
+        "status": "MANUAL_REVIEW",
+        "requiresManualReviewReason": "涉及修改现有已发布老文章内容，需人工审核增删条款。",
+        "createdAt": "2026-07-25T14:20:00Z",
+        "updatedAt": "2026-07-29T10:00:00Z"
+      },
+      {
+        "id": "opp-105",
+        "siteId": "site-1",
+        "title": "消解“LangChain 教程”与“LangChain 部署”页面的关键词关键词自相残杀（Cannibalization）",
+        "type": "CONTENT_CANNIBALIZATION",
+        "language": "zh-CN",
+        "targetKeyword": "LangChain 实战教程",
+        "category": "AI实践案例",
+        "riskLevel": "MEDIUM",
+        "estimatedMonthlyVisitsGain": 1200,
+        "demandEvidence": {
+          "sourceType": "CANNIBALIZATION_ALERT",
+          "queryOrTopic": "langchain 实战教程",
+          "competingUrls": [
+            "https://techpulse.media/langchain-tutorial-2025/",
+            "https://techpulse.media/langchain-deployment-guide/"
+          ],
+          "evidenceDescription": "Google Search Console 显示两个 URL 频繁竞争同一搜索词，排名在 11-16 名间反复轮换。建议重构锚文本与内链关系。",
+          "reliabilityConfidence": 0.91
+        },
+        "scoreBreakdown": {
+          "businessValue": 16,
+          "searchDemand": 15,
+          "winProbability": 13,
+          "currentRanking": 9,
+          "engagementPotential": 8,
+          "googleBaiduReuse": 8,
+          "internalLinkValue": 5,
+          "freshness": 4,
+          "dataReliability": 4,
+          "riskPenalty": 4,
+          "costPenalty": 1,
+          "totalScore": 79
+        },
+        "status": "PROPOSED",
+        "createdAt": "2026-08-01T15:40:00Z",
+        "updatedAt": "2026-08-01T15:40:00Z"
+      },
+      {
+        "id": "opp-201",
+        "siteId": "site-2",
+        "title": "New Guide: \"Kubernetes Multi-Cluster Traffic Routing with Cilium ClusterMesh\"",
+        "type": "NEW_CONTENT",
+        "language": "en",
+        "targetKeyword": "Kubernetes Cilium ClusterMesh routing tutorial",
+        "category": "Kubernetes Tutorials",
+        "riskLevel": "LOW",
+        "estimatedMonthlyVisitsGain": 3200,
+        "demandEvidence": {
+          "sourceType": "GSC_QUERY",
+          "queryOrTopic": "cilium clustermesh multi cluster routing",
+          "monthlyImpressions": 22400,
+          "currentClicks": 210,
+          "currentPosition": 16.2,
+          "evidenceDescription": "High US/EU search volume in GSC with zero exact-match comprehensive guides on site.",
+          "reliabilityConfidence": 0.97
+        },
+        "scoreBreakdown": {
+          "businessValue": 20,
+          "searchDemand": 18,
+          "winProbability": 15,
+          "currentRanking": 11,
+          "engagementPotential": 9,
+          "googleBaiduReuse": 7,
+          "internalLinkValue": 5,
+          "freshness": 5,
+          "dataReliability": 5,
+          "riskPenalty": 0,
+          "costPenalty": 1,
+          "totalScore": 94
+        },
+        "status": "CALIBRATING",
+        "createdAt": "2026-08-02T02:00:00Z",
+        "updatedAt": "2026-08-02T11:20:00Z"
+      }
+    ],
+    "drafts": [
+      {
+        "id": "draft-task-1787419893073",
+        "opportunityId": "opp-task-1787419893073",
+        "siteId": "site-1",
+        "title": "深度解析 DeepSeek 私有化部署 & vLLM 性能调优指南：2026年生产环境架构演进与实践指引",
+        "language": "zh-CN",
+        "category": "AI实践案例",
+        "summary": "本文基于真实研发测试与权威测试数据，系统化梳理 DeepSeek 私有化部署 & vLLM 性能调优指南 的设计要点、典型瓶颈及调优手段。",
+        "contentHtml": "\n      <div class=\"seo-article-container space-y-6\">\n        <div class=\"bg-emerald-950/40 border border-emerald-500/40 rounded-2xl p-4 my-2 shadow-inner\">\n          <div class=\"flex items-center space-x-2 text-emerald-400 font-bold text-xs mb-1.5\">\n            <span class=\"px-2 py-0.5 rounded bg-emerald-500/20 text-[10px] font-mono\">AEO / GEO 快速概览</span>\n            <span>Google AI Overviews 提炼区</span>\n          </div>\n          <p class=\"text-slate-200 text-xs leading-relaxed\">\n            <strong>DeepSeek 私有化部署 & vLLM 性能调优指南</strong> 的核心在于通过匹配用户搜索意图、构建权威 E-E-A-T 专业知识体系以及嵌入 Schema.org 结构化数据，帮助网站在 Google 和百度搜索引擎中快速获取高排名与高转化自然流量。\n          </p>\n        </div>\n\n        <h2>一、技术背景与核心诉求</h2>\n        <p>在现代高并发与大数据量场景下，关于 <strong>DeepSeek 私有化部署 & vLLM 性能调优指南</strong> 的落地效率直接决定了系统的稳定性与扩展上限。</p>\n\n        <h2>二、生产实践方案与压测总结</h2>\n        <p>根据实际测试，在配置合适连接池与缓存策略后，QPS 可提升约 35%，P99 延迟降低至 120ms 以下。</p>\n        \n        <div class=\"overflow-x-auto my-4\">\n          <table class=\"w-full text-left border-collapse border border-slate-800 rounded-xl overflow-hidden text-xs\">\n            <thead>\n              <tr class=\"bg-slate-900 text-emerald-400\">\n                <th class=\"p-2.5 border border-slate-800\">评估维度</th>\n                <th class=\"p-2.5 border border-slate-800\">传统模式</th>\n                <th class=\"p-2.5 border border-slate-800\">SEO 巡航自动化模式</th>\n              </tr>\n            </thead>\n            <tbody class=\"text-slate-300\">\n              <tr class=\"border border-slate-800 bg-slate-950/40\">\n                <td class=\"p-2.5 font-bold border border-slate-800\">内容 E-E-A-T 深度</td>\n                <td class=\"p-2.5 border border-slate-800 text-slate-400\">普通泛泛而谈</td>\n                <td class=\"p-2.5 border border-slate-800 text-emerald-400 font-bold\">嵌入真实场景数据与 FAQ Schema</td>\n              </tr>\n              <tr class=\"border border-slate-800\">\n                <td class=\"p-2.5 font-bold border border-slate-800\">收录即时性 (Indexing)</td>\n                <td class=\"p-2.5 border border-slate-800 text-slate-400\">被动等待爬虫 (3-14 天)</td>\n                <td class=\"p-2.5 border border-slate-800 text-emerald-400 font-bold\">IndexNow / 百度 API 实时主动推送</td>\n              </tr>\n            </tbody>\n          </table>\n        </div>\n\n        <h2>三、常见问题解答 (FAQ)</h2>\n        <div class=\"space-y-3\">\n          <div class=\"bg-slate-900/80 p-3.5 rounded-xl border border-slate-800\">\n            <h4 class=\"font-bold text-white text-xs mb-1\">Q: DeepSeek 私有化部署 & vLLM 性能调优指南 对网站长期流量有何帮助？</h4>\n            <p class=\"text-[11px] text-slate-400\">A: 通过解决用户真实搜索痛点并挂载结构化数据，能显著提升搜索引擎收录权重与长尾词覆盖率。</p>\n          </div>\n        </div>\n\n        <script type=\"application/ld+json\">\n        {\n          \"@context\": \"https://schema.org\",\n          \"@type\": \"Article\",\n          \"headline\": \"深度解析 DeepSeek 私有化部署 & vLLM 性能调优指南：2026年生产环境架构演进与实践指引\",\n          \"description\": \"本文基于真实研发测试与权威测试数据，系统化梳理 DeepSeek 私有化部署 & vLLM 性能调优指南 的设计要点、典型瓶颈及调优手段。\",\n          \"author\": { \"@type\": \"Organization\", \"name\": \"SEO Cruise Engine\" }\n        }\n        </script>\n      </div>\n    ",
+        "sourcesUsed": [
+          "企业知识库及权威来源"
+        ],
+        "qualityGate": {
+          "passed": true,
+          "overallScore": 95,
+          "factReliabilityScore": 98,
+          "hallucinationFree": true,
+          "languageMatch": true,
+          "sourceCheckPassed": true,
+          "duplicateContentCheck": true,
+          "issues": [],
+          "passedChecks": [
+            "E-E-A-T 评估：98/100 (已完成专家级论证与案例对齐)",
+            "AEO 结构提取：已生成适合 AI Overviews 直接采纳的直击回答块",
+            "Schema.org 微数据：已内置 Article & FAQ Page JSON-LD 代码",
+            "主动推送准备：实时挂载 IndexNow 与百度 Search Console 推送协议"
+          ]
+        },
+        "status": "PUBLISHED",
+        "publishedUrl": "https://techpulse.media/%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90-deepseek-%E7%A7%81%E6%9C%89%E5%8C%96%E9%83%A8%E7%BD%B2---vllm-%E6%80%A7%E8%83%BD%E8%B0%83%E4%BC%98%E6%8C%87%E5%8D%97-2026%E5%B9%B4%E7%94%9F/",
+        "publishedAt": "2026-08-22T17:31:32.736Z",
+        "wpPostId": 57909,
+        "createdAt": "2026-08-22T17:31:32.736Z"
+      },
+      {
+        "id": "draft-task-1787419892733",
+        "opportunityId": "opp-task-1787419892733",
+        "siteId": "site-2",
+        "title": "Deep Dive into K8s / AI 基础设施最新部署实践与成本优化: 2026 Production Architecture & Best Practices",
+        "language": "en",
+        "category": "Kubernetes Tutorials",
+        "summary": "A comprehensive production engineering guide for K8s / AI 基础设施最新部署实践与成本优化, covering core architecture, benchmarks, and optimization.",
+        "contentHtml": "\n      <div class=\"seo-article-container space-y-6\">\n        <div class=\"bg-emerald-950/40 border border-emerald-500/40 rounded-2xl p-4 my-2 shadow-inner\">\n          <div class=\"flex items-center space-x-2 text-emerald-400 font-bold text-xs mb-1.5\">\n            <span class=\"px-2 py-0.5 rounded bg-emerald-500/20 text-[10px] font-mono\">AEO / GEO 快速概览</span>\n            <span>Google AI Overviews 提炼区</span>\n          </div>\n          <p class=\"text-slate-200 text-xs leading-relaxed\">\n            <strong>K8s / AI 基础设施最新部署实践与成本优化</strong> 的核心在于通过匹配用户搜索意图、构建权威 E-E-A-T 专业知识体系以及嵌入 Schema.org 结构化数据，帮助网站在 Google 和百度搜索引擎中快速获取高排名与高转化自然流量。\n          </p>\n        </div>\n\n        <h2>1. Overview & Architectural Motivation</h2>\n        <p>In modern high-scale distributed environments, efficient adoption of <strong>K8s / AI 基础设施最新部署实践与成本优化</strong> directly dictates platform resilience and cost efficiency.</p>\n\n        <h2>2. Production Implementation & Benchmarks</h2>\n        <p>Based on real benchmark runs, tuning connection pools and cache layers delivers up to 35% QPS improvements with P99 latency below 120ms.</p>\n        \n        <div class=\"overflow-x-auto my-4\">\n          <table class=\"w-full text-left border-collapse border border-slate-800 rounded-xl overflow-hidden text-xs\">\n            <thead>\n              <tr class=\"bg-slate-900 text-emerald-400\">\n                <th class=\"p-2.5 border border-slate-800\">评估维度</th>\n                <th class=\"p-2.5 border border-slate-800\">传统模式</th>\n                <th class=\"p-2.5 border border-slate-800\">SEO 巡航自动化模式</th>\n              </tr>\n            </thead>\n            <tbody class=\"text-slate-300\">\n              <tr class=\"border border-slate-800 bg-slate-950/40\">\n                <td class=\"p-2.5 font-bold border border-slate-800\">内容 E-E-A-T 深度</td>\n                <td class=\"p-2.5 border border-slate-800 text-slate-400\">普通泛泛而谈</td>\n                <td class=\"p-2.5 border border-slate-800 text-emerald-400 font-bold\">嵌入真实场景数据与 FAQ Schema</td>\n              </tr>\n              <tr class=\"border border-slate-800\">\n                <td class=\"p-2.5 font-bold border border-slate-800\">收录即时性 (Indexing)</td>\n                <td class=\"p-2.5 border border-slate-800 text-slate-400\">被动等待爬虫 (3-14 天)</td>\n                <td class=\"p-2.5 border border-slate-800 text-emerald-400 font-bold\">IndexNow / 百度 API 实时主动推送</td>\n              </tr>\n            </tbody>\n          </table>\n        </div>\n\n        <h2>3. Frequently Asked Questions</h2>\n        <div class=\"space-y-3\">\n          <div class=\"bg-slate-900/80 p-3.5 rounded-xl border border-slate-800\">\n            <h4 class=\"font-bold text-white text-xs mb-1\">Q: K8s / AI 基础设施最新部署实践与成本优化 对网站长期流量有何帮助？</h4>\n            <p class=\"text-[11px] text-slate-400\">A: 通过解决用户真实搜索痛点并挂载结构化数据，能显著提升搜索引擎收录权重与长尾词覆盖率。</p>\n          </div>\n        </div>\n\n        <script type=\"application/ld+json\">\n        {\n          \"@context\": \"https://schema.org\",\n          \"@type\": \"Article\",\n          \"headline\": \"Deep Dive into K8s / AI 基础设施最新部署实践与成本优化: 2026 Production Architecture & Best Practices\",\n          \"description\": \"A comprehensive production engineering guide for K8s / AI 基础设施最新部署实践与成本优化, covering core architecture, benchmarks, and optimization.\",\n          \"author\": { \"@type\": \"Organization\", \"name\": \"SEO Cruise Engine\" }\n        }\n        </script>\n      </div>\n    ",
+        "sourcesUsed": [
+          "企业知识库及权威来源"
+        ],
+        "qualityGate": {
+          "passed": true,
+          "overallScore": 95,
+          "factReliabilityScore": 98,
+          "hallucinationFree": true,
+          "languageMatch": true,
+          "sourceCheckPassed": true,
+          "duplicateContentCheck": true,
+          "issues": [],
+          "passedChecks": [
+            "E-E-A-T Rating: 98/100 (Expert evaluation completed)",
+            "AEO Block: Direct answer box generated for AI Overviews",
+            "Schema Microdata: Built-in Article & FAQ JSON-LD script",
+            "Push Engine: Real-time IndexNow & Baidu API ready"
+          ]
+        },
+        "status": "PUBLISHED",
+        "publishedUrl": "https://globalcloudarch.io/deep-dive-into-k8s---ai-%E5%9F%BA%E7%A1%80%E8%AE%BE%E6%96%BD%E6%9C%80%E6%96%B0%E9%83%A8%E7%BD%B2%E5%AE%9E%E8%B7%B5%E4%B8%8E%E6%88%90%E6%9C%AC%E4%BC%98%E5%8C%96-/",
+        "publishedAt": "2026-08-22T17:31:32.197Z",
+        "wpPostId": 62727,
+        "createdAt": "2026-08-22T17:31:32.197Z"
+      },
+      {
+        "id": "draft-task-1787419892473",
+        "opportunityId": "opp-task-1787419892473",
+        "siteId": "site-1",
+        "title": "深度解析 K8s / AI 基础设施最新部署实践与成本优化：2026年生产环境架构演进与实践指引",
+        "language": "zh-CN",
+        "category": "AI实践案例",
+        "summary": "本文基于真实研发测试与权威测试数据，系统化梳理 K8s / AI 基础设施最新部署实践与成本优化 的设计要点、典型瓶颈及调优手段。",
+        "contentHtml": "\n      <div class=\"seo-article-container space-y-6\">\n        <div class=\"bg-emerald-950/40 border border-emerald-500/40 rounded-2xl p-4 my-2 shadow-inner\">\n          <div class=\"flex items-center space-x-2 text-emerald-400 font-bold text-xs mb-1.5\">\n            <span class=\"px-2 py-0.5 rounded bg-emerald-500/20 text-[10px] font-mono\">AEO / GEO 快速概览</span>\n            <span>Google AI Overviews 提炼区</span>\n          </div>\n          <p class=\"text-slate-200 text-xs leading-relaxed\">\n            <strong>K8s / AI 基础设施最新部署实践与成本优化</strong> 的核心在于通过匹配用户搜索意图、构建权威 E-E-A-T 专业知识体系以及嵌入 Schema.org 结构化数据，帮助网站在 Google 和百度搜索引擎中快速获取高排名与高转化自然流量。\n          </p>\n        </div>\n\n        <h2>一、技术背景与核心诉求</h2>\n        <p>在现代高并发与大数据量场景下，关于 <strong>K8s / AI 基础设施最新部署实践与成本优化</strong> 的落地效率直接决定了系统的稳定性与扩展上限。</p>\n\n        <h2>二、生产实践方案与压测总结</h2>\n        <p>根据实际测试，在配置合适连接池与缓存策略后，QPS 可提升约 35%，P99 延迟降低至 120ms 以下。</p>\n        \n        <div class=\"overflow-x-auto my-4\">\n          <table class=\"w-full text-left border-collapse border border-slate-800 rounded-xl overflow-hidden text-xs\">\n            <thead>\n              <tr class=\"bg-slate-900 text-emerald-400\">\n                <th class=\"p-2.5 border border-slate-800\">评估维度</th>\n                <th class=\"p-2.5 border border-slate-800\">传统模式</th>\n                <th class=\"p-2.5 border border-slate-800\">SEO 巡航自动化模式</th>\n              </tr>\n            </thead>\n            <tbody class=\"text-slate-300\">\n              <tr class=\"border border-slate-800 bg-slate-950/40\">\n                <td class=\"p-2.5 font-bold border border-slate-800\">内容 E-E-A-T 深度</td>\n                <td class=\"p-2.5 border border-slate-800 text-slate-400\">普通泛泛而谈</td>\n                <td class=\"p-2.5 border border-slate-800 text-emerald-400 font-bold\">嵌入真实场景数据与 FAQ Schema</td>\n              </tr>\n              <tr class=\"border border-slate-800\">\n                <td class=\"p-2.5 font-bold border border-slate-800\">收录即时性 (Indexing)</td>\n                <td class=\"p-2.5 border border-slate-800 text-slate-400\">被动等待爬虫 (3-14 天)</td>\n                <td class=\"p-2.5 border border-slate-800 text-emerald-400 font-bold\">IndexNow / 百度 API 实时主动推送</td>\n              </tr>\n            </tbody>\n          </table>\n        </div>\n\n        <h2>三、常见问题解答 (FAQ)</h2>\n        <div class=\"space-y-3\">\n          <div class=\"bg-slate-900/80 p-3.5 rounded-xl border border-slate-800\">\n            <h4 class=\"font-bold text-white text-xs mb-1\">Q: K8s / AI 基础设施最新部署实践与成本优化 对网站长期流量有何帮助？</h4>\n            <p class=\"text-[11px] text-slate-400\">A: 通过解决用户真实搜索痛点并挂载结构化数据，能显著提升搜索引擎收录权重与长尾词覆盖率。</p>\n          </div>\n        </div>\n\n        <script type=\"application/ld+json\">\n        {\n          \"@context\": \"https://schema.org\",\n          \"@type\": \"Article\",\n          \"headline\": \"深度解析 K8s / AI 基础设施最新部署实践与成本优化：2026年生产环境架构演进与实践指引\",\n          \"description\": \"本文基于真实研发测试与权威测试数据，系统化梳理 K8s / AI 基础设施最新部署实践与成本优化 的设计要点、典型瓶颈及调优手段。\",\n          \"author\": { \"@type\": \"Organization\", \"name\": \"SEO Cruise Engine\" }\n        }\n        </script>\n      </div>\n    ",
+        "sourcesUsed": [
+          "企业知识库及权威来源"
+        ],
+        "qualityGate": {
+          "passed": true,
+          "overallScore": 95,
+          "factReliabilityScore": 98,
+          "hallucinationFree": true,
+          "languageMatch": true,
+          "sourceCheckPassed": true,
+          "duplicateContentCheck": true,
+          "issues": [],
+          "passedChecks": [
+            "E-E-A-T 评估：98/100 (已完成专家级论证与案例对齐)",
+            "AEO 结构提取：已生成适合 AI Overviews 直接采纳的直击回答块",
+            "Schema.org 微数据：已内置 Article & FAQ Page JSON-LD 代码",
+            "主动推送准备：实时挂载 IndexNow 与百度 Search Console 推送协议"
+          ]
+        },
+        "status": "PUBLISHED",
+        "publishedUrl": "https://techpulse.media/%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90-k8s---ai-%E5%9F%BA%E7%A1%80%E8%AE%BE%E6%96%BD%E6%9C%80%E6%96%B0%E9%83%A8%E7%BD%B2%E5%AE%9E%E8%B7%B5%E4%B8%8E%E6%88%90%E6%9C%AC%E4%BC%98%E5%8C%96-2026%E5%B9%B4%E7%94%9F%E4%BA%A7%E7%8E%AF%E5%A2%83%E6%9E%B6/",
+        "publishedAt": "2026-08-22T17:31:32.197Z",
+        "wpPostId": 72491,
+        "createdAt": "2026-08-22T17:31:32.197Z"
+      },
+      {
+        "id": "draft-101",
+        "opportunityId": "opp-101",
+        "siteId": "site-1",
+        "title": "企业级 DeepSeek 私有化部署实战：从 vLLM 显存优化到量化推理性能调优",
+        "language": "zh-CN",
+        "category": "AI实践案例",
+        "summary": "本文深入探讨企业在私有化环境中部署 DeepSeek R1/V3 模型时的核心痛点，包括多卡显存分配、vLLM/SGLang 框架对比、FP8 量化损失评估以及生产环境并发吞吐优化方案。",
+        "contentHtml": "\n      <h2>引言：企业私有化部署 DeepSeek 的算力挑战</h2>\n      <p>随着 DeepSeek 开源模型在企业业务中的深度应用，如何在有限的私有 GPU 集群（如 8x A100 或 8x H800）中榨干算力性能，成为技术团队的核心议题。</p>\n      \n      <h2>一、部署框架选择：vLLM vs SGLang 对比评测</h2>\n      <p>在 2026 年的生产实践中，vLLM 凭借 PagedAttention 机制与完备的 OpenAI 兼容接口仍是主流选择，但在高并发 Prefix Caching 场景下，SGLang 表现出 15%-25% 的吞吐优势。</p>\n      \n      <h2>二、显存优化三大杀招</h2>\n      <ul>\n        <li><strong>KV Cache 动态伸缩：</strong>配置 gpu_memory_utilization 为 0.92，搭配 Chunked Prefill 避免峰值 OOM。</li>\n        <li><strong>FP8 量化部署：</strong>相比 16-bit 权重，FP8 在几乎无精度损失的情况下降低 48% 显存占用。</li>\n        <li><strong>Tensor Parallelism 与 Pipeline Parallelism 最佳配比：</strong>针对 671B 混专家模型推荐 TP=8, PP=2。</li>\n      </ul>\n\n      <h2>三、生产环境测试与可观测性</h2>\n      <p>结合 Prometheus 与 Grafana 监控 <code>vllm:num_requests_waiting</code> 与 <code>vllm:gpu_cache_usage_perc</code> 指标，确保服务 P99 延迟稳定在 350ms 以内。</p>\n    ",
+        "sourcesUsed": [
+          "客户知识库: 《2026 企业AI私有化算力白皮书.pdf》",
+          "官方可信来源: vLLM v0.7.2 Performance Benchmarks",
+          "官方可信来源: DeepSeek V3 Architecture & FP8 Optimization Specs"
+        ],
+        "qualityGate": {
+          "passed": true,
+          "overallScore": 94,
+          "factReliabilityScore": 96,
+          "hallucinationFree": true,
+          "languageMatch": true,
+          "sourceCheckPassed": true,
+          "duplicateContentCheck": true,
+          "issues": [],
+          "passedChecks": [
+            "事实可信度：96 分（无虚构性能指标或虚假版本号）",
+            "知识库追溯：100% 引用的配置参数均有文档归属",
+            "单语言一致性：全篇符合 zh-CN 技术写作规范，无英文机械直译痕迹",
+            "重复度检测：与站内既有文章相似度 < 3.2%",
+            "自动发布白名单准入：属于 [AI实践案例] 许可分类"
+          ]
+        },
+        "status": "QUALITY_PASSED",
+        "createdAt": "2026-08-02T10:00:00Z"
+      }
+    ],
+    "knowledgeSources": [
+      {
+        "id": "kb-1",
+        "siteId": "site-1",
+        "title": "《2026 企业AI私有化算力白皮书与部署规范》",
+        "type": "CLIENT_KB",
+        "contentSnippet": "规范包含 DeepSeek、Llama3 私有化部署基准案例、vLLM 参数调优指导、信创 GPU 兼容矩阵与安全隔离方案。",
+        "urlOrFilename": "https://techpulse.media/docs/ai-benchmark-2026.pdf",
+        "addedAt": "2026-01-20T10:00:00Z"
+      },
+      {
+        "id": "kb-2",
+        "siteId": "site-1",
+        "title": "【可信来源白名单】vLLM & Kubernetes 官方更新日志与 RFC",
+        "type": "WHITELISTED_DOMAIN",
+        "contentSnippet": "仅允许引用 vllm.ai, kubernetes.io, deepseek.com 官方技术博客及认证论文。",
+        "urlOrFilename": "https://vllm.ai/blog",
+        "addedAt": "2026-02-01T12:00:00Z"
+      }
+    ],
+    "auditLogs": [
+      {
+        "id": "log-1787469101410",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T07:11:41.410Z",
+        "actor": "USER_ADMIN",
+        "action": "UPDATE_SITE_CONFIG",
+        "target": "TechPulse Media (科技脉搏)",
+        "result": "SUCCESS",
+        "details": "已更新站点配置与凭证参数。"
+      },
+      {
+        "id": "log-1787469100658",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T07:11:40.658Z",
+        "actor": "USER_ADMIN",
+        "action": "UPDATE_SITE_CONFIG",
+        "target": "TechPulse Media (科技脉搏)",
+        "result": "SUCCESS",
+        "details": "已更新站点配置与凭证参数。"
+      },
+      {
+        "id": "log-1787469098161",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T07:11:38.161Z",
+        "actor": "USER_ADMIN",
+        "action": "UPDATE_SCHEDULED_TASK",
+        "target": "每日早间全自动发文",
+        "result": "SUCCESS",
+        "details": "已更新定时巡航任务配置 (状态: ACTIVE)"
+      },
+      {
+        "id": "log-1787469095985",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T07:11:35.985Z",
+        "actor": "USER_ADMIN",
+        "action": "UPDATE_SCHEDULED_TASK",
+        "target": "每日早间全自动发文",
+        "result": "SUCCESS",
+        "details": "已更新定时巡航任务配置 (状态: PAUSED)"
+      },
+      {
+        "id": "log-1787468956077",
+        "siteId": "site-2",
+        "timestamp": "2026-08-23T07:09:16.077Z",
+        "actor": "USER_ADMIN",
+        "action": "UPDATE_SITE_CONFIG",
+        "target": "Global Cloud Architecture (英文站)",
+        "result": "SUCCESS",
+        "details": "已更新站点配置与凭证参数。"
+      },
+      {
+        "id": "log-1787468946320",
+        "siteId": "site-2",
+        "timestamp": "2026-08-23T07:09:06.320Z",
+        "actor": "USER_ADMIN",
+        "action": "UPDATE_SITE_CONFIG",
+        "target": "Global Cloud Architecture (英文站)",
+        "result": "SUCCESS",
+        "details": "已更新站点配置与凭证参数。"
+      },
+      {
+        "id": "log-1787468941952",
+        "siteId": "site-2",
+        "timestamp": "2026-08-23T07:09:01.952Z",
+        "actor": "USER_ADMIN",
+        "action": "UPDATE_SITE_CONFIG",
+        "target": "Global Cloud Architecture (英文站)",
+        "result": "SUCCESS",
+        "details": "已更新站点配置与凭证参数。"
+      },
+      {
+        "id": "log-1787468939398",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T07:08:59.398Z",
+        "actor": "USER_ADMIN",
+        "action": "UPDATE_SITE_CONFIG",
+        "target": "TechPulse Media (科技脉搏)",
+        "result": "SUCCESS",
+        "details": "已更新站点配置与凭证参数。"
+      },
+      {
+        "id": "log-1787468937712",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T07:08:57.712Z",
+        "actor": "USER_ADMIN",
+        "action": "UPDATE_SITE_CONFIG",
+        "target": "TechPulse Media (科技脉搏)",
+        "result": "SUCCESS",
+        "details": "已更新站点配置与凭证参数。"
+      },
+      {
+        "id": "log-1787466930462",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T06:35:30.462Z",
+        "actor": "USER_ADMIN",
+        "action": "UPDATE_SITE_CONFIG",
+        "target": "TechPulse Media (科技脉搏)",
+        "result": "SUCCESS",
+        "details": "已更新站点配置与凭证参数。"
+      },
+      {
+        "id": "log-1787466809885",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T06:33:29.884Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日早间全自动发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (09:00)"
+      },
+      {
+        "id": "log-1787466073648",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T06:21:13.648Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "GENERATE_CONTENT_BRIEF",
+        "target": "DeepSeek K8s 部署实践",
+        "result": "SUCCESS",
+        "details": "已生成大纲 Content Brief，包含 E-E-A-T 结构及 Schema 规范。"
+      },
+      {
+        "id": "log-1787466064301",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T06:21:04.301Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "DeepSeek K8s 部署实践",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"2026 DeepSeek 企业级 K8s 容器化私有化部署实战指南（vLLM+GPU集群+弹性调优全流程）\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787465764103",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T06:16:04.103Z",
+        "actor": "USER_ADMIN",
+        "action": "COMPETITOR_ATTACK_ANALYSIS",
+        "target": "notion.so",
+        "result": "SUCCESS",
+        "details": "针对竞品 \"notion.so\" 完成逆向意图挖掘，生成 4 个进攻词与盲区诊断。"
+      },
+      {
+        "id": "log-task-1787419893074",
+        "siteId": "site-1",
+        "timestamp": "2026-08-22T17:31:32.736Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "CRON_AUTO_PUBLISH",
+        "target": "TechPulse Media (科技脉搏) - 深度解析 DeepSeek 私有化部署 & vLLM 性能调优指南：2026年生产环境架构演进与实践指引",
+        "result": "SUCCESS",
+        "details": "定时巡航触发成功！已发布并推送到搜索引擎（已向百度主动推送通道提交 1 条 URL，状态正常），URL: https://techpulse.media/%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90-deepseek-%E7%A7%81%E6%9C%89%E5%8C%96%E9%83%A8%E7%BD%B2---vllm-%E6%80%A7%E8%83%BD%E8%B0%83%E4%BC%98%E6%8C%87%E5%8D%97-2026%E5%B9%B4%E7%94%9F/"
+      },
+      {
+        "id": "log-task-1787419892734",
+        "siteId": "site-2",
+        "timestamp": "2026-08-22T17:31:32.197Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "CRON_AUTO_PUBLISH",
+        "target": "Global Cloud Architecture (英文站) - Deep Dive into K8s / AI 基础设施最新部署实践与成本优化: 2026 Production Architecture & Best Practices",
+        "result": "SUCCESS",
+        "details": "定时巡航触发成功！已发布并推送到搜索引擎（已分发），URL: https://globalcloudarch.io/deep-dive-into-k8s---ai-%E5%9F%BA%E7%A1%80%E8%AE%BE%E6%96%BD%E6%9C%80%E6%96%B0%E9%83%A8%E7%BD%B2%E5%AE%9E%E8%B7%B5%E4%B8%8E%E6%88%90%E6%9C%AC%E4%BC%98%E5%8C%96-/"
+      },
+      {
+        "id": "log-task-1787419892475",
+        "siteId": "site-1",
+        "timestamp": "2026-08-22T17:31:32.197Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "CRON_AUTO_PUBLISH",
+        "target": "TechPulse Media (科技脉搏) - 深度解析 K8s / AI 基础设施最新部署实践与成本优化：2026年生产环境架构演进与实践指引",
+        "result": "SUCCESS",
+        "details": "定时巡航触发成功！已发布并推送到搜索引擎（已向百度主动推送通道提交 1 条 URL，状态正常），URL: https://techpulse.media/%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90-k8s---ai-%E5%9F%BA%E7%A1%80%E8%AE%BE%E6%96%BD%E6%9C%80%E6%96%B0%E9%83%A8%E7%BD%B2%E5%AE%9E%E8%B7%B5%E4%B8%8E%E6%88%90%E6%9C%AC%E4%BC%98%E5%8C%96-2026%E5%B9%B4%E7%94%9F%E4%BA%A7%E7%8E%AF%E5%A2%83%E6%9E%B6/"
+      },
+      {
+        "id": "log-101",
+        "siteId": "site-1",
+        "timestamp": "2026-08-02T14:10:00Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "RUN_QUALITY_GATE",
+        "target": "文章: 企业级 DeepSeek 私有化部署实战",
+        "result": "SUCCESS",
+        "details": "质检评分 94 分，事实可靠度 96 分。符合自动发布白名单规则，准备执行推送。"
+      },
+      {
+        "id": "log-102",
+        "siteId": "site-1",
+        "timestamp": "2026-08-01T16:00:00Z",
+        "actor": "POLICY_ENGINE",
+        "action": "FLAG_MANUAL_REVIEW",
+        "target": "机会: 微服务网关选型指南 Title 优化",
+        "result": "WARNING",
+        "details": "拦截原因：涉及对已发布核心文章（P0 Landing Page）的修改，按安全策略转交人工审核。"
+      },
+      {
+        "id": "log-103",
+        "siteId": "site-1",
+        "timestamp": "2026-08-01T09:30:00Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "GSC_DEMAND_SCAN",
+        "target": "GSC 接口与 Sitemap",
+        "result": "SUCCESS",
+        "details": "发现 14 个新搜索意图集群，自动创建 3 个通过低风险质检的新文章机会。"
+      }
+    ],
+    "usageLedger": [
+      {
+        "month": "2026-08",
+        "aiTokenCost": 18.2,
+        "crawlerCost": 4.5,
+        "publishedArticlesCount": 6,
+        "costPerArticle": 3.78,
+        "costPerIndexedPage": 4.12,
+        "budgetLimit": 150,
+        "budgetUsed": 38.5
+      },
+      {
+        "month": "2026-07",
+        "aiTokenCost": 32.4,
+        "crawlerCost": 8.1,
+        "publishedArticlesCount": 11,
+        "costPerArticle": 3.68,
+        "costPerIndexedPage": 3.95,
+        "budgetLimit": 150,
+        "budgetUsed": 40.5
+      }
+    ],
+    "baiduLogs": [
+      {
+        "id": "baidu-1787419892736",
+        "url": "https://techpulse.media/%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90-deepseek-%E7%A7%81%E6%9C%89%E5%8C%96%E9%83%A8%E7%BD%B2---vllm-%E6%80%A7%E8%83%BD%E8%B0%83%E4%BC%98%E6%8C%87%E5%8D%97-2026%E5%B9%B4%E7%94%9F/",
+        "submittedAt": "2026-08-22T17:31:32.736Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787419892203",
+        "url": "https://techpulse.media/%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90-k8s---ai-%E5%9F%BA%E7%A1%80%E8%AE%BE%E6%96%BD%E6%9C%80%E6%96%B0%E9%83%A8%E7%BD%B2%E5%AE%9E%E8%B7%B5%E4%B8%8E%E6%88%90%E6%9C%AC%E4%BC%98%E5%8C%96-2026%E5%B9%B4%E7%94%9F%E4%BA%A7%E7%8E%AF%E5%A2%83%E6%9E%B6/",
+        "submittedAt": "2026-08-22T17:31:32.197Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1",
+        "url": "https://techpulse.media/deepseek-private-deployment-guide/",
+        "submittedAt": "2026-08-02T14:15:00Z",
+        "type": "DAILY_API",
+        "status": "INDEXED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-2",
+        "url": "https://techpulse.media/rag-chunking-strategy-2026/",
+        "submittedAt": "2026-08-01T10:00:00Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 93
+      }
+    ],
+    "automatedTasks": [
+      {
+        "id": "task-1787466809884",
+        "siteId": "site-1",
+        "siteName": "techpulse.media",
+        "taskName": "每日早间全自动发文",
+        "scheduleType": "DAILY",
+        "scheduleTime": "09:00",
+        "targetKeywordTopic": "行业热门高搜词",
+        "articleCountPerRun": 1,
+        "status": "ACTIVE",
+        "nextRunAt": "2026-08-24T06:33:29.884Z",
+        "createdAt": "2026-08-23T06:33:29.884Z"
+      },
+      {
+        "id": "task-1",
+        "siteId": "all",
+        "siteName": "全部已绑定站点",
+        "taskName": "每日晨间行业热点自动抓取与发布",
+        "scheduleType": "DAILY",
+        "scheduleTime": "09:00",
+        "targetKeywordTopic": "K8s / AI 基础设施最新部署实践与成本优化",
+        "articleCountPerRun": 1,
+        "status": "ACTIVE",
+        "lastRunAt": "2026-08-22T17:31:32.197Z",
+        "nextRunAt": "2026-08-23T17:31:32.197Z",
+        "createdAt": "2026-08-01T10:00:00.000Z"
+      },
+      {
+        "id": "task-2",
+        "siteId": "site-1",
+        "siteName": "云原生基础设施网",
+        "taskName": "周一高价值搜索词自动生成发布",
+        "scheduleType": "WEEKLY",
+        "scheduleTime": "每周一 08:30",
+        "targetKeywordTopic": "DeepSeek 私有化部署 & vLLM 性能调优指南",
+        "articleCountPerRun": 2,
+        "status": "ACTIVE",
+        "lastRunAt": "2026-08-22T17:31:32.736Z",
+        "nextRunAt": "2026-08-29T17:31:32.736Z",
+        "createdAt": "2026-08-01T11:00:00.000Z"
+      }
+    ],
+    "account": {
+      "id": "tenant-a",
+      "username": "tenant-a",
+      "email": "tenant-a@domain.com",
+      "credits": 100,
+      "totalRechargedUsdt": 0,
+      "totalConsumedCredits": 0,
+      "role": "ADMIN",
+      "createdAt": "2026-08-23T07:54:26.301Z"
+    }
+  },
+  "tenant-test": {
+    "sites": [
+      {
+        "id": "site-1",
+        "name": "Cloud Native Tech",
+        "domain": "cloudnative.tech",
+        "connectorStatus": "CONNECTED",
+        "pagesCount": 10,
+        "calibration": {
+          "isCalibrating": true,
+          "approvedCount": 0,
+          "rejectedCount": 0,
+          "totalApprovedRequired": 2,
+          "autoPublishUnlocked": false,
+          "daysRemaining": 14,
+          "zeroFactErrorStreak": 0
+        },
+        "niche": "DevOps",
+        "siteLanguage": "zh-CN",
+        "wpVersion": "6.4.2",
+        "pluginInstalled": true,
+        "whitelistedCategories": [
+          "DevOps"
+        ],
+        "gscConnected": true,
+        "ga4Connected": true,
+        "baiduConnected": true,
+        "autopilotEnabled": false,
+        "weeklyPublishCap": 10,
+        "currentWeeklyPublished": 2,
+        "monthlyBudgetLimit": 100,
+        "monthlyBudgetUsed": 15,
+        "createdAt": "2026-08-01T00:00:00.000Z"
+      }
+    ],
+    "opportunities": [
+      {
+        "id": "opp-1",
+        "siteId": "site-1",
+        "title": "Kubernetes 生产级部署优化实践指南",
+        "type": "NEW_CONTENT",
+        "language": "zh-CN",
+        "targetKeyword": "Kubernetes 部署优化",
+        "category": "DevOps",
+        "riskLevel": "LOW",
+        "estimatedMonthlyVisitsGain": 2400,
+        "demandEvidence": {
+          "sourceType": "GSC_QUERY",
+          "queryOrTopic": "Kubernetes 部署优化",
+          "evidenceDescription": "高搜索意图关键词",
+          "reliabilityConfidence": 0.95
+        },
+        "scoreBreakdown": {
+          "businessValue": 20,
+          "searchDemand": 18,
+          "winProbability": 15,
+          "currentRanking": 12,
+          "engagementPotential": 10,
+          "googleBaiduReuse": 10,
+          "internalLinkValue": 5,
+          "freshness": 5,
+          "dataReliability": 5,
+          "riskPenalty": 0,
+          "costPenalty": 0,
+          "totalScore": 100
+        },
+        "status": "APPROVED",
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "updatedAt": "2026-08-01T00:00:00.000Z"
+      }
+    ],
+    "drafts": [
+      {
+        "id": "draft-1",
+        "opportunityId": "opp-1",
+        "siteId": "site-1",
+        "title": "Kubernetes 生产级部署优化实践指南",
+        "language": "zh-CN",
+        "category": "DevOps",
+        "contentHtml": "<h1>Kubernetes 优化指南</h1><p>内容正文</p>",
+        "summary": "摘要",
+        "sourcesUsed": [],
+        "qualityGate": {
+          "passed": true,
+          "overallScore": 95,
+          "factReliabilityScore": 98,
+          "hallucinationFree": true,
+          "languageMatch": true,
+          "sourceCheckPassed": true,
+          "duplicateContentCheck": true,
+          "issues": [],
+          "passedChecks": [
+            "无幻觉校验",
+            "事实核查"
+          ]
+        },
+        "status": "PENDING_APPROVAL",
+        "createdAt": "2026-08-02T00:00:00.000Z"
+      }
+    ],
+    "knowledgeSources": [],
+    "auditLogs": [],
+    "usageLedger": [],
+    "baiduLogs": [],
+    "automatedTasks": []
+  },
+  "test-tenant": {
+    "sites": [
+      {
+        "id": "site-orch-1",
+        "name": "Tech Site",
+        "domain": "techsite.io",
+        "connectorStatus": "CONNECTED",
+        "pagesCount": 5,
+        "calibration": {
+          "isCalibrating": false,
+          "approvedCount": 5,
+          "rejectedCount": 0,
+          "totalApprovedRequired": 3,
+          "autoPublishUnlocked": true,
+          "daysRemaining": 0,
+          "zeroFactErrorStreak": 5
+        },
+        "niche": "Technology",
+        "siteLanguage": "zh-CN",
+        "wpVersion": "6.5.0",
+        "pluginInstalled": true,
+        "whitelistedCategories": [
+          "技术干货"
+        ],
+        "gscConnected": true,
+        "ga4Connected": true,
+        "baiduConnected": true,
+        "autopilotEnabled": true,
+        "weeklyPublishCap": 20,
+        "currentWeeklyPublished": 3,
+        "monthlyBudgetLimit": 100,
+        "monthlyBudgetUsed": 20,
+        "createdAt": "2026-08-23T11:06:13.963Z"
+      }
+    ],
+    "opportunities": [],
+    "drafts": [],
+    "knowledgeSources": [],
+    "auditLogs": [],
+    "usageLedger": [],
+    "baiduLogs": [
+      {
+        "id": "baidu-1787483173699",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:06:13.699Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787483173698",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:06:13.698Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787483173336",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:06:13.336Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787480071058",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T10:14:31.058Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787480071057",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T10:14:31.057Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787480070538",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T10:14:30.538Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787479199297",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:59:59.297Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787479199296",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:59:59.296Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787479198921",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:59:58.921Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787478700979",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:51:40.979Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787478700978",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:51:40.978Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787478700661",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:51:40.661Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787478502518",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:48:22.518Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787478502516",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:48:22.516Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787478502102",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:48:22.102Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787478235382",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:43:55.382Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787478235381",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:43:55.381Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787478235058",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:43:55.058Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787478219287",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:43:39.287Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787478219286",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:43:39.286Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787478218899",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:43:38.899Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787477882796",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:38:02.796Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787477882794",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:38:02.794Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787477882430",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:38:02.430Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787477795468",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:36:35.468Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787477795467",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:36:35.467Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787477795146",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:36:35.146Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787477497230",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:31:37.230Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787477497229",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:31:37.229Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787477496842",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:31:36.842Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787477469274",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:31:09.274Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787477468953",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:31:08.953Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787477094045",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:24:54.045Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787477094044",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:24:54.044Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787477093695",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T09:24:53.695Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787422667128",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T18:17:47.128Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787422667128",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T18:17:47.128Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787422666749",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T18:17:46.749Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787422639570",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T18:17:19.570Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787422639569",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T18:17:19.569Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787422639216",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T18:17:19.216Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787421312313",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:55:12.313Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787421312313",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:55:12.313Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787421311937",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:55:11.937Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787420997376",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:49:57.376Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787420997376",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:49:57.376Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787420996967",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:49:56.967Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787420248238",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:37:28.238Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787420248238",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:37:28.238Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787420247911",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:37:27.911Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787420164261",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:36:04.261Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787420164261",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:36:04.261Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787420163935",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:36:03.935Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787420076081",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:34:36.081Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787420076080",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:34:36.080Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787420075737",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:34:35.737Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787420024715",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:33:44.715Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787420024714",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:33:44.714Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787420024348",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-22T17:33:44.348Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1786796857078",
+        "url": "https://techsite.io/Batch%20Task%202/",
+        "submittedAt": "2026-08-15T12:27:37.078Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 88
+      },
+      {
+        "id": "baidu-1786796857077",
+        "url": "https://techsite.io/Batch%20Task%201/",
+        "submittedAt": "2026-08-15T12:27:37.077Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 88
+      },
+      {
+        "id": "baidu-1786796857073",
+        "url": "https://techsite.io/K8s%20%E7%94%9F%E4%BA%A7%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-15T12:27:37.073Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 88
+      },
+      {
+        "id": "baidu-1786796806414",
+        "url": "https://techsite.io/Batch%20Task%202/",
+        "submittedAt": "2026-08-15T12:26:46.414Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 88
+      },
+      {
+        "id": "baidu-1786796806414",
+        "url": "https://techsite.io/Batch%20Task%201/",
+        "submittedAt": "2026-08-15T12:26:46.414Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 88
+      },
+      {
+        "id": "baidu-1786796806411",
+        "url": "https://techsite.io/K8s%20%E7%94%9F%E4%BA%A7%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-15T12:26:46.411Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 88
+      },
+      {
+        "id": "baidu-1786795672631",
+        "url": "https://techsite.io/K8s%20%E7%94%9F%E4%BA%A7%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-15T12:07:52.631Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 88
+      },
+      {
+        "id": "baidu-1786793540444",
+        "url": "https://techsite.io/K8s%20%E7%94%9F%E4%BA%A7%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-15T11:32:20.444Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 88
+      },
+      {
+        "id": "baidu-1786793438509",
+        "url": "https://techsite.io/K8s%20%E7%94%9F%E4%BA%A7%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-15T11:30:38.509Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 88
+      },
+      {
+        "id": "baidu-1786793381178",
+        "url": "https://techsite.io/K8s%20%E7%94%9F%E4%BA%A7%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-15T11:29:41.178Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 88
+      },
+      {
+        "id": "baidu-1786793357460",
+        "url": "https://techsite.io/K8s%20%E7%94%9F%E4%BA%A7%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-15T11:29:17.460Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 88
+      },
+      {
+        "id": "baidu-1786793312880",
+        "url": "https://techsite.io/K8s%20%E7%94%9F%E4%BA%A7%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-15T11:28:32.880Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 88
+      }
+    ],
+    "automatedTasks": [],
+    "account": {
+      "id": "test-tenant",
+      "username": "test_user",
+      "email": "test@example.com",
+      "credits": 1000,
+      "totalRechargedUsdt": 10,
+      "totalConsumedCredits": 0,
+      "role": "TENANT",
+      "createdAt": "2026-08-23T11:06:13.963Z"
+    },
+    "creditTransactions": [
+      {
+        "id": "tx-1787483173686-b9fkw",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:06:13.686Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787483173685-zge5e",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:06:13.685Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787483173325-omw76",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:06:13.325Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787480071043-mnmf7",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T10:14:31.043Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787480071042-92y69",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T10:14:31.042Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787480070529-7hvz9",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T10:14:30.529Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787479199285-8pr07",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:59:59.285Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787479199284-zca0t",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:59:59.284Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787479198912-ltnb0",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:59:58.912Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787478700967-bnevy",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:51:40.967Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787478700966-zni61",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:51:40.966Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787478700652-3k9tl",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:51:40.652Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787478502505-sr413",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:48:22.505Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787478502504-99a9u",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:48:22.504Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787478502092-letni",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:48:22.092Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787478235371-eaam2",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:43:55.371Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787478235370-cyokb",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:43:55.370Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787478235049-1jfcb",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:43:55.049Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787478219272-oqbkm",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:43:39.272Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787478219271-u0do2",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:43:39.271Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787478218890-zpjdn",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:43:38.890Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787477882784-bxgo4",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:38:02.784Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787477882783-vhdua",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:38:02.783Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787477882421-7o705",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:38:02.421Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787477795457-ihmgm",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:36:35.457Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787477795456-g93gs",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:36:35.456Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787477795139-019ou",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:36:35.139Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787477497220-e3svb",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:31:37.220Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787477497219-utue5",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:31:37.219Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787477496834-21o6e",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:31:36.835Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787477469264-a1h39",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 0,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:31:09.264Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787477468946-zi65q",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 20,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:31:08.946Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787477094036-9idmq",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 40,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:24:54.036Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787477094035-sj0xs",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 60,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:24:54.035Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787477093686-gu0kn",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 80,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T09:24:53.686Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      }
+    ]
+  },
+  "tenant-b": {
+    "account": {
+      "id": "tenant-b",
+      "username": "matrix_seo",
+      "email": "tenant-b@seo-hub.com",
+      "companyName": "矩阵出海科技 (租户)",
+      "credits": 100,
+      "totalRechargedUsdt": 0,
+      "totalConsumedCredits": 0,
+      "role": "TENANT",
+      "createdAt": "2026-08-23T09:31:10.588Z"
+    },
+    "passwordHash": "password123",
+    "sites": [],
+    "opportunities": [],
+    "drafts": [],
+    "knowledgeSources": [],
+    "auditLogs": [],
+    "usageLedger": [],
+    "baiduLogs": [],
+    "automatedTasks": [],
+    "creditTransactions": [
+      {
+        "id": "tx-reg-1787477470588",
+        "tenantId": "tenant-b",
+        "type": "BONUS",
+        "action": "REGISTER_BONUS",
+        "amount": 100,
+        "balance": 100,
+        "description": "新租户注册体验金 (+100 积分)",
+        "createdAt": "2026-08-23T09:31:10.588Z"
+      }
+    ]
+  }
+}
