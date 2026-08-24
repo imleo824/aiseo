@@ -37,10 +37,17 @@ export class GeminiAdapter implements IContentIntelligenceEngine {
   }
 
   private getOpenAIClient(): OpenAI | null {
-    if (!this.openaiClient && process.env.OPENAI_API_KEY) {
+    const config = systemServiceConfigRepository.getServicesConfig();
+    const apiKey = (config.aiEngine?.provider !== 'GEMINI' && config.aiEngine?.customApiKey ? config.aiEngine.customApiKey : undefined) || process.env.OPENAI_API_KEY;
+    const baseURL = config.aiEngine?.customEndpoint?.trim() || undefined;
+
+    if (!apiKey) return null;
+
+    if (!this.openaiClient) {
       try {
         this.openaiClient = new OpenAI({
-          apiKey: process.env.OPENAI_API_KEY,
+          apiKey,
+          baseURL: baseURL || undefined,
         });
       } catch (e: any) {
         logger.warn('AI_ENGINE', `OpenAI Client init error: ${e?.message}`);
@@ -51,7 +58,7 @@ export class GeminiAdapter implements IContentIntelligenceEngine {
 
   private getGeminiModel(): string {
     const config = systemServiceConfigRepository.getServicesConfig();
-    return config.aiEngine?.geminiModel || process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    return config.aiEngine?.geminiModel || process.env.GEMINI_MODEL || "gemini-3.7-flash";
   }
 
   private getOpenAIModel(): string {
@@ -173,7 +180,7 @@ export class GeminiAdapter implements IContentIntelligenceEngine {
         try {
           logger.info('AI_ENGINE', `Falling back to Gemini Flash for completion`);
           const fallbackRes = await gemini.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-3.7-flash",
             contents: `${systemInstruction}\n\nPrompt:\n${prompt}`,
             config: geminiResponseSchema ? {
               responseMimeType: "application/json",

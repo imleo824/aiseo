@@ -60,7 +60,7 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
                 isActive
                   ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-emerald-500/30'
                   : isCompleted
-                  ? 'bg-emerald-50/90 text-emerald-950 border-emerald-200 shadow-2xs'
+                  ? 'bg-emerald-50/90 text-emerald-950 border-emerald-200 shadow-sm'
                   : 'bg-slate-50/80 text-slate-600 border-slate-200/80'
               }`}
             >

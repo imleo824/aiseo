@@ -13,13 +13,6 @@ export const initialSites: WordPressSite[] = [
     wpVersion: '6.7.1',
     pluginInstalled: true,
     whitelistedCategories: ['AI实践案例', '企业架构指南', '开源工具测评'],
-    leadCaptureCta: {
-      enabled: true,
-      title: '预约企业级 AI 架构私有化部署与性能咨询',
-      buttonText: '一键免费预约架构师',
-      targetUrl: 'https://techpulse.media/book-demo?utm_source=autoseo&utm_medium=organic_cta',
-      calloutNote: '免费获取《2026 算力成本测算模型》与 1v1 方案定制'
-    },
     healthDiagnostics: {
       restApiStatus: true,
       authStatus: true,
@@ -31,9 +24,6 @@ export const initialSites: WordPressSite[] = [
     gscConnected: true,
     ga4Connected: true,
     baiduConnected: true,
-    autopilotEnabled: true,
-    weeklyPublishCap: 3,
-    currentWeeklyPublished: 1,
     calibration: {
       isCalibrating: false,
       daysRemaining: 0,
@@ -43,8 +33,6 @@ export const initialSites: WordPressSite[] = [
       zeroFactErrorStreak: 12,
       autoPublishUnlocked: true
     },
-    monthlyBudgetLimit: 150,
-    monthlyBudgetUsed: 38.5,
     createdAt: '2026-01-15T08:00:00Z'
   },
   {
@@ -59,13 +47,6 @@ export const initialSites: WordPressSite[] = [
     wpVersion: '6.6.2',
     pluginInstalled: true,
     whitelistedCategories: ['Kubernetes Tutorials', 'DevOps Insights', 'Cloud Security'],
-    leadCaptureCta: {
-      enabled: true,
-      title: 'Get Free Kubernetes Multi-Cluster Assessment',
-      buttonText: 'Schedule Engineering Review',
-      targetUrl: 'https://globalcloudarch.io/consult?utm_source=autoseo&utm_medium=cta',
-      calloutNote: 'Includes instant cloud cost audit & security scorecard'
-    },
     healthDiagnostics: {
       restApiStatus: true,
       authStatus: true,
@@ -77,9 +58,6 @@ export const initialSites: WordPressSite[] = [
     gscConnected: true,
     ga4Connected: true,
     baiduConnected: false,
-    autopilotEnabled: true,
-    weeklyPublishCap: 2,
-    currentWeeklyPublished: 0,
     calibration: {
       isCalibrating: true,
       daysRemaining: 4,
@@ -89,8 +67,6 @@ export const initialSites: WordPressSite[] = [
       zeroFactErrorStreak: 6,
       autoPublishUnlocked: false
     },
-    monthlyBudgetLimit: 100,
-    monthlyBudgetUsed: 22.1,
     createdAt: '2026-03-01T10:00:00Z'
   }
 ];

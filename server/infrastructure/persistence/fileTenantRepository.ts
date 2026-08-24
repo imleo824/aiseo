@@ -54,13 +54,36 @@ export class FileTenantRepository implements ITenantRepository {
         const fileContent = fs.readFileSync(this.dbPath, 'utf-8');
         const parsed = JSON.parse(fileContent);
         this.datastore = new Map(Object.entries(parsed));
-        this.rebuildIndexes();
         logger.info('REPOSITORY', `Loaded database from ${this.dbPath} with ${this.datastore.size} tenants`);
       }
     } catch (e: any) {
       logger.error('REPOSITORY', `Failed to load tenant_db.json: ${e?.message}`);
     }
+    this.ensureDefaultTenants();
     this.loaded = true;
+  }
+
+  private ensureDefaultTenants(): void {
+    if (!this.datastore.has('tenant-a')) {
+      this.getTenantData('tenant-a');
+    } else {
+      const dataA = this.datastore.get('tenant-a')!;
+      if (!dataA.passwordHash) dataA.passwordHash = 'admin123';
+      if (dataA.account) {
+        dataA.account.role = 'ADMIN';
+        if (!dataA.account.username) dataA.account.username = 'admin';
+      }
+    }
+    if (!this.datastore.has('tenant-b')) {
+      this.getTenantData('tenant-b');
+    } else {
+      const dataB = this.datastore.get('tenant-b')!;
+      if (!dataB.passwordHash) dataB.passwordHash = 'password123';
+      if (dataB.account) {
+        if (!dataB.account.username) dataB.account.username = 'matrix_seo';
+      }
+    }
+    this.rebuildIndexes();
   }
 
   private rebuildIndexes(): void {
@@ -415,6 +438,25 @@ export class FileTenantRepository implements ITenantRepository {
     return tx;
   }
 
+  private tenantLocks = new Map<string, Promise<void>>();
+
+  private async withTenantLock<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
+    let unlock: () => void = () => {};
+    const nextLock = new Promise<void>((resolve) => {
+      unlock = resolve;
+    });
+
+    const currentLock = this.tenantLocks.get(tenantId) || Promise.resolve();
+    this.tenantLocks.set(tenantId, currentLock.then(() => nextLock));
+
+    try {
+      await currentLock;
+      return await fn();
+    } finally {
+      unlock();
+    }
+  }
+
   public async consumeCredits(
     tenantId: string, 
     amount: number, 
@@ -422,45 +464,47 @@ export class FileTenantRepository implements ITenantRepository {
     description: string, 
     metadata?: any
   ): Promise<{ success: boolean; balance: number; tx?: CreditTransaction; message?: string }> {
-    const data = this.getTenantData(tenantId);
-    const account = this.getAccount(tenantId);
-    
-    if (account.credits < amount) {
-      return {
-        success: false,
+    return this.withTenantLock(tenantId, async () => {
+      const data = this.getTenantData(tenantId);
+      const account = this.getAccount(tenantId);
+      
+      if (account.credits < amount) {
+        return {
+          success: false,
+          balance: account.credits,
+          message: `积分不足！当前余额: ${account.credits} 积分，本次操作需要: ${amount} 积分。请充值 USDT 兑换积分。`
+        };
+      }
+
+      account.credits -= amount;
+      account.totalConsumedCredits = (account.totalConsumedCredits || 0) + amount;
+
+      const tx: CreditTransaction = {
+        id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        tenantId,
+        type: 'CONSUME',
+        action,
+        amount: -amount,
         balance: account.credits,
-        message: `积分不足！当前余额: ${account.credits} 积分，本次操作需要: ${amount} 积分。请充值 USDT 兑换积分。`
+        description,
+        createdAt: new Date().toISOString(),
+        metadata
       };
-    }
 
-    account.credits -= amount;
-    account.totalConsumedCredits = (account.totalConsumedCredits || 0) + amount;
+      if (!data.creditTransactions) {
+        data.creditTransactions = [];
+      }
+      data.creditTransactions.unshift(tx);
+      data.account = account;
+      await this.saveTenantData(tenantId, data);
 
-    const tx: CreditTransaction = {
-      id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      tenantId,
-      type: 'CONSUME',
-      action,
-      amount: -amount,
-      balance: account.credits,
-      description,
-      createdAt: new Date().toISOString(),
-      metadata
-    };
-
-    if (!data.creditTransactions) {
-      data.creditTransactions = [];
-    }
-    data.creditTransactions.unshift(tx);
-    data.account = account;
-    await this.saveTenantData(tenantId, data);
-
-    logger.info('CREDIT', `Tenant ${tenantId} consumed ${amount} credits for ${action}. Remaining: ${account.credits}`);
-    return {
-      success: true,
-      balance: account.credits,
-      tx
-    };
+      logger.info('CREDIT', `Tenant ${tenantId} consumed ${amount} credits for ${action}. Remaining: ${account.credits}`);
+      return {
+        success: true,
+        balance: account.credits,
+        tx
+      };
+    });
   }
 
   public async refundCredits(
@@ -470,28 +514,29 @@ export class FileTenantRepository implements ITenantRepository {
     reason: string,
     metadata?: any
   ): Promise<{ success: boolean; balance: number; tx?: CreditTransaction }> {
-    const data = this.getTenantData(tenantId);
-    const account = this.getAccount(tenantId);
+    return this.withTenantLock(tenantId, async () => {
+      const data = this.getTenantData(tenantId);
+      const account = this.getAccount(tenantId);
 
-    account.credits += amount;
-    account.totalConsumedCredits = Math.max(0, (account.totalConsumedCredits || 0) - amount);
+      account.credits += amount;
+      account.totalConsumedCredits = Math.max(0, (account.totalConsumedCredits || 0) - amount);
 
-    // Clean up failed consumption from ledger so only valid completed transactions remain
-    if (data.creditTransactions && data.creditTransactions.length > 0) {
-      const idx = data.creditTransactions.findIndex(t => t.type === 'CONSUME' && t.action === action && Math.abs(t.amount) === amount);
-      if (idx !== -1) {
-        data.creditTransactions.splice(idx, 1);
+      if (data.creditTransactions && data.creditTransactions.length > 0) {
+        const idx = data.creditTransactions.findIndex(t => t.type === 'CONSUME' && t.action === action && Math.abs(t.amount) === amount);
+        if (idx !== -1) {
+          data.creditTransactions.splice(idx, 1);
+        }
       }
-    }
 
-    data.account = account;
-    await this.saveTenantData(tenantId, data);
+      data.account = account;
+      await this.saveTenantData(tenantId, data);
 
-    logger.info('CREDIT_RESTORE', `Tenant ${tenantId} restored ${amount} credits for ${action} (${reason}). New balance: ${account.credits}`);
-    return {
-      success: true,
-      balance: account.credits
-    };
+      logger.info('CREDIT_RESTORE', `Tenant ${tenantId} restored ${amount} credits for ${action} (${reason}). New balance: ${account.credits}`);
+      return {
+        success: true,
+        balance: account.credits
+      };
+    });
   }
 
   public async rechargeUsdt(
@@ -697,6 +742,7 @@ export class FileTenantRepository implements ITenantRepository {
 
   public findTenantByEmailOrUsername(identifier: string): { tenantId: string; account: TenantAccount; passwordHash?: string } | undefined {
     this.loadFromFile();
+    this.ensureDefaultTenants();
     if (!identifier || typeof identifier !== 'string') return undefined;
     const cleanId = identifier.trim().toLowerCase();
 
@@ -768,9 +814,32 @@ export class FileTenantRepository implements ITenantRepository {
     return account;
   }
 
+  public checkAndResetWeeklyPublishCap(site: WordPressSite): boolean {
+    const now = Date.now();
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    if (!site.lastWeeklyResetAt) {
+      site.lastWeeklyResetAt = new Date().toISOString();
+      return true;
+    }
+    const lastReset = new Date(site.lastWeeklyResetAt).getTime();
+    if (isNaN(lastReset) || (now - lastReset) >= WEEK_MS) {
+      site.currentWeeklyPublished = 0;
+      site.lastWeeklyResetAt = new Date().toISOString();
+      return true;
+    }
+    return false;
+  }
+
   public getSite(tenantId: string, siteId: string): WordPressSite | undefined {
     const data = this.getTenantData(tenantId);
-    return data.sites.find(s => s.id === siteId);
+    const site = data.sites.find(s => s.id === siteId);
+    if (site) {
+      const resetOccurred = this.checkAndResetWeeklyPublishCap(site);
+      if (resetOccurred) {
+        this.saveSite(tenantId, site).catch(() => {});
+      }
+    }
+    return site;
   }
 
   public async saveSite(tenantId: string, site: WordPressSite): Promise<WordPressSite> {

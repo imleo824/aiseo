@@ -162,7 +162,7 @@ export class CronScheduler {
         }
 
         if (wpResult.publishedUrl) {
-          await this.searchEngineSubmitter.pushToGoogle(site.domain, [wpResult.publishedUrl]);
+          await this.searchEngineSubmitter.pushToGoogle(site.domain, site.googleServiceAccountJson, [wpResult.publishedUrl]);
         }
 
         // 4. Update Opportunity & Draft

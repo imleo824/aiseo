@@ -6,7 +6,7 @@ import { fileTenantRepository } from "../infrastructure/persistence/fileTenantRe
 import { wordPressAdapter } from "../infrastructure/wordpress/wordpressAdapter";
 import { searchEngineAdapter } from "../infrastructure/searchEngine/searchEngineAdapter";
 import { serpService } from '../infrastructure/searchEngine/serpService';
-import { NotFoundError } from "../domain/errors";
+import { NotFoundError, ValidationError, ForbiddenError, InsufficientCreditsError } from "../domain/errors";
 
 export const getSiteOpportunities = async (req: TenantRequest, res: Response) => {
   const tenantData = fileTenantRepository.getTenantData(req.tenantId);
@@ -122,8 +122,7 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
 
   // 扣除积分 (AI 单独写稿生成根据管理员配置动态扣除，默认 10 积分)
   if (!fileTenantRepository.isActionEnabled('DRAFT_GENERATE')) {
-    res.status(403).json({ success: false, message: '“AI 文章单独生成”功能当前已被系统管理员暂停使用。' });
-    return;
+    throw new ForbiddenError('“AI 文章单独生成”功能当前已被系统管理员暂停使用。');
   }
 
   const draftCost = fileTenantRepository.getActionCost('DRAFT_GENERATE', 10);
@@ -136,8 +135,7 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
   );
 
   if (!creditRes.success) {
-    res.status(402).json({ success: false, message: creditRes.message || '积分不足，请充值 USDT' });
-    return;
+    throw new InsufficientCreditsError(creditRes.message || '积分不足，请充值 USDT');
   }
 
   try {
@@ -161,13 +159,7 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
       }
     }
 
-    const isAutoEligible = Boolean(
-      site.autopilotEnabled && 
-      !site.calibration.isCalibrating &&
-      opp.riskLevel === 'LOW' &&
-      site.whitelistedCategories.includes(opp.category) &&
-      result.qualityGate.passed
-    );
+    const isAutoEligible = false;
 
     let publishedUrl: string | undefined;
     let wpPostId: number | undefined;
@@ -220,7 +212,7 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
         });
       }
 
-      await searchEngineAdapter.pushToGoogle(site.domain, [publishedUrl]);
+      await searchEngineAdapter.pushToGoogle(site.domain, site.googleServiceAccountJson, [publishedUrl]);
     } else {
       opp.status = 'IN_QUALITY_GATE';
     }
@@ -266,8 +258,7 @@ export const scanCompetitorAttack = async (req: TenantRequest, res: Response) =>
 
   // 扣除积分 (竞品渗透分析根据管理员配置动态扣除，默认 15 积分)
   if (!fileTenantRepository.isActionEnabled('COMPETITOR_ANALYSIS')) {
-    res.status(403).json({ success: false, message: '“竞品攻击与流量穿透分析”功能当前已被系统管理员暂停使用。' });
-    return;
+    throw new ForbiddenError('“竞品攻击与流量穿透分析”功能当前已被系统管理员暂停使用。');
   }
 
   const analysisCost = fileTenantRepository.getActionCost('COMPETITOR_ANALYSIS', 15);
@@ -280,8 +271,7 @@ export const scanCompetitorAttack = async (req: TenantRequest, res: Response) =>
   );
 
   if (!creditRes.success) {
-    res.status(402).json({ success: false, message: creditRes.message || '积分不足，请充值 USDT' });
-    return;
+    throw new InsufficientCreditsError(creditRes.message || '积分不足，请充值 USDT');
   }
 
   try {
@@ -312,12 +302,12 @@ export const scanCompetitorAttack = async (req: TenantRequest, res: Response) =>
 };
 
 export const serpScan = async (req: TenantRequest, res: Response) => {
-  const { seedKeyword, location } = req.body;
-  if (!seedKeyword || typeof seedKeyword !== 'string') {
-    res.status(400).json({ error: 'seedKeyword is required' });
-    return;
+  const { seedKeyword, location } = req.body || {};
+  if (!seedKeyword || typeof seedKeyword !== 'string' || !seedKeyword.trim()) {
+    throw new ValidationError('seedKeyword is required and cannot be empty');
   }
-  const result = await serpService.scanKeywordOpportunities({ seedKeyword, location });
+  const result = await serpService.scanKeywordOpportunities({ seedKeyword: seedKeyword.trim(), location });
   res.json(result);
 };
+
 

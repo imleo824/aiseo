@@ -135,23 +135,25 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
         </div>
       )}
 
-      <div className="bg-white border border-slate-200 rounded-lg p-6 sm:p-8 shadow-2xs space-y-6">
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
         
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div className="space-y-1">
-            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
-              <span className="w-8 h-8 rounded-md bg-emerald-500 text-white flex items-center justify-center shadow-2xs">
-                <Bot className="w-4 h-4" />
-              </span>
-              <span>自动执行</span>
-            </h2>
+          <div className="flex items-center gap-2.5">
+            <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm shrink-0">
+              <Bot className="w-4 h-4 text-emerald-400" />
+            </span>
+            <div className="space-y-0.5">
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                <span>自动执行</span>
+              </h2>
+            </div>
           </div>
 
           <div className="flex items-center gap-3 shrink-0 flex-wrap">
             <button
               type="button"
               onClick={handleOpenCreateModal}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs sm:text-sm font-semibold transition shadow-2xs flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs sm:text-sm font-semibold transition shadow-sm flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>新建发文计划</span>
@@ -177,7 +179,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
           </div>
 
           {safeTasks.length === 0 ? (
-            <div className="py-12 text-center space-y-3 bg-slate-50/60 rounded-xl border border-dashed border-slate-200 px-4">
+            <div className="py-12 text-center space-y-3 bg-slate-50/60 rounded-xl border border-dashed border-slate-200/80 px-4">
               <Bot className="w-10 h-10 text-slate-300 mx-auto" />
               <div className="space-y-1">
                 <div className="text-sm font-bold text-slate-700">暂无托管计划</div>
@@ -197,8 +199,8 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                     key={task.id}
                     className={`p-4 sm:p-5 rounded-xl border transition-all duration-150 flex flex-col md:flex-row md:items-center justify-between gap-4 ${
                       isActive 
-                        ? 'bg-white border-slate-200/90 shadow-2xs hover:border-slate-300' 
-                        : 'bg-slate-50/80 border-slate-200/60 opacity-80'
+                        ? 'bg-white border-slate-200/80/90 shadow-sm hover:border-slate-300' 
+                        : 'bg-slate-50/80 border-slate-200/80/60 opacity-80'
                     }`}
                   >
                     <div className="space-y-2.5 min-w-0 flex-1">
@@ -206,7 +208,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                         <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1.5 ${
                           isActive 
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                            : 'bg-slate-100 text-slate-500 border border-slate-200'
+                            : 'bg-slate-100 text-slate-500 border border-slate-200/80'
                         }`}>
                           <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
                           <span>{isActive ? '运行中' : '已暂停'}</span>
@@ -253,7 +255,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                         disabled={isRunning}
                         className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 border ${
                           isRunning 
-                            ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-wait' 
+                            ? 'bg-slate-100 text-slate-400 border-slate-200/80 cursor-wait' 
                             : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 active:scale-95'
                         }`}
                       >
@@ -275,7 +277,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                         onClick={() => handleToggleStatus(task)}
                         className={`p-2 rounded-xl border text-xs transition ${
                           isActive 
-                            ? 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100' 
+                            ? 'bg-slate-50 text-slate-600 border-slate-200/80 hover:bg-slate-100' 
                             : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                         }`}
                         title={isActive ? '暂停' : '开启'}
@@ -286,7 +288,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                       <button
                         type="button"
                         onClick={() => handleDelete(task.id)}
-                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition"
+                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200/80 transition"
                         title="删除"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -303,7 +305,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl animate-in zoom-in-95 duration-150">
+          <div className="bg-white border border-slate-200/80 rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl animate-in zoom-in-95 duration-150">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 sticky top-0 z-10">
               <h3 className="font-bold text-slate-900 text-base">新建定时发文计划</h3>
               <button
@@ -317,14 +319,27 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
 
             <form onSubmit={handleCreateSubmit} className="p-6 space-y-4 text-sm">
               <div className="space-y-1.5">
-                <label className="font-bold text-slate-800">任务名称</label>
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-800">任务名称</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTaskName('每日早间全自动 SEO 内容更新计划');
+                      setScheduleTime('09:00');
+                      setTargetKeywordTopic('AI自动化与WordPress优化');
+                    }}
+                    className="text-[11px] font-bold text-emerald-700 hover:underline cursor-pointer"
+                  >
+                    ⚡ 一键使用推荐范本
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={taskName}
                   onChange={(e) => setTaskName(e.target.value)}
                   placeholder="例如：每日早间行业热词推送"
                   required
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
                 />
               </div>
 
@@ -333,7 +348,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                 <select
                   value={siteId}
                   onChange={(e) => setSiteId(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
                 >
                   <option value="all">全部站点（轮询发布）</option>
                   {safeSites.map(s => (
@@ -348,7 +363,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                   <select
                     value={scheduleType}
                     onChange={(e) => setScheduleType(e.target.value as any)}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
                   >
                     <option value="DAILY">每天固定时间</option>
                     <option value="INTERVAL">按小时轮询</option>
@@ -363,7 +378,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                     value={scheduleTime}
                     onChange={(e) => setScheduleTime(e.target.value)}
                     placeholder="如 09:00 或 4"
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
                   />
                 </div>
               </div>
@@ -375,7 +390,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                   value={targetKeywordTopic}
                   onChange={(e) => setTargetKeywordTopic(e.target.value)}
                   placeholder="留空则自动分析行业挖掘热词"
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
                 />
               </div>
 

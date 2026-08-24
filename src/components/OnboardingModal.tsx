@@ -18,9 +18,7 @@ interface OnboardingModalProps {
     siteLanguage?: Language | string;
     wpUsername?: string;
     wpAppPassword?: string;
-    wpRestEndpoint?: string;
     baiduToken?: string;
-    indexNowKey?: string;
     niche?: string;
   }) => Promise<void>;
 }
@@ -64,10 +62,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white border border-slate-200 rounded-xl max-w-lg w-full my-8 max-h-[90vh] flex flex-col shadow-xl animate-in zoom-in-95 duration-150">
+      <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full my-8 max-h-[90vh] flex flex-col shadow-xl animate-in zoom-in-95 duration-150">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10 bg-white rounded-t-xl">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10 bg-white rounded-t-2xl">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-800 flex items-center justify-center">
               <Globe className="w-4 h-4 text-slate-700" />
@@ -102,10 +100,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:bg-white focus:border-slate-400 transition"
               >
                 <option value="WORDPRESS">WordPress</option>
-                <option value="SHOPIFY">Shopify</option>
-                <option value="GHOST">Ghost</option>
-                <option value="WEBFLOW">Webflow</option>
-                <option value="CUSTOM_REST">Custom REST API</option>
+                
+                
+                
+                
               </select>
             </div>
 
@@ -159,7 +157,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               />
             </div>
             <div className="space-y-1.5">
-              <label className="font-semibold text-slate-700">行业 / 业务领域</label>
+              <label className="font-semibold text-slate-700">所属行业</label>
               <input
                 type="text"
                 value={niche}
@@ -172,33 +170,49 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
           {/* Auth Credentials */}
           <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
-            <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-              <Key className="w-3.5 h-3.5 text-slate-700" />
-              <span>接口凭证</span>
+            <div className="font-semibold text-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Key className="w-3.5 h-3.5 text-slate-700" />
+                <span>接口凭证（发布与同步）</span>
+              </div>
+              <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-normal border border-emerald-200">
+                支持后期修改
+              </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-slate-600 font-medium">账号</label>
+                <label className="text-slate-600 font-medium">管理员用户名</label>
                 <input
                   type="text"
-                  placeholder="输入账号"
+                  placeholder="例如：admin"
                   value={wpUsername}
                   onChange={e => setWpUsername(e.target.value)}
                   className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-slate-400"
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-slate-600 font-medium">密码</label>
+                <label className="text-slate-600 font-medium">应用密码</label>
                 <input
                   type="password"
-                  placeholder="输入密码"
+                  placeholder="如: xxxx xxxx xxxx xxxx"
                   value={wpAppPassword}
                   onChange={e => setWpAppPassword(e.target.value)}
                   className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900 font-mono focus:outline-none focus:border-slate-400"
                 />
               </div>
             </div>
+
+            {siteType === 'WORDPRESS' && (
+              <div className="p-2.5 bg-amber-50/80 border border-amber-200/80 rounded-lg text-[11px] text-amber-900 space-y-1">
+                <div className="font-bold flex items-center gap-1 text-amber-800">
+                  💡 如何获得 WordPress 应用密码？
+                </div>
+                <p className="leading-relaxed text-amber-900/90">
+                  登录 WP 管理后台 &rarr; 导航至 <strong>「用户」&rarr;「个人资料」</strong> &rarr; 滑动至最下方 <strong>「应用密码」</strong> &rarr; 输入名称并生成，直接复制填入上框即可。
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Footer Actions */}

@@ -73,7 +73,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
   }, [safeDrafts, searchQuery, statusFilter]);
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-2xs">
+    <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm">
       
       {/* Toast Notification */}
       {toastMsg && (
@@ -85,13 +85,15 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
 
       {/* Header with Search and Filter */}
       <div className="p-6 sm:p-8 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center shadow-2xs">
-              <FileText className="w-4 h-4 text-emerald-400" />
-            </span>
-            <span>我的内容</span>
-          </h2>
+        <div className="flex items-center gap-2.5">
+          <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm shrink-0">
+            <FileText className="w-4 h-4 text-emerald-400" />
+          </span>
+          <div className="space-y-0.5">
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <span>我的内容</span>
+            </h2>
+          </div>
         </div>
 
         {/* Search & Status Filter */}
@@ -113,7 +115,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
             <button
               onClick={() => setStatusFilter('ALL')}
               className={`px-3 py-1.5 rounded transition cursor-pointer ${
-                statusFilter === 'ALL' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
+                statusFilter === 'ALL' ? 'bg-white text-slate-900 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
               全部
@@ -121,7 +123,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
             <button
               onClick={() => setStatusFilter('PUBLISHED')}
               className={`px-3 py-1.5 rounded transition cursor-pointer ${
-                statusFilter === 'PUBLISHED' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
+                statusFilter === 'PUBLISHED' ? 'bg-white text-slate-900 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
               已上线
@@ -129,7 +131,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
             <button
               onClick={() => setStatusFilter('DRAFT')}
               className={`px-3 py-1.5 rounded transition cursor-pointer ${
-                statusFilter === 'DRAFT' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
+                statusFilter === 'DRAFT' ? 'bg-white text-slate-900 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
               草稿

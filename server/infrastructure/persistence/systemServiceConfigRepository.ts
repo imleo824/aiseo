@@ -6,8 +6,8 @@ import { logger } from '../../utils/logger';
 export const DEFAULT_SYSTEM_SERVICES_CONFIG: SystemServicesConfig = {
   aiEngine: {
     provider: 'GEMINI',
-    geminiModel: 'gemini-2.5-flash',
-    fallbackModel: 'gemini-1.5-flash',
+    geminiModel: 'gemini-3.7-flash',
+    fallbackModel: 'gemini-3.5-flash',
     temperature: 0.7,
     maxOutputTokens: 8192,
     customEndpoint: '',
@@ -15,29 +15,6 @@ export const DEFAULT_SYSTEM_SERVICES_CONFIG: SystemServicesConfig = {
     maxConcurrency: 5,
     timeoutMs: 60000,
     systemPromptPrefix: '你是一个顶级的 SEO 内容架构专家与搜索引擎意图优化引擎。'
-  },
-  searchEngine: {
-    googleIndexing: {
-      enabled: true,
-      serviceAccountJson: '',
-      defaultAction: 'URL_UPDATED'
-    },
-    baiduPush: {
-      enabled: true,
-      siteDomain: 'https://example.com',
-      token: 'bd_token_demo_98234',
-      dailyQuotaThreshold: 20
-    },
-    bingIndexNow: {
-      enabled: true,
-      apiKey: 'in_key_993418247012',
-      keyLocation: 'https://example.com/indexnow-key.txt',
-      autoPushOnPublish: true
-    },
-    sitemapPing: {
-      enabled: true,
-      engines: ['Google', 'Bing', 'Yandex']
-    }
   },
   serpData: {
     provider: 'HYBRID_ENGINE',
@@ -57,19 +34,6 @@ export const DEFAULT_SYSTEM_SERVICES_CONFIG: SystemServicesConfig = {
     imageOrientation: 'landscape',
     autoInsertAlt: true,
     compressWebp: true
-  },
-  webhookNotification: {
-    enabled: false,
-    webhookType: 'FEISHU',
-    webhookUrl: '',
-    secretKey: '',
-    events: {
-      onPublishSuccess: true,
-      onTaskFailure: true,
-      onLowCreditAlert: true,
-      onNewTopupPending: true
-    },
-    lowCreditThreshold: 100
   },
   blockchainGateway: {
     network: 'TRC20',
@@ -165,31 +129,22 @@ export class SystemServiceConfigRepository {
     const masked: SystemServicesConfig = JSON.parse(JSON.stringify(this.config));
     
     // Mask sensitive keys for security in client view
-    if (masked.aiEngine.customApiKey) {
+    if (masked.aiEngine?.customApiKey) {
       masked.aiEngine.customApiKey = this.maskSecret(masked.aiEngine.customApiKey);
     }
-    if (masked.searchEngine.baiduPush.token) {
-      masked.searchEngine.baiduPush.token = this.maskSecret(masked.searchEngine.baiduPush.token);
-    }
-    if (masked.searchEngine.bingIndexNow.apiKey) {
-      masked.searchEngine.bingIndexNow.apiKey = this.maskSecret(masked.searchEngine.bingIndexNow.apiKey);
-    }
-    if (masked.serpData.dataForSeoPassword) {
+    if (masked.serpData?.dataForSeoPassword) {
       masked.serpData.dataForSeoPassword = this.maskSecret(masked.serpData.dataForSeoPassword);
     }
-    if (masked.serpData.serpApiKey) {
+    if (masked.serpData?.serpApiKey) {
       masked.serpData.serpApiKey = this.maskSecret(masked.serpData.serpApiKey);
     }
-    if (masked.mediaService.unsplashAccessKey) {
+    if (masked.mediaService?.unsplashAccessKey) {
       masked.mediaService.unsplashAccessKey = this.maskSecret(masked.mediaService.unsplashAccessKey);
     }
-    if (masked.mediaService.pexelsApiKey) {
+    if (masked.mediaService?.pexelsApiKey) {
       masked.mediaService.pexelsApiKey = this.maskSecret(masked.mediaService.pexelsApiKey);
     }
-    if (masked.webhookNotification.secretKey) {
-      masked.webhookNotification.secretKey = this.maskSecret(masked.webhookNotification.secretKey);
-    }
-    if (masked.blockchainGateway.tronGridApiKey) {
+    if (masked.blockchainGateway?.tronGridApiKey) {
       masked.blockchainGateway.tronGridApiKey = this.maskSecret(masked.blockchainGateway.tronGridApiKey);
     }
 
@@ -229,13 +184,10 @@ export class SystemServiceConfigRepository {
     };
 
     checkAndRestore(result, current, ['aiEngine', 'customApiKey']);
-    checkAndRestore(result, current, ['searchEngine', 'baiduPush', 'token']);
-    checkAndRestore(result, current, ['searchEngine', 'bingIndexNow', 'apiKey']);
     checkAndRestore(result, current, ['serpData', 'dataForSeoPassword']);
     checkAndRestore(result, current, ['serpData', 'serpApiKey']);
     checkAndRestore(result, current, ['mediaService', 'unsplashAccessKey']);
     checkAndRestore(result, current, ['mediaService', 'pexelsApiKey']);
-    checkAndRestore(result, current, ['webhookNotification', 'secretKey']);
     checkAndRestore(result, current, ['blockchainGateway', 'tronGridApiKey']);
 
     return result;

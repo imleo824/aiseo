@@ -9,16 +9,14 @@ import { fileTenantRepository } from "./server/infrastructure/persistence/fileTe
 import { geminiCircuitBreaker, indexingCircuitBreaker } from "./server/infrastructure/resilience/circuitBreaker";
 import { serpAnalysisCache } from "./server/utils/lruCache";
 import { cronScheduler } from "./server/application/cronScheduler";
-import { webhookNotifier } from "./server/application/webhookNotifier";
 import { logger } from "./server/utils/logger";
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Start background cron scheduler & webhook event listener
+  // Start background cron scheduler
   cronScheduler.start();
-  webhookNotifier.init();
 
   // Security Headers Middleware
   app.use((_req: Request, res: Response, next: NextFunction) => {
@@ -94,14 +92,38 @@ async function startServer() {
 
   // Global Error Handler Middleware
   app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
-    logger.error('SERVER_FATAL', `Unhandled Express Error: ${err?.message || err}`, {
-      traceId: req.traceId,
-      data: err?.stack
-    });
-    res.status(err.status || 500).json({
+    const statusCode = err.statusCode || err.status || 500;
+    const errorCode = err.errorCode || err.code || "INTERNAL_SERVER_ERROR";
+    const message = err.message || "An unexpected error occurred on the server.";
+
+    if (statusCode >= 500) {
+      logger.error('SERVER_FATAL', `Unhandled Server Error: ${message}`, {
+        traceId: req.traceId,
+        data: {
+          stack: err.stack,
+          errorCode,
+          statusCode
+        }
+      });
+    } else {
+      logger.warn('CLIENT_ERROR', `Request Error: [${statusCode}] ${errorCode} - ${message}`, {
+        traceId: req.traceId,
+        data: {
+          path: req.path
+        }
+      });
+    }
+
+    res.status(statusCode).json({
+      success: false,
+      message,
       error: {
-        code: err.code || "INTERNAL_SERVER_ERROR",
-        message: err.message || "An unexpected error occurred on the server.",
+        code: errorCode,
+        message,
+        details: err.details,
+        statusCode,
+        traceId: req.traceId,
+        timestamp: new Date().toISOString(),
         ...(process.env.NODE_ENV !== "production" ? { stack: err.stack } : {})
       }
     });

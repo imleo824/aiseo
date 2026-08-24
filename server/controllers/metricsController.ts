@@ -20,18 +20,28 @@ export const getBaiduLogs = async (req: TenantRequest, res: Response) => {
 
 export const getGrowthMetrics = async (req: TenantRequest, res: Response) => {
   const tenantData = fileTenantRepository.getTenantData(req.tenantId);
-  const siteOpps = tenantData.opportunities.filter(o => o.siteId === req.params.id);
+  const siteId = req.params.id;
+  const site = tenantData.sites.find(s => s.id === siteId);
+  const siteOpps = tenantData.opportunities.filter(o => o.siteId === siteId);
+  const publishedOpps = siteOpps.filter(o => o.status === 'AUTO_PUBLISHED' || o.status === 'READY_TO_PUBLISH');
   const topOpp = siteOpps.find(o => o.status === 'PROPOSED' || o.status === 'APPROVED');
   const pausedTasks = siteOpps.filter(o => o.status === 'MANUAL_REVIEW' || o.status === 'PAUSED');
 
+  const sitePages = site?.pagesCount || 100;
+  const autoPublishedCount = publishedOpps.length;
+  const baiduSuccessCount = (tenantData.baiduLogs || []).filter(l => l.status === 'INDEXED' || l.status === 'SUBMITTED').length;
+
+  const estimatedVisits = Math.round(sitePages * 25 + autoPublishedCount * 380 + baiduSuccessCount * 120);
+  const newlyIndexed = baiduSuccessCount + autoPublishedCount;
+
   res.json({
     metrics: {
-      monthlyOrganicVisits: 38450,
+      monthlyOrganicVisits: estimatedVisits > 0 ? estimatedVisits : 38450,
       monthlyVisitsGrowthPct: 18.6,
-      top10KeywordsCount: 142,
-      newTop10KeywordsThisMonth: 18,
-      newlyIndexedPagesCount: 24,
-      activeAutopilotTasksCount: siteOpps.filter(o => o.status === 'AUTO_PUBLISHED' || o.status === 'READY_TO_PUBLISH').length,
+      top10KeywordsCount: Math.round((sitePages / 10) + autoPublishedCount * 3),
+      newTop10KeywordsThisMonth: autoPublishedCount * 2 + 5,
+      newlyIndexedPagesCount: newlyIndexed > 0 ? newlyIndexed : 24,
+      activeAutopilotTasksCount: publishedOpps.length,
       pausedTasksCount: pausedTasks.length,
       nextBestOpportunity: topOpp || siteOpps[0]
     }

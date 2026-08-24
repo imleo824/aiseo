@@ -98,11 +98,6 @@ describe('Controllers Suite', () => {
             gscConnected: true,
             ga4Connected: true,
             baiduConnected: true,
-            autopilotEnabled: false,
-            weeklyPublishCap: 10,
-            currentWeeklyPublished: 2,
-            monthlyBudgetLimit: 100,
-            monthlyBudgetUsed: 15,
             createdAt: '2026-08-01T00:00:00.000Z'
           }
         ],

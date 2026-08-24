@@ -5,14 +5,6 @@ import { generateSeoSlug } from '../../utils/validator';
 
 export class WordPressAdapter implements IWordPressPublisher {
   private getBaseEndpoint(site: WordPressSite): string {
-    if (site.wpRestEndpoint && site.wpRestEndpoint.trim()) {
-      let ep = site.wpRestEndpoint.trim();
-      if (!ep.startsWith('http://') && !ep.startsWith('https://')) {
-        ep = `https://${ep}`;
-      }
-      return ep.replace(/\/$/, '');
-    }
-
     const domain = site.domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
     return `https://${domain}/wp-json`;
   }
@@ -130,7 +122,6 @@ export class WordPressAdapter implements IWordPressPublisher {
     date?: string;
     rawResponse?: any;
     error?: string;
-    isSimulatedFallback?: boolean;
   }> {
     const profiler = logger.profile('WP_ADAPTER', `publishPost(${site.domain}, "${draft.title.slice(0, 20)}...")`);
     const baseEndpoint = this.getBaseEndpoint(site);
@@ -170,31 +161,25 @@ export class WordPressAdapter implements IWordPressPublisher {
             slug: postData.slug,
             date: postData.date,
             rawResponse: postData,
-            isSimulatedFallback: false
           };
         } else {
           const errorJson: any = await response.json().catch(() => ({}));
           const errorMsg = errorJson.message || `WordPress HTTP ${response.status} ${response.statusText}`;
           logger.warn('WP_ADAPTER', `REST API publish failed on ${site.domain}: ${errorMsg}`);
+          profiler.fail(errorMsg);
+          return { success: false, error: errorMsg };
         }
       } catch (err: any) {
         logger.warn('WP_ADAPTER', `REST API error on ${site.domain}: ${err?.message}`);
+        profiler.fail(err?.message);
+        return { success: false, error: err?.message };
       }
     }
 
-    const fallbackPostId = Math.floor(Math.random() * 80000) + 10000;
-    const cleanDomain = site.domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const cleanSlug = draft.slug || generateSeoSlug(draft.title);
-    const fallbackUrl = `https://${cleanDomain}/${cleanSlug || `post-${fallbackPostId}`}/`;
-
-    profiler.done('Fallback sandbox publish');
+    // Require Auth Headers for real publishing
     return {
-      success: true,
-      wpPostId: fallbackPostId,
-      publishedUrl: fallbackUrl,
-      slug: cleanSlug,
-      date: new Date().toISOString(),
-      isSimulatedFallback: true
+      success: false,
+      error: "Missing WordPress Application Password. Cannot publish."
     };
   }
 
@@ -221,16 +206,22 @@ export class WordPressAdapter implements IWordPressPublisher {
             success: true,
             message: `WordPress 生产站已成功删除文章 ID: ${wpPostId}`
           };
+        } else {
+          const err = await response.json().catch(() => ({}));
+          const errMsg = err.message || `HTTP ${response.status}`;
+          logger.warn('WP_ADAPTER', `Remote delete failed on ${site.domain}: ${errMsg}`);
+          return { success: false, message: errMsg };
         }
       } catch (err: any) {
-        logger.warn('WP_ADAPTER', `Remote delete failed: ${err?.message}`);
+        logger.warn('WP_ADAPTER', `Remote delete network error: ${err?.message}`);
+        return { success: false, message: err?.message };
       }
     }
 
-    profiler.done(`Rollback local record ID ${wpPostId}`);
+    profiler.fail(`Missing Auth or WP Post ID`);
     return {
-      success: true,
-      message: `已注销文章记录 (ID: ${wpPostId}) 并发出回收指令`
+      success: false,
+      message: `无法删除：缺失应用密码或文章 ID`
     };
   }
 }

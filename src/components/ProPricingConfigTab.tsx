@@ -176,16 +176,18 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
 
   return (
     <div className="w-full space-y-6 sm:space-y-8 animate-in fade-in duration-200">
-      <div className="bg-white border border-slate-200 rounded-lg p-6 sm:p-8 shadow-2xs space-y-6">
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
         
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div>
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
-              <span className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center shadow-2xs">
-                <Settings className="w-4 h-4 text-indigo-400" />
-              </span>
-              <span>付费配置</span>
-            </h2>
+          <div className="flex items-center gap-2.5">
+            <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm shrink-0">
+              <Settings className="w-4 h-4 text-indigo-400" />
+            </span>
+            <div className="space-y-0.5">
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                <span>付费配置</span>
+              </h2>
+            </div>
           </div>
 
         {isAdmin && (
@@ -194,7 +196,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
               type="button"
               onClick={handleSave}
               disabled={saving || resetting || loading}
-              className="px-4 py-2 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white rounded-md flex items-center gap-1.5 shadow-2xs transition duration-150 disabled:opacity-50 cursor-pointer whitespace-nowrap"
+              className="px-4 py-2 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white rounded-md flex items-center gap-1.5 shadow-sm transition duration-150 disabled:opacity-50 cursor-pointer whitespace-nowrap"
             >
               <Save className="w-4 h-4" />
               <span>{saving ? '正在保存...' : '保存配置'}</span>
@@ -217,7 +219,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200/80/80 shadow-sm overflow-hidden">
         <div className="flex border-b border-slate-100 bg-slate-50/50 px-4 gap-1 overflow-x-auto">
           <button
             type="button"
@@ -275,7 +277,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                         key={item.action} 
                         className={`p-4 rounded-xl border transition-all ${
                           item.enabled !== false 
-                            ? 'bg-white border-slate-200 hover:border-indigo-200 hover:shadow-2xs' 
+                            ? 'bg-white border-slate-200/80 hover:border-indigo-200 hover:shadow-sm' 
                             : 'bg-slate-50/50 border-slate-100 opacity-60'
                         }`}
                       >
@@ -288,9 +290,9 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                                 disabled={!isAdmin}
                                 value={item.name}
                                 onChange={(e) => handleUpdateActionName(idx, e.target.value)}
-                                className="bg-slate-50 border border-slate-200 px-2.5 py-1 rounded text-xs font-bold text-slate-800 focus:bg-white focus:ring-1 focus:ring-indigo-500 w-52 md:w-64 disabled:opacity-100 disabled:bg-transparent disabled:border-transparent disabled:px-0 font-sans shrink-0"
+                                className="bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded text-xs font-bold text-slate-800 focus:bg-white focus:ring-1 focus:ring-indigo-500 w-52 md:w-64 disabled:opacity-100 disabled:bg-transparent disabled:border-transparent disabled:px-0 font-sans shrink-0"
                               />
-                              <span className="text-[9px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 shrink-0 font-semibold">
+                              <span className="text-[9px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/80 shrink-0 font-semibold">
                                 {item.action}
                               </span>
                             </div>
@@ -302,14 +304,14 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                                 value={item.desc}
                                 onChange={(e) => handleUpdateActionDesc(idx, e.target.value)}
                                 placeholder="功能详细说明与消耗说明"
-                                className="w-full bg-transparent border-b border-dashed border-slate-200 focus:border-indigo-500 text-[11px] text-slate-500 py-0.5 focus:outline-none disabled:border-transparent"
+                                className="w-full bg-transparent border-b border-dashed border-slate-200/80 focus:border-indigo-500 text-[11px] text-slate-500 py-0.5 focus:outline-none disabled:border-transparent"
                               />
                             </div>
                           </div>
 
                           {/* Credits input */}
                           <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
-                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-1.5">
                               <span className="text-[11px] text-slate-500">扣除单价:</span>
                               <input
                                 type="number"
@@ -332,7 +334,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
 
               {activeTab === 'PACKAGES' && (
                 <div className="space-y-4">
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row justify-between sm:items-center gap-2.5">
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row justify-between sm:items-center gap-2.5">
                     <div>
                       <h4 className="text-xs font-bold text-slate-900">USDT 购买/充值优惠套餐</h4>
                       <p className="text-[11px] text-slate-500 mt-0.5">
@@ -358,7 +360,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                         className={`p-4 rounded-xl border transition-all relative ${
                           pkg.popular 
                             ? 'bg-indigo-50/20 border-indigo-200 ring-1 ring-indigo-100' 
-                            : 'bg-white border-slate-200 hover:border-slate-300'
+                            : 'bg-white border-slate-200/80 hover:border-slate-300'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2 mb-3.5">
@@ -368,7 +370,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                               disabled={!isAdmin}
                               value={pkg.name}
                               onChange={(e) => handleUpdatePackage(idx, 'name', e.target.value)}
-                              className="bg-slate-50 border border-slate-200 px-2 py-1 rounded text-xs font-bold text-slate-800 focus:bg-white focus:ring-1 focus:ring-indigo-500 w-28 disabled:bg-transparent disabled:border-transparent disabled:px-0"
+                              className="bg-slate-50 border border-slate-200/80 px-2 py-1 rounded text-xs font-bold text-slate-800 focus:bg-white focus:ring-1 focus:ring-indigo-500 w-28 disabled:bg-transparent disabled:border-transparent disabled:px-0"
                               placeholder="套餐名称"
                             />
                             <input
@@ -406,7 +408,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200/60 text-xs">
+                        <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200/80/60 text-xs">
                           <div>
                             <div className="text-[10px] text-slate-400 font-medium">支付 (USDT)</div>
                             <div className="flex items-center gap-0.5 mt-1">
@@ -454,7 +456,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
 
               {activeTab === 'GLOBAL' && (
                 <div className="space-y-4">
-                  <div className="p-5 rounded-xl bg-white border border-slate-200 space-y-5">
+                  <div className="p-5 rounded-xl bg-white border border-slate-200/80 space-y-5">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1.5">
                         1. 基础换算汇率标语 / 自定义比例提示
@@ -464,7 +466,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                         disabled={!isAdmin}
                         value={rate}
                         onChange={(e) => setRate(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:bg-white focus:ring-1 focus:ring-indigo-500 font-mono font-medium disabled:opacity-100 disabled:bg-slate-50/50"
+                        className="w-full bg-slate-50 border border-slate-200/80 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:bg-white focus:ring-1 focus:ring-indigo-500 font-mono font-medium disabled:opacity-100 disabled:bg-slate-50/50"
                         placeholder="1 USDT = 100 基础积分"
                       />
                       <p className="text-[11px] text-slate-400 mt-1.5">
@@ -481,7 +483,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                         disabled={!isAdmin}
                         value={trc20Address}
                         onChange={(e) => setTrc20Address(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-emerald-600 font-mono font-bold focus:bg-white focus:ring-1 focus:ring-indigo-500 disabled:opacity-100 disabled:bg-slate-50/50"
+                        className="w-full bg-slate-50 border border-slate-200/80 rounded-xl px-4 py-2.5 text-xs text-emerald-600 font-mono font-bold focus:bg-white focus:ring-1 focus:ring-indigo-500 disabled:opacity-100 disabled:bg-slate-50/50"
                         placeholder="TLv5R4q9k8YJ3Z2QxP8wK1M7n6VbC9XyZ1"
                       />
                       <p className="text-[11px] text-slate-400 mt-1.5">

@@ -111,11 +111,6 @@ describe('🎯 Expert Deep Testing Suite: Security, Concurrency, Financial & Res
     gscConnected: true,
     ga4Connected: true,
     baiduConnected: true,
-    autopilotEnabled: true,
-    weeklyPublishCap: 10,
-    currentWeeklyPublished: 0,
-    monthlyBudgetLimit: 500,
-    monthlyBudgetUsed: 0,
     createdAt: new Date().toISOString()
   };
 

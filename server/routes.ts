@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { asyncHandler } from "./utils/asyncHandler";
+import { createRateLimiter } from "./middleware/rateLimiter";
 import { 
   getTasks, 
   createTask, 
@@ -13,6 +14,7 @@ import {
   deleteSite, 
   toggleAutopilot,
   testSiteConnection,
+  testSiteSearchEngine,
   getSiteOpportunities, 
   scanOpportunities, 
   scanCompetitorAttack,
@@ -35,9 +37,12 @@ import {
 
 export const apiRouter = Router();
 
+const authRateLimiter = createRateLimiter(60000, 15); // 15 requests per min for login/register
+const aiGenRateLimiter = createRateLimiter(60000, 30); // 30 requests per min for heavy AI jobs
+
 // Auth & Tenant Management Routes
-apiRouter.post("/auth/login", asyncHandler(authController.login));
-apiRouter.post("/auth/register", asyncHandler(authController.register));
+apiRouter.post("/auth/login", authRateLimiter, asyncHandler(authController.login));
+apiRouter.post("/auth/register", authRateLimiter, asyncHandler(authController.register));
 apiRouter.get("/auth/me", asyncHandler(authController.getMe));
 apiRouter.get("/auth/tenants", asyncHandler(authController.listTenants));
 
@@ -76,14 +81,15 @@ apiRouter.put("/sites/:id", asyncHandler(updateSite));
 apiRouter.delete("/sites/:id", asyncHandler(deleteSite));
 apiRouter.post("/sites/:id/toggle-autopilot", asyncHandler(toggleAutopilot));
 apiRouter.post("/sites/:id/test-connection", asyncHandler(testSiteConnection));
+apiRouter.post("/sites/:id/test-search-engine", asyncHandler(testSiteSearchEngine));
 
 // Opportunities Routes
 apiRouter.get("/sites/:id/opportunities", asyncHandler(getSiteOpportunities));
-apiRouter.post("/sites/:id/scan-opportunities", asyncHandler(scanOpportunities));
-apiRouter.post("/sites/:id/competitor-attack", asyncHandler(scanCompetitorAttack));
-apiRouter.post("/keywords/serp-scan", asyncHandler(serpScan));
-apiRouter.post("/opportunities/:oppId/generate-brief", asyncHandler(generateBrief));
-apiRouter.post("/opportunities/:oppId/generate-article", asyncHandler(generateArticle));
+apiRouter.post("/sites/:id/scan-opportunities", aiGenRateLimiter, asyncHandler(scanOpportunities));
+apiRouter.post("/sites/:id/competitor-attack", aiGenRateLimiter, asyncHandler(scanCompetitorAttack));
+apiRouter.post("/keywords/serp-scan", aiGenRateLimiter, asyncHandler(serpScan));
+apiRouter.post("/opportunities/:oppId/generate-brief", aiGenRateLimiter, asyncHandler(generateBrief));
+apiRouter.post("/opportunities/:oppId/generate-article", aiGenRateLimiter, asyncHandler(generateArticle));
 
 // Drafts Routes
 apiRouter.get("/drafts", asyncHandler(getDrafts));

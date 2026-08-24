@@ -1,5 +1,6 @@
 import { KeywordOpportunityItem, KeywordVulnerabilityType } from '../../../src/types/seo';
 import { logger } from '../../utils/logger';
+import { systemServiceConfigRepository } from '../persistence/systemServiceConfigRepository';
 
 export interface SerpScanRequest {
   seedKeyword: string;
@@ -76,16 +77,22 @@ export class SerpService {
       SerpService.monthlySerperFreeCounter.count = 0;
     }
 
+    const config = systemServiceConfigRepository.getServicesConfig();
+    const effectiveSerperFreeKey = this.serperFreeApiKey || (config.serpData?.provider === 'SERPAPI' || config.serpData?.provider === 'HYBRID_ENGINE' ? config.serpData?.serpApiKey : undefined);
+    const effectiveGoogleCseKey = config.serpData?.googleCseKey || this.googleCseKey;
+    const effectiveGoogleCseCx = config.serpData?.googleCseCx || this.googleCseCx;
+    const effectiveSerperPaidKey = config.serpData?.serpApiKey || this.serperPaidApiKey;
+
     // -------------------------------------------------------------
     // 阶段 1：尝试免费 SERP API 额度 (Serper Free / Google CSE Free)
     // -------------------------------------------------------------
     if (
-      this.serperFreeApiKey &&
+      effectiveSerperFreeKey &&
       SerpService.monthlySerperFreeCounter.count < SerpService.monthlySerperFreeCounter.maxMonthlyFree
     ) {
       try {
         logger.info('SERP_SERVICE', `[Tier 2 Free] 使用 Serper.dev 免费赠送额度扫描: "${seed}" (${SerpService.monthlySerperFreeCounter.count + 1}/${SerpService.monthlySerperFreeCounter.maxMonthlyFree})`);
-        const realData = await this.fetchFromSerperApi(seed, this.serperFreeApiKey);
+        const realData = await this.fetchFromSerperApi(seed, effectiveSerperFreeKey);
         SerpService.monthlySerperFreeCounter.count += 1;
 
         return {
@@ -107,7 +114,7 @@ export class SerpService {
 
     // 尝试 Google Custom Search API 免费额度 (每日 100 次)
     if (
-      this.googleCseKey && this.googleCseCx &&
+      effectiveGoogleCseKey && effectiveGoogleCseCx &&
       SerpService.dailyFreeCounter.count < SerpService.dailyFreeCounter.maxDailyFree
     ) {
       try {
@@ -159,10 +166,10 @@ export class SerpService {
     // -------------------------------------------------------------
     // 阶段 3：免费额度用完后，切换至付费 SERP API
     // -------------------------------------------------------------
-    if (this.serperPaidApiKey) {
+    if (effectiveSerperPaidKey) {
       try {
         logger.info('SERP_SERVICE', `[Tier 3 Paid] 免费额度已用尽，切换至付费 SERP 接口: "${seed}"`);
-        const paidData = await this.fetchFromSerperApi(seed, this.serperPaidApiKey);
+        const paidData = await this.fetchFromSerperApi(seed, effectiveSerperPaidKey);
 
         return {
           source: 'PAID_SERP_API',

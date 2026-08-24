@@ -39,17 +39,19 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
   const loadTenantData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. 获取当前租户与积分账户
-      const [sitesData, tasksData, meData, txData] = await Promise.all([
+      // 1. 获取当前租户与积分账户及草稿
+      const [sitesData, tasksData, meData, txData, draftData] = await Promise.all([
         api.getSites().catch(() => ({ sites: [] })),
         api.getTasks().catch(() => ({ tasks: [] })),
         api.getMe().catch(() => ({ account: null })),
-        api.getCreditTransactions().catch(() => ({ transactions: [] }))
+        api.getCreditTransactions().catch(() => ({ transactions: [] })),
+        api.getDrafts().catch(() => ({ drafts: [] }))
       ]);
 
       const loadedSites = sitesData.sites || [];
       setSites(loadedSites);
       setTasks(tasksData.tasks || []);
+      setDrafts(draftData.drafts || []);
       if (meData?.account) {
         setAccount(meData.account);
       } else {
@@ -59,7 +61,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
 
       if (loadedSites.length > 0) {
         const sid = loadedSites[0].id;
-        const [oppRes, metricRes, draftRes] = await Promise.all([
+        const [oppRes, metricRes] = await Promise.all([
           api.getOpportunities(sid).catch(() => ({ opportunities: [] })),
           api.getGrowthMetrics(sid).catch(() => ({ metrics: {
             monthlyOrganicVisits: 0,
@@ -69,16 +71,13 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
             newlyIndexedPagesCount: 0,
             activeAutopilotTasksCount: 0,
             pausedTasksCount: 0
-          }})),
-          api.getDrafts().catch(() => ({ drafts: [] }))
+          }}))
         ]);
 
         setOpportunities(oppRes.opportunities || []);
         setMetrics(metricRes.metrics);
-        setDrafts(draftRes.drafts || []);
       } else {
         setOpportunities([]);
-        setDrafts([]);
         setMetrics({
           monthlyOrganicVisits: 0,
           monthlyVisitsGrowthPct: 0,
@@ -324,9 +323,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     siteLanguage?: Language | string;
     wpUsername?: string;
     wpAppPassword?: string;
-    wpRestEndpoint?: string;
     baiduToken?: string;
-    indexNowKey?: string;
   }) => {
     const res = await api.createSite({
       ...siteData,

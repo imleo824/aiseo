@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { fileTenantRepository, DEFAULT_PRICING_CONFIG } from '../infrastructure/persistence/fileTenantRepository';
 import { UsdtNetwork, PricingConfig } from '../../src/types/seo';
 import { logger } from '../utils/logger';
+import { TenantRequest } from '../middleware/tenant';
 
 export const creditController = {
   /**
@@ -31,11 +32,8 @@ export const creditController = {
    * 管理员更新系统定价与套餐配置
    */
   updateConfig: async (req: Request, res: Response): Promise<void> => {
-    const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-a';
-    const account = fileTenantRepository.getAccount(tenantId);
-
-    // 校验管理员权限：管理员是管理员，租户是租户；只有系统管理员可管理价格与套餐
-    if (account.role !== 'ADMIN') {
+    const tenantReq = req as TenantRequest;
+    if (tenantReq.account?.role !== 'ADMIN') {
       res.status(403).json({ 
         success: false, 
         message: '权限拒绝：价格与套餐仅系统管理员（ADMIN）有权配置与修改，租户无权操作。' 
@@ -52,7 +50,7 @@ export const creditController = {
       packages
     });
 
-    logger.info('ADMIN_PRICING', `Admin ${tenantId} updated pricing config: ${JSON.stringify(updated)}`);
+    logger.info('ADMIN_PRICING', `Admin ${tenantReq.tenantId} updated pricing config`);
 
     res.json({
       success: true,
@@ -65,10 +63,8 @@ export const creditController = {
    * 管理员恢复默认定价与套餐配置
    */
   resetConfig: async (req: Request, res: Response): Promise<void> => {
-    const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-a';
-    const account = fileTenantRepository.getAccount(tenantId);
-
-    if (account.role !== 'ADMIN') {
+    const tenantReq = req as TenantRequest;
+    if (tenantReq.account?.role !== 'ADMIN') {
       res.status(403).json({ 
         success: false, 
         message: '权限拒绝：仅系统管理员（ADMIN）有权恢复系统默认定价与套餐配置。' 
@@ -77,7 +73,7 @@ export const creditController = {
     }
 
     const reset = await fileTenantRepository.savePricingConfig(DEFAULT_PRICING_CONFIG);
-    logger.info('ADMIN_PRICING', `Admin ${tenantId} reset pricing config to defaults`);
+    logger.info('ADMIN_PRICING', `Admin ${tenantReq.tenantId} reset pricing config to defaults`);
 
     res.json({
       success: true,
@@ -90,7 +86,8 @@ export const creditController = {
    * 获取当前租户积分余额与简报
    */
   getBalance: async (req: Request, res: Response): Promise<void> => {
-    const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-a';
+    const tenantReq = req as TenantRequest;
+    const tenantId = tenantReq.tenantId || 'tenant-a';
     const account = fileTenantRepository.getAccount(tenantId);
     res.json({
       success: true,
@@ -105,7 +102,8 @@ export const creditController = {
    * 获取积分变动明细（账单流水）
    */
   getTransactions: async (req: Request, res: Response): Promise<void> => {
-    const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-a';
+    const tenantReq = req as TenantRequest;
+    const tenantId = tenantReq.tenantId || 'tenant-a';
     const txs = fileTenantRepository.getCreditTransactions(tenantId);
     res.json({
       success: true,
@@ -117,7 +115,8 @@ export const creditController = {
    * 提交 USDT 充值兑换积分
    */
   recharge: async (req: Request, res: Response): Promise<void> => {
-    const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-a';
+    const tenantReq = req as TenantRequest;
+    const tenantId = tenantReq.tenantId || 'tenant-a';
     const { usdtAmount, txHash, network = 'TRC20', packageId } = req.body;
 
     const parsedUsdt = Number(usdtAmount);
@@ -160,10 +159,8 @@ export const creditController = {
    * 系统级付费管理：获取所有租户的充值记录
    */
   getAllTransactions: async (req: Request, res: Response): Promise<void> => {
-    const tenantReq = req as any;
-    const tenantId = req.headers['x-tenant-id'] as string || tenantReq.tenantId || 'tenant-a';
-    const account = tenantReq.account || fileTenantRepository.getAccount(tenantId);
-    if (account?.role !== 'ADMIN') {
+    const tenantReq = req as TenantRequest;
+    if (tenantReq.account?.role !== 'ADMIN') {
       res.status(403).json({ success: false, message: '权限拒绝：仅平台管理员（ADMIN）有权查看全局充值记录' });
       return;
     }
@@ -177,10 +174,8 @@ export const creditController = {
    * 系统级消耗管理：获取所有租户的账单流水
    */
   getAllUsages: async (req: Request, res: Response): Promise<void> => {
-    const tenantReq = req as any;
-    const tenantId = req.headers['x-tenant-id'] as string || tenantReq.tenantId || 'tenant-a';
-    const account = tenantReq.account || fileTenantRepository.getAccount(tenantId);
-    if (account?.role !== 'ADMIN') {
+    const tenantReq = req as TenantRequest;
+    if (tenantReq.account?.role !== 'ADMIN') {
       res.status(403).json({ success: false, message: '权限拒绝：仅平台管理员（ADMIN）有权查看全局消耗账单' });
       return;
     }
@@ -197,10 +192,8 @@ export const creditController = {
    * 管理员对指定租户手动上下分
    */
   adjustCredits: async (req: Request, res: Response): Promise<void> => {
-    const tenantReq = req as any;
-    const adminTenantId = req.headers['x-tenant-id'] as string || tenantReq.tenantId || 'tenant-a';
-    const account = tenantReq.account || fileTenantRepository.getAccount(adminTenantId);
-    if (account?.role !== 'ADMIN') {
+    const tenantReq = req as TenantRequest;
+    if (tenantReq.account?.role !== 'ADMIN') {
       res.status(403).json({ success: false, message: '权限拒绝：仅系统管理员（ADMIN）有权进行手动上下分操作' });
       return;
     }
@@ -217,7 +210,7 @@ export const creditController = {
         targetTenantId,
         numDelta,
         reason || '手动调整',
-        adminTenantId
+        tenantReq.tenantId
       );
       res.json({
         success: true,
@@ -235,10 +228,8 @@ export const creditController = {
    * 管理员手动确认 USDT 付费到账状态
    */
   confirmPayment: async (req: Request, res: Response): Promise<void> => {
-    const tenantReq = req as any;
-    const adminTenantId = req.headers['x-tenant-id'] as string || tenantReq.tenantId || 'tenant-a';
-    const account = tenantReq.account || fileTenantRepository.getAccount(adminTenantId);
-    if (account?.role !== 'ADMIN') {
+    const tenantReq = req as TenantRequest;
+    if (tenantReq.account?.role !== 'ADMIN') {
       res.status(403).json({ success: false, message: '权限拒绝：仅系统管理员（ADMIN）有权确认付费状态' });
       return;
     }
@@ -254,7 +245,7 @@ export const creditController = {
         targetTenantId,
         txId,
         status,
-        adminTenantId
+        tenantReq.tenantId
       );
       res.json({
         success: true,

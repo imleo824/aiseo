@@ -56,3 +56,19 @@ export class RateLimitError extends AppError {
   public readonly statusCode = 429;
   public readonly errorCode = 'RATE_LIMIT_EXCEEDED';
 }
+
+export class UnauthorizedError extends AppError {
+  public readonly statusCode = 401;
+  public readonly errorCode = 'UNAUTHORIZED';
+}
+
+export class ForbiddenError extends AppError {
+  public readonly statusCode = 403;
+  public readonly errorCode = 'FORBIDDEN';
+}
+
+export class InsufficientCreditsError extends AppError {
+  public readonly statusCode = 402;
+  public readonly errorCode = 'INSUFFICIENT_CREDITS';
+}
+

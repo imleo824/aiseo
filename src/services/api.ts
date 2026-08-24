@@ -234,6 +234,23 @@ export class ApiService {
     });
   }
 
+  public testSiteSearchEngine(siteId: string, engineType: 'BAIDU' | 'GOOGLE', customParams?: {
+    baiduToken?: string;
+    googleServiceAccountJson?: string;
+  }) {
+    return this.request<{
+      engine: string;
+      success: boolean;
+      latencyMs?: number;
+      message: string;
+      details?: any;
+      testedAt: string;
+    }>(`/api/sites/${siteId}/test-search-engine`, {
+      method: 'POST',
+      body: JSON.stringify({ engineType, customParams })
+    });
+  }
+
   public createSite(data: { 
     name: string; 
     domain: string; 
@@ -244,9 +261,7 @@ export class ApiService {
     wpAppPassword?: string;
     wpRestEndpoint?: string;
     baiduToken?: string;
-    indexNowKey?: string;
-    monthlyBudgetLimit?: number;
-    weeklyPublishCap?: number;
+    googleServiceAccountJson?: string;
   }) {
     return this.request<{ site: WordPressSite }>('/api/sites', {
       method: 'POST',
@@ -407,4 +422,4 @@ export class ApiService {
   }
 }
 
-export const createApiService = (tenantId: string) => new ApiService(tenantId);
+export const createApiService = (tenantId: string = 'tenant-a') => new ApiService(tenantId);

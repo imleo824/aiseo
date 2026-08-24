@@ -12,6 +12,7 @@ export interface TenantRequest extends Request {
 
 // 开放无需强登录鉴权的公开 API 路径
 const UNPROTECTED_PATHS = [
+  '/api/health',
   '/api/auth/login',
   '/api/auth/register'
 ];
@@ -63,12 +64,6 @@ export const tenantMiddleware = (req: Request, res: Response, next: NextFunction
   tenantRequest.tenantId = session.tenantId;
   tenantRequest.account = session.account;
   tenantRequest.tenantData = session.tenantData;
-  
-  res.on('finish', () => {
-    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && res.statusCode < 400) {
-      fileTenantRepository.saveTenantData(session.tenantId, tenantRequest.tenantData);
-    }
-  });
   
   TenantContext.run(
     {

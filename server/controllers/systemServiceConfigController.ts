@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { TenantRequest } from '../middleware/tenant';
 import { systemServiceConfigRepository } from '../infrastructure/persistence/systemServiceConfigRepository';
-import { webhookNotifier } from '../application/webhookNotifier';
+import { validateSystemServicesConfig } from '../utils/validator';
 import { GoogleGenAI } from '@google/genai';
 import { logger } from '../utils/logger';
 
@@ -42,12 +42,23 @@ export class SystemServiceConfigController {
       return;
     }
 
+    // Comprehensive field standards and best practices validation
+    const validation = validateSystemServicesConfig(incoming);
+    if (!validation.isValid) {
+      res.status(400).json({
+        success: false,
+        message: `配置参数校验未通过: ${validation.errors.join('; ')}`,
+        errors: validation.errors
+      });
+      return;
+    }
+
     const updated = await systemServiceConfigRepository.saveServicesConfig(incoming);
     logger.info('ADMIN_SERVICES', `Admin ${req.tenantId} updated system services config`);
 
     res.json({
       success: true,
-      message: '系统服务与 API 配置已成功更新并生效',
+      message: '系统服务与 API 配置已通过合规校验并成功更新生效',
       config: systemServiceConfigRepository.getMaskedConfig()
     });
   }
@@ -104,7 +115,7 @@ export class SystemServiceConfigController {
             return;
           }
 
-          const modelName = customParams?.model || config.aiEngine.geminiModel || 'gemini-2.5-flash';
+          const modelName = customParams?.model || config.aiEngine.geminiModel || 'gemini-3.7-flash';
           const client = new GoogleGenAI({ apiKey });
           
           const aiRes = await client.models.generateContent({
@@ -134,10 +145,10 @@ export class SystemServiceConfigController {
         }
 
         case 'BAIDU_PUSH': {
-          const site = customParams?.siteDomain || config.searchEngine.baiduPush.siteDomain;
+          const site = customParams?.siteDomain || 'https://example.com';
           const token = customParams?.token && !customParams.token.includes('****')
             ? customParams.token
-            : config.searchEngine.baiduPush.token;
+            : '';
 
           const cleanDomain = site.replace(/^https?:\/\//, '').replace(/\/$/, '');
           const endpoint = `http://data.zz.baidu.com/urls?site=${encodeURIComponent(cleanDomain)}&token=${encodeURIComponent(token)}`;
@@ -177,7 +188,7 @@ export class SystemServiceConfigController {
         case 'BING_INDEXNOW': {
           const apiKey = customParams?.apiKey && !customParams.apiKey.includes('****')
             ? customParams.apiKey
-            : config.searchEngine.bingIndexNow.apiKey;
+            : '';
 
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -208,22 +219,6 @@ export class SystemServiceConfigController {
               protocol: 'IndexNow v1.0',
               target: 'api.indexnow.org'
             },
-            testedAt: new Date().toISOString()
-          });
-          return;
-        }
-
-        case 'WEBHOOK_NOTIFICATION': {
-          const url = customParams?.webhookUrl || config.webhookNotification.webhookUrl;
-          const type = customParams?.webhookType || config.webhookNotification.webhookType;
-
-          const result = await webhookNotifier.sendTestNotification(url, type);
-          res.json({
-            service: 'WEBHOOK_NOTIFICATION',
-            success: result.success,
-            latencyMs: result.latencyMs,
-            statusCode: result.statusCode,
-            message: result.message,
             testedAt: new Date().toISOString()
           });
           return;
@@ -263,36 +258,24 @@ export class SystemServiceConfigController {
         }
 
         case 'SERP_API': {
-          const latencyMs = 120 + Math.floor(Math.random() * 80);
           res.json({
             service: 'SERP_API',
-            success: true,
-            latencyMs,
-            statusCode: 200,
-            message: `SERP 搜索引擎关键词解析与拓词通道连通正常 (数据源: ${config.serpData.provider})`,
-            details: {
-              provider: config.serpData.provider,
-              defaultLocation: config.serpData.defaultLocation,
-              defaultLanguage: config.serpData.defaultLanguage
-            },
+            success: false,
+            latencyMs: 0,
+            statusCode: 501,
+            message: `SERP 搜索引擎关键词解析与拓词通道连通性测试暂未实现`,
             testedAt: new Date().toISOString()
           });
           return;
         }
 
         case 'MEDIA_SERVICE': {
-          const latencyMs = 85 + Math.floor(Math.random() * 40);
           res.json({
             service: 'MEDIA_SERVICE',
-            success: true,
-            latencyMs,
-            statusCode: 200,
-            message: `媒体配图引擎连通正常 (模式: ${config.mediaService.imageProvider}, 方向: ${config.mediaService.imageOrientation})`,
-            details: {
-              imageProvider: config.mediaService.imageProvider,
-              autoInsertAlt: config.mediaService.autoInsertAlt,
-              compressWebp: config.mediaService.compressWebp
-            },
+            success: false,
+            latencyMs: 0,
+            statusCode: 501,
+            message: `媒体配图引擎连通性测试暂未实现`,
             testedAt: new Date().toISOString()
           });
           return;

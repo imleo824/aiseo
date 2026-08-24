@@ -4,7 +4,8 @@ import { WordPressSite } from "../../src/types/seo";
 import { validateSiteInput, validateDomain } from "../utils/validator";
 import { fileTenantRepository } from "../infrastructure/persistence/fileTenantRepository";
 import { wordPressAdapter } from "../infrastructure/wordpress/wordpressAdapter";
-import { NotFoundError, ValidationError, ConflictError } from "../domain/errors";
+import { searchEngineAdapter } from "../infrastructure/searchEngine/searchEngineAdapter";
+import { NotFoundError, ValidationError, ConflictError, ForbiddenError, InsufficientCreditsError } from "../domain/errors";
 
 export const getSites = async (req: TenantRequest, res: Response) => {
   const data = fileTenantRepository.getTenantData(req.tenantId);
@@ -32,6 +33,74 @@ export const testSiteConnection = async (req: TenantRequest, res: Response) => {
   res.json({ result, site });
 };
 
+export const testSiteSearchEngine = async (req: TenantRequest, res: Response) => {
+  const site = fileTenantRepository.getSite(req.tenantId, req.params.id);
+  if (!site) {
+    throw new NotFoundError(`WordPress Site with ID "${req.params.id}" was not found.`);
+  }
+
+  const { engineType, customParams } = req.body;
+  const start = Date.now();
+
+  switch (engineType) {
+    case 'BAIDU': {
+      const token = customParams?.baiduToken !== undefined ? customParams.baiduToken : site.baiduToken;
+      if (!token || !token.trim()) {
+        res.json({
+          engine: 'BAIDU',
+          success: false,
+          message: '未配置百度推送 Token，无法执行连通性测试',
+          testedAt: new Date().toISOString()
+        });
+        return;
+      }
+      const testUrl = `https://${site.domain}/seo-probe-${Date.now()}.html`;
+      const pushRes = await searchEngineAdapter.pushToBaidu(site.domain, token, [testUrl]);
+      res.json({
+        engine: 'BAIDU',
+        success: pushRes.success && !pushRes.skipped,
+        latencyMs: Date.now() - start,
+        message: pushRes.message,
+        details: pushRes,
+        testedAt: new Date().toISOString()
+      });
+      return;
+    }
+
+    case 'GOOGLE': {
+      const serviceAccountJson = customParams?.googleServiceAccountJson !== undefined 
+        ? customParams.googleServiceAccountJson 
+        : site.googleServiceAccountJson;
+      if (!serviceAccountJson || !serviceAccountJson.trim()) {
+        res.json({
+          engine: 'GOOGLE',
+          success: false,
+          message: '未配置 Google Service Account 凭证，无法执行连通性测试',
+          testedAt: new Date().toISOString()
+        });
+        return;
+      }
+      const testUrl = `https://${site.domain}/google-probe-${Date.now()}.html`;
+      const pushRes = await searchEngineAdapter.pushToGoogle(site.domain, serviceAccountJson, [testUrl]);
+      res.json({
+        engine: 'GOOGLE',
+        success: pushRes.success && !pushRes.skipped,
+        latencyMs: Date.now() - start,
+        message: pushRes.message,
+        details: pushRes,
+        testedAt: new Date().toISOString()
+      });
+      return;
+    }
+
+    default:
+      res.status(400).json({
+        success: false,
+        message: `未知的搜索引擎类型: ${engineType}，支持 BAIDU, GOOGLE`
+      });
+  }
+};
+
 export const createSite = async (req: TenantRequest, res: Response) => {
   const validation = validateSiteInput(req.body);
   if (!validation.isValid) {
@@ -44,13 +113,10 @@ export const createSite = async (req: TenantRequest, res: Response) => {
     niche, 
     siteType,
     siteLanguage, 
-    monthlyBudgetLimit, 
-    weeklyPublishCap,
     wpUsername,
     wpAppPassword,
-    wpRestEndpoint,
     baiduToken,
-    indexNowKey
+    googleServiceAccountJson
   } = req.body;
   const { sanitized: cleanDomain } = validateDomain(domain);
 
@@ -62,8 +128,7 @@ export const createSite = async (req: TenantRequest, res: Response) => {
 
   // 扣除积分 (新增站点诊断与初始化接入根据管理员配置动态扣除，默认 5 积分)
   if (!fileTenantRepository.isActionEnabled('SITE_AUDIT')) {
-    res.status(403).json({ success: false, message: '“站点添加与深度连接体检”功能当前已被系统管理员暂停使用。' });
-    return;
+    throw new ForbiddenError('“站点添加与深度连接体检”功能当前已被系统管理员暂停使用。');
   }
 
   const auditCost = fileTenantRepository.getActionCost('SITE_AUDIT', 5);
@@ -76,8 +141,7 @@ export const createSite = async (req: TenantRequest, res: Response) => {
   );
 
   if (!creditRes.success) {
-    res.status(402).json({ success: false, message: creditRes.message || '积分不足，请充值 USDT' });
-    return;
+    throw new InsufficientCreditsError(creditRes.message || '积分不足，请充值 USDT');
   }
 
   try {
@@ -93,16 +157,13 @@ export const createSite = async (req: TenantRequest, res: Response) => {
       wpVersion: '6.7.1',
       wpUsername: wpUsername ? String(wpUsername).trim() : undefined,
       wpAppPassword: wpAppPassword ? String(wpAppPassword).trim() : undefined,
-      wpRestEndpoint: wpRestEndpoint ? String(wpRestEndpoint).trim() : undefined,
       baiduToken: baiduToken ? String(baiduToken).trim() : undefined,
-      indexNowKey: indexNowKey ? String(indexNowKey).trim() : undefined,
+      googleServiceAccountJson: googleServiceAccountJson ? String(googleServiceAccountJson).trim() : undefined,
       pluginInstalled: true,
       whitelistedCategories: ['技术干货', '行业新闻'],
-      gscConnected: true,
+      gscConnected: Boolean(googleServiceAccountJson),
       ga4Connected: true,
-      baiduConnected: Boolean(baiduToken) || siteLanguage === 'zh-CN',
-      autopilotEnabled: false,
-      weeklyPublishCap: Number(weeklyPublishCap) || 2,
+      baiduConnected: Boolean(baiduToken),
       currentWeeklyPublished: 0,
       calibration: {
         isCalibrating: true,
@@ -113,8 +174,6 @@ export const createSite = async (req: TenantRequest, res: Response) => {
         zeroFactErrorStreak: 0,
         autoPublishUnlocked: false
       },
-      monthlyBudgetLimit: Number(monthlyBudgetLimit) || 100,
-      monthlyBudgetUsed: 0,
       createdAt: new Date().toISOString()
     };
 
@@ -155,16 +214,11 @@ export const updateSite = async (req: TenantRequest, res: Response) => {
     niche, 
     siteType,
     siteLanguage, 
-    weeklyPublishCap, 
-    monthlyBudgetLimit, 
     whitelistedCategories,
     wpUsername,
     wpAppPassword,
-    wpRestEndpoint,
     baiduToken,
-    indexNowKey,
-    leadCaptureCta,
-    autopilotEnabled
+    googleServiceAccountJson
   } = req.body;
 
   if (name !== undefined) site.name = String(name).trim();
@@ -174,28 +228,19 @@ export const updateSite = async (req: TenantRequest, res: Response) => {
   if (niche !== undefined) site.niche = String(niche).trim();
   if (siteType !== undefined) site.siteType = siteType;
   if (siteLanguage !== undefined) site.siteLanguage = siteLanguage;
-  if (weeklyPublishCap !== undefined) site.weeklyPublishCap = Math.max(1, Math.min(50, Number(weeklyPublishCap) || 1));
-  if (monthlyBudgetLimit !== undefined) site.monthlyBudgetLimit = Math.max(10, Number(monthlyBudgetLimit) || 100);
-  if (autopilotEnabled !== undefined) site.autopilotEnabled = Boolean(autopilotEnabled);
   if (whitelistedCategories !== undefined && Array.isArray(whitelistedCategories)) {
     site.whitelistedCategories = whitelistedCategories.filter(c => typeof c === 'string' && c.trim().length > 0);
   }
   if (wpUsername !== undefined) site.wpUsername = wpUsername ? String(wpUsername).trim() : undefined;
   if (wpAppPassword !== undefined) site.wpAppPassword = wpAppPassword ? String(wpAppPassword).trim() : undefined;
-  if (wpRestEndpoint !== undefined) site.wpRestEndpoint = wpRestEndpoint ? String(wpRestEndpoint).trim() : undefined;
+  
   if (baiduToken !== undefined) {
     site.baiduToken = baiduToken ? String(baiduToken).trim() : undefined;
     site.baiduConnected = Boolean(site.baiduToken);
   }
-  if (indexNowKey !== undefined) site.indexNowKey = indexNowKey ? String(indexNowKey).trim() : undefined;
-  if (leadCaptureCta !== undefined && typeof leadCaptureCta === 'object') {
-    site.leadCaptureCta = {
-      enabled: Boolean(leadCaptureCta.enabled),
-      title: String(leadCaptureCta.title || ''),
-      buttonText: String(leadCaptureCta.buttonText || ''),
-      targetUrl: String(leadCaptureCta.targetUrl || ''),
-      calloutNote: leadCaptureCta.calloutNote ? String(leadCaptureCta.calloutNote) : undefined
-    };
+  if (googleServiceAccountJson !== undefined) {
+    site.googleServiceAccountJson = googleServiceAccountJson ? String(googleServiceAccountJson).trim() : undefined;
+    site.gscConnected = Boolean(site.googleServiceAccountJson);
   }
 
   await fileTenantRepository.saveSite(req.tenantId, site);
@@ -207,7 +252,7 @@ export const updateSite = async (req: TenantRequest, res: Response) => {
     action: 'UPDATE_SITE_CONFIG',
     target: site.name,
     result: 'SUCCESS',
-    details: '已更新站点配置与凭证参数。'
+    details: '已更新站点配置与收录凭证参数。'
   });
 
   res.json({ site });
@@ -235,29 +280,5 @@ export const deleteSite = async (req: TenantRequest, res: Response) => {
 };
 
 export const toggleAutopilot = async (req: TenantRequest, res: Response) => {
-  const site = fileTenantRepository.getSite(req.tenantId, req.params.id);
-  if (!site) {
-    throw new NotFoundError(`Site with ID "${req.params.id}" was not found.`);
-  }
-
-  const newState = req.body.enabled !== undefined ? Boolean(req.body.enabled) : !site.autopilotEnabled;
-
-  if (newState && site.calibration.isCalibrating && !site.calibration.autoPublishUnlocked) {
-    throw new ValidationError("站点处于 14 天专家校准期，需完成 10 篇人工审核且 0 事实错误后方可解锁全自动巡航。");
-  }
-
-  site.autopilotEnabled = newState;
-  await fileTenantRepository.saveSite(req.tenantId, site);
-  await fileTenantRepository.appendAuditLog(req.tenantId, {
-    id: `log-${Date.now()}`,
-    siteId: site.id,
-    timestamp: new Date().toISOString(),
-    actor: 'USER_ADMIN',
-    action: newState ? 'ENABLE_AUTOPILOT' : 'DISABLE_AUTOPILOT',
-    target: site.name,
-    result: 'SUCCESS',
-    details: newState ? '已启用 SEO 全自动巡航发布。' : '已暂停全自动巡航，转为人工审核模式。'
-  });
-
-  res.json({ site });
+  throw new ValidationError("自动发文策略与预算控制功能已被全局去除。");
 };

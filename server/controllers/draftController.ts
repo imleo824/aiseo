@@ -19,39 +19,40 @@ export const approveAndPublishDraft = async (req: TenantRequest, res: Response) 
   const site = fileTenantRepository.getSite(req.tenantId, draft.siteId);
   const opp = fileTenantRepository.getOpportunity(req.tenantId, draft.opportunityId);
 
-  // 1. WordPress REST Publishing
-  let publishedUrl = `https://${site?.domain || 'techpulse.media'}/${encodeURIComponent(draft.title)}/`;
-  let wpPostId = Math.floor(Math.random() * 8000) + 1000;
-  let isFallback = true;
+  if (!site) {
+    throw new NotFoundError(`Site with ID "${draft.siteId}" was not found.`);
+  }
 
-  if (site) {
-    const wpRes = await wordPressAdapter.publishPost(site, {
-      title: draft.title,
-      contentHtml: draft.contentHtml,
-      summary: draft.summary,
-      category: draft.category,
-      status: 'publish'
+  // 1. WordPress REST Publishing
+  const wpRes = await wordPressAdapter.publishPost(site, {
+    title: draft.title,
+    contentHtml: draft.contentHtml,
+    summary: draft.summary,
+    category: draft.category,
+    status: 'publish'
+  });
+
+  if (!wpRes.success || !wpRes.publishedUrl) {
+    return res.status(500).json({ 
+      error: { code: 'WP_PUBLISH_FAILED', message: wpRes.error || '发布到 WordPress 失败' } 
     });
-    if (wpRes.publishedUrl) publishedUrl = wpRes.publishedUrl;
-    if (wpRes.wpPostId) wpPostId = wpRes.wpPostId;
-    isFallback = Boolean(wpRes.isSimulatedFallback);
   }
 
   draft.status = 'PUBLISHED';
-  draft.publishedUrl = publishedUrl;
+  draft.publishedUrl = wpRes.publishedUrl;
   draft.publishedAt = new Date().toISOString();
-  draft.wpPostId = wpPostId;
+  draft.wpPostId = wpRes.wpPostId;
 
   if (opp) {
-    opp.status = 'READY_TO_PUBLISH';
+    opp.status = 'PUBLISHED';
     opp.updatedAt = new Date().toISOString();
     await fileTenantRepository.saveOpportunity(req.tenantId, opp);
   }
 
-  // 2. Search Engine Submissions
+  // 2. Search Engine Submissions (Multi-Protocol)
   let pushDetail = '搜索引擎推送已分发';
   if (site && draft.publishedUrl) {
-    if (draft.language === 'zh-CN') {
+    if (draft.language === 'zh-CN' && site.baiduToken) {
       const baiduRes = await searchEngineAdapter.pushToBaidu(site.domain, site.baiduToken, [draft.publishedUrl]);
       await fileTenantRepository.appendBaiduLog(req.tenantId, {
         id: `baidu-${Date.now()}`,
@@ -64,7 +65,9 @@ export const approveAndPublishDraft = async (req: TenantRequest, res: Response) 
       pushDetail = baiduRes.message;
     }
 
-    await searchEngineAdapter.pushToGoogle(site.domain, [draft.publishedUrl]);
+    if (site.googleServiceAccountJson) {
+      await searchEngineAdapter.pushToGoogle(site.domain, site.googleServiceAccountJson, [draft.publishedUrl]);
+    }
   }
 
   if (site) {
@@ -92,10 +95,10 @@ export const approveAndPublishDraft = async (req: TenantRequest, res: Response) 
     action: 'MANUAL_APPROVE_PUBLISH',
     target: draft.title,
     result: 'SUCCESS',
-    details: `用户人工审核通过并推送至目标站点！URL: ${draft.publishedUrl} · ${pushDetail} (${isFallback ? '沙盒协议' : 'REST API 实时写入'})`
+    details: `用户人工审核通过并推送至目标站点！URL: ${draft.publishedUrl} · ${pushDetail} (REST API 实时写入)`
   });
 
-  res.json({ draft, site, publishedUrl, wpPostId, isFallback });
+  res.json({ draft, site, publishedUrl: draft.publishedUrl, wpPostId: draft.wpPostId, isFallback: false });
 };
 
 export const rollbackDraft = async (req: TenantRequest, res: Response) => {

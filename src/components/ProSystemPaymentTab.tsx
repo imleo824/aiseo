@@ -96,7 +96,7 @@ export const ProSystemPaymentTab: React.FC<ProSystemPaymentTabProps> = ({
       
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-2xs space-y-1">
+        <div className="bg-white border border-slate-200/80 rounded-lg p-5 shadow-sm space-y-1">
           <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
             <span>全平台 USDT 充值总额</span>
             <Wallet className="w-4 h-4 text-emerald-500" />
@@ -106,7 +106,7 @@ export const ProSystemPaymentTab: React.FC<ProSystemPaymentTabProps> = ({
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-2xs space-y-1">
+        <div className="bg-white border border-slate-200/80 rounded-lg p-5 shadow-sm space-y-1">
           <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
             <span>充值交易总笔数</span>
             <CreditCard className="w-4 h-4 text-blue-500" />
@@ -126,15 +126,19 @@ export const ProSystemPaymentTab: React.FC<ProSystemPaymentTabProps> = ({
       )}
 
       {/* Main Payment Log Card */}
-      <div className="bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden">
+      <div className="bg-white border border-slate-200/80 rounded-lg shadow-sm overflow-hidden">
         
         {/* Table Header */}
         <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center shadow-2xs">
+            <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm shrink-0">
               <Wallet className="w-4 h-4 text-emerald-400" />
             </span>
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">付费管理</h2>
+            <div className="space-y-0.5">
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                <span>付费管理</span>
+              </h2>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -145,7 +149,7 @@ export const ProSystemPaymentTab: React.FC<ProSystemPaymentTabProps> = ({
                 placeholder="搜索交易哈希/租户/描述..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-md bg-slate-50 focus:bg-white focus:outline-none focus:border-slate-400 w-60 transition"
+                className="pl-8 pr-3 py-1.5 text-xs border border-slate-200/80 rounded-md bg-slate-50 focus:bg-white focus:outline-none focus:border-slate-400 w-60 transition"
               />
             </div>
 
@@ -153,7 +157,7 @@ export const ProSystemPaymentTab: React.FC<ProSystemPaymentTabProps> = ({
               type="button"
               onClick={fetchPaymentLogs}
               disabled={loading}
-              className="p-1.5 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+              className="p-1.5 rounded-md border border-slate-200/80 text-slate-600 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
               title="刷新付费流水"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-emerald-600' : ''}`} />
@@ -202,11 +206,11 @@ export const ProSystemPaymentTab: React.FC<ProSystemPaymentTabProps> = ({
                       </td>
 
                       <td className="py-3.5 px-4 font-mono font-bold text-emerald-600 text-sm">
-                        +${usdtVal} USDT
+                        +{usdtVal}
                       </td>
 
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-800">
-                        +{tx.amount.toLocaleString()} 积分
+                        +{tx.amount.toLocaleString()}
                       </td>
 
                       <td className="py-3.5 px-4">
@@ -258,7 +262,7 @@ export const ProSystemPaymentTab: React.FC<ProSystemPaymentTabProps> = ({
                       {/* Action Column for Manual Confirmation */}
                       <td className="py-3.5 px-4 text-center">
                         {account?.role === 'ADMIN' ? (
-                          <div className="inline-flex items-center gap-1 bg-slate-50 p-1 rounded-md border border-slate-200">
+                          <div className="inline-flex items-center gap-1 bg-slate-50 p-1 rounded-md border border-slate-200/80">
                             {statusKey !== 'CONFIRMED' && (
                               <button
                                 type="button"

@@ -317,13 +317,7 @@ export class SEOPipelineOrchestrator {
   }
 
   private checkAutopilotEligibility(site: WordPressSite, opportunity: Opportunity, qualityGate: QualityGateResult): boolean {
-    return Boolean(
-      site.autopilotEnabled &&
-      !site.calibration.isCalibrating &&
-      opportunity.riskLevel === 'LOW' &&
-      site.whitelistedCategories.includes(opportunity.category) &&
-      qualityGate.passed
-    );
+    return false;
   }
 
   private async deployToWordPress(
@@ -403,22 +397,47 @@ export class SEOPipelineOrchestrator {
     await this.repository.saveSite(tenantId, site);
     await this.repository.saveOpportunity(tenantId, opportunity);
 
+    let anyEnginePushed = false;
+
+    // 1. 百度站长主动推送 (仅中文站点且配置了 Token 时触发)
     if (opportunity.language === 'zh-CN') {
-      const baiduRes = await this.searchEngineSubmitter.pushToBaidu(site.domain, site.baiduToken, [publishedUrl]);
-      await this.repository.appendBaiduLog(tenantId, {
-        id: `baidu-${Date.now()}`,
-        url: publishedUrl,
-        submittedAt: new Date().toISOString(),
-        type: 'DAILY_API',
-        status: 'SUBMITTED',
-        remainQuota: baiduRes.remain || 88
-      });
-      stagesCompleted.push('BAIDU_INDEXING_DISPATCH');
+      if (site.baiduToken && site.baiduToken.trim()) {
+        const baiduRes = await this.searchEngineSubmitter.pushToBaidu(site.domain, site.baiduToken, [publishedUrl]);
+        if (!baiduRes.skipped) {
+          await this.repository.appendBaiduLog(tenantId, {
+            id: `baidu-${Date.now()}`,
+            url: publishedUrl,
+            submittedAt: new Date().toISOString(),
+            type: 'DAILY_API',
+            status: 'SUBMITTED',
+            remainQuota: baiduRes.remain || 88
+          });
+          stagesCompleted.push('BAIDU_INDEXING_DISPATCH');
+          anyEnginePushed = true;
+        }
+      } else {
+        logger.info('PIPELINE', `站点 ${site.domain} 未配置专属百度 Token，已跳过百度推送`);
+      }
     }
 
-    await this.searchEngineSubmitter.pushToGoogle(site.domain, [publishedUrl]);
-    stagesCompleted.push('GOOGLE_INDEXING_DISPATCH');
-    stagesCompleted.push('SEARCH_ENGINE_PUSH');
+    // 3. Google Indexing API (当站点配置了 Google Service Account JSON 凭证时触发)
+    if (site.googleServiceAccountJson && site.googleServiceAccountJson.trim()) {
+      const googleRes = await this.searchEngineSubmitter.pushToGoogle(
+        site.domain, 
+        site.googleServiceAccountJson, 
+        [publishedUrl]
+      );
+      if (!googleRes.skipped) {
+        stagesCompleted.push('GOOGLE_INDEXING_DISPATCH');
+        anyEnginePushed = true;
+      }
+    }
+
+    if (anyEnginePushed) {
+      stagesCompleted.push('SEARCH_ENGINE_PUSH');
+    } else {
+      logger.info('PIPELINE', `站点 ${site.domain} 未配置搜索引擎推送凭证，文章已发布上线，等待蜘蛛自然抓取`);
+    }
 
     eventBus.publish({
       id: `evt-${Date.now()}`,

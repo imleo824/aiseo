@@ -83,6 +83,11 @@ export default function App() {
           title: '付费配置',
           desc: '系统扣费单价、汇率与充值套餐包可视化管理'
         };
+      case 'SYSTEM_SERVICES_CONFIG':
+        return {
+          title: '服务集成',
+          desc: ''
+        };
       case 'TENANT_MANAGEMENT':
         return {
           title: '租户管理',
@@ -139,7 +144,7 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-y-auto">
         
         {/* Workspace Top Header Bar */}
-        <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
+        <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-8 py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-sm transition-all">
           <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
             
             {/* Mobile Hamburger Toggle Button */}
@@ -152,21 +157,39 @@ export default function App() {
               <Menu className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center space-x-1.5 text-xs text-slate-400 font-mono truncate">
-              <span className="text-slate-500 font-medium hidden xs:inline">AI XEO</span>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-300 hidden xs:inline" />
-              <span className="text-slate-900 font-semibold truncate">{pageInfo.title}</span>
+            <div className="flex items-center space-x-3 text-sm truncate">
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg text-slate-600 font-medium border border-slate-200/70 shadow-sm">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"></span>
+                <span className="truncate max-w-[150px]">{account?.username || '演示租户'}</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-300 hidden sm:inline" />
+              <span className="text-slate-900 font-bold text-base sm:text-lg tracking-tight truncate">{pageInfo.title}</span>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+          <div className="flex items-center space-x-3 sm:space-x-4 shrink-0">
+            {/* Quick Credit Balance Pill */}
+            {account && (
+              <div className="flex items-center gap-2 bg-amber-50/90 text-amber-900 border border-amber-200/80 px-3 py-1.5 rounded-xl text-sm font-medium shadow-sm transition-all hover:shadow-md">
+                <span className="text-amber-600 font-bold">⚡ 积分:</span>
+                <span className="font-mono font-bold text-amber-900">{account.credits ?? 0}</span>
+                <button
+                  type="button"
+                  onClick={() => setIsRechargeOpen(true)}
+                  className="ml-2 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition cursor-pointer"
+                >
+                  充值
+                </button>
+              </div>
+            )}
+
             {/* Global Language Selector */}
-            <div className="flex items-center space-x-1.5 bg-slate-100/90 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs border border-slate-200 font-mono shadow-2xs">
-              <Globe className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <div className="flex items-center space-x-2 bg-slate-100/90 px-3 py-1.5 rounded-xl text-sm border border-slate-200 shadow-sm transition hover:bg-slate-200/80">
+              <Globe className="w-4 h-4 text-slate-500 shrink-0" />
               <select
                 value={globalLanguage}
                 onChange={(e) => setGlobalLanguage(e.target.value as Language)}
-                className="bg-transparent text-slate-700 focus:outline-none cursor-pointer font-medium text-xs"
+                className="bg-transparent text-slate-700 focus:outline-none cursor-pointer font-medium text-sm"
               >
                 <option value="zh-CN">简体中文</option>
                 <option value="en-US">English</option>
@@ -176,7 +199,7 @@ export default function App() {
         </header>
 
         {/* Main Workspace Content Views */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 w-full max-w-[1920px] mx-auto">
+        <main className="flex-1 p-4 sm:p-6 lg:p-10 w-full max-w-7xl mx-auto">
           {activeNav === 'DASHBOARD' && (
             <MainDashboard
               sites={sites}
@@ -185,6 +208,7 @@ export default function App() {
               onRollback={actions.handleRollback}
               onRunCruise={actions.handleRunCruise}
               onAnalyzeCompetitor={actions.handleAnalyzeCompetitorAttack}
+              onNavigateToNav={(nav) => setActiveNav(nav)}
             />
           )}
 

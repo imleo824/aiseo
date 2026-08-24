@@ -27,7 +27,6 @@ export interface IWordPressPublisher {
     date?: string;
     rawResponse?: any;
     error?: string;
-    isSimulatedFallback?: boolean;
   }>;
 
   deletePost(site: WordPressSite, wpPostId: number): Promise<{
@@ -39,24 +38,17 @@ export interface IWordPressPublisher {
 export interface ISearchEngineSubmitter {
   pushToBaidu(siteDomain: string, token?: string, urls?: string[]): Promise<{
     success: boolean;
+    skipped?: boolean;
     remain?: number;
     successCount?: number;
     message: string;
-    isSimulatedFallback?: boolean;
   }>;
 
-  pushToGoogle(siteDomain: string, urls?: string[]): Promise<{
+  pushToGoogle(siteDomain: string, serviceAccountJson?: string, urls?: string[]): Promise<{
     success: boolean;
+    skipped?: boolean;
     statusCode?: number;
     message: string;
-    isSimulatedFallback?: boolean;
-  }>;
-
-  pushToIndexNow?(host: string, key?: string, urlList?: string[]): Promise<{
-    success: boolean;
-    statusCode?: number;
-    message: string;
-    isSimulatedFallback?: boolean;
   }>;
 }
 

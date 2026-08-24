@@ -43,50 +43,60 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const safeTasks = tasks || [];
   const activeTasksCount = safeTasks.filter(t => t.status === 'ACTIVE').length;
 
-  const navItems: { id: NavItem; label: string; icon: React.ReactNode; badge?: string }[] = [
-    { 
-      id: 'DASHBOARD', 
-      label: '手动执行', 
-      icon: <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
-    },
-    { 
-      id: 'AUTOPILOT_TASKS', 
-      label: '自动执行', 
-      icon: <Bot className="w-4 h-4 text-emerald-500" />,
-      badge: safeTasks.length > 0 ? `${activeTasksCount}` : undefined
-    },
-    { 
-      id: 'KEYWORD_RADAR', 
-      label: '我的词库', 
-      icon: <Target className="w-4 h-4 text-rose-500" />,
-      badge: 'HOT'
-    },
-    { 
-      id: 'SITE_MANAGEMENT', 
-      label: '我的站点', 
-      icon: <Layers className="w-4 h-4" />,
-      badge: safeSites.length > 0 ? `${safeSites.length}` : undefined
-    },
-    { 
-      id: 'AUDIT_LEDGER', 
-      label: '我的内容', 
-      icon: <Activity className="w-4 h-4" /> 
+  const navGroups: {
+    title: string;
+    items: { id: NavItem; label: string; icon: React.ReactNode; badge?: string }[];
+  }[] = [
+    {
+      title: '内容自动化',
+      items: [
+        { 
+          id: 'DASHBOARD', 
+          label: '手动执行', 
+          icon: <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
+        },
+        { 
+          id: 'AUTOPILOT_TASKS', 
+          label: '自动执行', 
+          icon: <Bot className="w-4 h-4 text-emerald-500" />,
+          badge: safeTasks.length > 0 ? `${activeTasksCount}` : undefined
+        },
+        { 
+          id: 'KEYWORD_RADAR', 
+          label: '我的词库', 
+          icon: <Target className="w-4 h-4 text-rose-500" />
+        },
+      ]
     },
     {
-      id: 'CREDIT_LEDGER', 
-      label: '我的账单', 
-      icon: <Wallet className="w-4 h-4 text-amber-500" />,
-      badge: account ? `${account.credits ?? 0}` : undefined
+      title: '资产与内容',
+      items: [
+        { 
+          id: 'SITE_MANAGEMENT', 
+          label: '我的站点', 
+          icon: <Layers className="w-4 h-4 text-blue-500" />,
+          badge: safeSites.length > 0 ? `${safeSites.length}` : undefined
+        },
+        { 
+          id: 'AUDIT_LEDGER', 
+          label: '我的内容', 
+          icon: <Activity className="w-4 h-4 text-indigo-500" /> 
+        },
+      ]
     },
+    {
+      title: '账户与账单',
+      items: [
+        {
+          id: 'CREDIT_LEDGER', 
+          label: '我的账单', 
+          icon: <Wallet className="w-4 h-4 text-amber-500" />
+        },
+      ]
+    }
   ];
 
   const adminNavItems: { id: NavItem; label: string; icon: React.ReactNode; badge?: string }[] = [
-    { 
-      id: 'SYSTEM_SERVICES_CONFIG', 
-      label: '服务集成', 
-      icon: <Cpu className="w-4 h-4 text-indigo-500" />,
-      badge: 'PRO'
-    },
     { 
       id: 'PRICING_CONFIG', 
       label: '付费配置', 
@@ -107,6 +117,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: '消耗管理', 
       icon: <Activity className="w-4 h-4 text-rose-500" /> 
     },
+    { 
+      id: 'SYSTEM_SERVICES_CONFIG', 
+      label: '服务集成', 
+      icon: <Cpu className="w-4 h-4 text-indigo-500" />
+    },
   ];
 
   const handleNavClick = (nav: NavItem) => {
@@ -122,7 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Brand Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-2xs">
+            <div className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-sm">
               <Sparkles className="w-4 h-4 text-emerald-400" />
             </div>
             <div>
@@ -149,50 +164,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Navigation List */}
-        <nav className="px-3 py-3 space-y-1">
-          {navItems.map(item => {
-            const isActive = activeNav === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => handleNavClick(item.id)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-                  isActive 
-                    ? 'bg-slate-900 text-white' 
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-                }`}
-              >
-                <div className="flex items-center space-x-2.5">
-                  <span className="shrink-0">{item.icon}</span>
-                  <span>{item.label}</span>
-                </div>
-                {item.badge && (
-                  <span className={`px-1.5 py-0.5 text-[10px] rounded font-mono font-medium ${
-                    isActive 
-                      ? 'bg-slate-800 text-amber-300' 
-                      : item.id === 'CREDIT_LEDGER'
-                        ? 'bg-amber-50 text-amber-700 border border-amber-200/80'
-                        : 'bg-slate-100 text-slate-600 border border-slate-200/60'
-                  }`}>
-                    {item.badge === 'HOT' ? '热门' : item.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-
-          {account?.role === 'ADMIN' && (
-            <div className="pt-3 mt-3 border-t border-slate-100">
-              <div className="px-3 pb-1.5 text-[10px] font-semibold text-slate-400 tracking-wider uppercase">系统管理</div>
-              {adminNavItems.map(item => {
+        <nav className="px-3 py-3 space-y-4">
+          {navGroups.map((group, groupIdx) => (
+            <div key={groupIdx} className="space-y-1">
+              <div className="px-3 pb-1 text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+                {group.title}
+              </div>
+              {group.items.map(item => {
                 const isActive = activeNav === item.id;
                 return (
                   <button
                     key={item.id}
                     onClick={() => handleNavClick(item.id)}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer ${
                       isActive 
-                        ? 'bg-slate-900 text-white' 
+                        ? 'bg-slate-900 text-white shadow-sm font-semibold' 
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
                     }`}
                   >
@@ -201,7 +187,45 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <span>{item.label}</span>
                     </div>
                     {item.badge && (
-                      <span className="px-1.5 py-0.5 text-[10px] rounded font-mono font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                      <span className={`px-1.5 py-0.5 text-[10px] rounded-md font-mono font-medium ${
+                        isActive 
+                          ? 'bg-slate-800 text-amber-300' 
+                          : item.id === 'CREDIT_LEDGER'
+                            ? 'bg-amber-50 text-amber-700 border border-amber-200/80'
+                            : 'bg-slate-100 text-slate-600 border border-slate-200/60'
+                      }`}>
+                        {item.badge === 'HOT' ? '热门' : item.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+
+          {account?.role === 'ADMIN' && (
+            <div className="pt-2 border-t border-slate-100 space-y-1">
+              <div className="px-3 pb-1 text-[10px] font-bold text-indigo-500 tracking-wider uppercase">
+                管理和配置
+              </div>
+              {adminNavItems.map(item => {
+                const isActive = activeNav === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleNavClick(item.id)}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer ${
+                      isActive 
+                        ? 'bg-slate-900 text-white shadow-sm font-semibold' 
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2.5">
+                      <span className="shrink-0">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </div>
+                    {item.badge && (
+                      <span className="px-1.5 py-0.5 text-[10px] rounded-md font-mono font-medium bg-amber-50 text-amber-700 border border-amber-200">
                         {item.badge}
                       </span>
                     )}
@@ -215,7 +239,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Tenant Account & Credit Quick Panel in Sidebar Footer */}
       <div className="p-3 border-t border-slate-200/80 bg-slate-50/50">
-        <div className="p-2.5 bg-white rounded-md border border-slate-200 shadow-2xs space-y-2">
+        <div className="p-2.5 bg-white rounded-md border border-slate-200 shadow-sm space-y-2">
           {/* Tenant Profile info */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">

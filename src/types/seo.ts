@@ -26,29 +26,6 @@ export interface SystemServicesConfig {
     timeoutMs: number;
     systemPromptPrefix?: string;
   };
-  searchEngine: {
-    googleIndexing: {
-      enabled: boolean;
-      serviceAccountJson?: string;
-      defaultAction: 'URL_UPDATED' | 'URL_DELETED';
-    };
-    baiduPush: {
-      enabled: boolean;
-      siteDomain: string;
-      token: string;
-      dailyQuotaThreshold?: number;
-    };
-    bingIndexNow: {
-      enabled: boolean;
-      apiKey: string;
-      keyLocation?: string;
-      autoPushOnPublish: boolean;
-    };
-    sitemapPing: {
-      enabled: boolean;
-      engines: string[];
-    };
-  };
   serpData: {
     provider: 'HYBRID_ENGINE' | 'DATAFORSEO' | 'SERPAPI' | 'GOOGLE_CSE';
     dataForSeoLogin?: string;
@@ -67,19 +44,6 @@ export interface SystemServicesConfig {
     imageOrientation: 'landscape' | 'squarish' | 'portrait';
     autoInsertAlt: boolean;
     compressWebp: boolean;
-  };
-  webhookNotification: {
-    enabled: boolean;
-    webhookType: 'FEISHU' | 'DINGTALK' | 'WECHAT_WORK' | 'SLACK' | 'DISCORD' | 'CUSTOM';
-    webhookUrl: string;
-    secretKey?: string;
-    events: {
-      onPublishSuccess: boolean;
-      onTaskFailure: boolean;
-      onLowCreditAlert: boolean;
-      onNewTopupPending: boolean;
-    };
-    lowCreditThreshold: number;
   };
   blockchainGateway: {
     network: 'TRC20';
@@ -202,6 +166,7 @@ export type OpportunityStatus =
   | 'IN_QUALITY_GATE'
   | 'READY_TO_PUBLISH'
   | 'AUTO_PUBLISHED'
+  | 'PUBLISHED'
   | 'MANUAL_REVIEW'
   | 'PAUSED'
   | 'REJECTED';
@@ -227,13 +192,6 @@ export interface IndexingPushStatus {
   responseStatus?: string;
 }
 
-export interface LeadCaptureCtaConfig {
-  enabled: boolean;
-  title: string;
-  buttonText: string;
-  targetUrl: string;
-  calloutNote?: string;
-}
 
 export interface SiteHealthDiagnostics {
   restApiStatus: boolean;
@@ -381,22 +339,17 @@ export interface WordPressSite {
   wpVersion?: string;
   wpUsername?: string;
   wpAppPassword?: string;
-  wpRestEndpoint?: string;
   baiduToken?: string;
-  indexNowKey?: string;
+  googleServiceAccountJson?: string;
   pluginInstalled: boolean;
   whitelistedCategories: string[];
-  leadCaptureCta?: LeadCaptureCtaConfig;
   healthDiagnostics?: SiteHealthDiagnostics;
   gscConnected: boolean;
   ga4Connected: boolean;
   baiduConnected: boolean;
-  autopilotEnabled: boolean;
-  weeklyPublishCap: number;
-  currentWeeklyPublished: number;
+  currentWeeklyPublished?: number;
+  lastWeeklyResetAt?: string;
   calibration: CalibrationStatus;
-  monthlyBudgetLimit: number; // in USD
-  monthlyBudgetUsed: number;
   createdAt: string;
 }
 

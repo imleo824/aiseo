@@ -71,11 +71,6 @@ describe('SEO Pipeline Orchestrator & EventBus', () => {
         gscConnected: true,
         ga4Connected: true,
         baiduConnected: true,
-        autopilotEnabled: true,
-        weeklyPublishCap: 20,
-        currentWeeklyPublished: 3,
-        monthlyBudgetLimit: 100,
-        monthlyBudgetUsed: 20,
         createdAt: new Date().toISOString()
       }
     ];

@@ -105,7 +105,7 @@ export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
       case 'COMPETITOR_ANALYSIS':
         return 'bg-amber-100 text-amber-800 border-amber-200';
       default:
-        return 'bg-slate-100 text-slate-800 border-slate-200';
+        return 'bg-slate-100 text-slate-800 border-slate-200/80';
     }
   };
 
@@ -114,7 +114,7 @@ export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
       
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-1 gap-4">
-        <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-2xs space-y-1">
+        <div className="bg-white border border-slate-200/80 rounded-lg p-5 shadow-sm space-y-1">
           <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
             <span>累计算力扣除</span>
             <Activity className="w-4 h-4 text-rose-500" />
@@ -126,38 +126,42 @@ export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
       </div>
 
       {/* Main Billing Table Card */}
-      <div className="bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden">
+      <div className="bg-white border border-slate-200/80 rounded-lg shadow-sm overflow-hidden">
         
         {/* Table Header */}
         <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center shadow-2xs">
+            <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm shrink-0">
               <Activity className="w-4 h-4 text-rose-400" />
             </span>
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">消耗管理</h2>
+            <div className="space-y-0.5">
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                <span>消耗管理</span>
+              </h2>
+            </div>
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
             {/* Action Filter Pills */}
-            <div className="inline-flex rounded-md bg-slate-100 p-0.5 border border-slate-200 text-xs font-medium">
+            <div className="inline-flex rounded-md bg-slate-100 p-0.5 border border-slate-200/80 text-xs font-medium">
               <button
                 type="button"
                 onClick={() => setActionFilter('ALL')}
-                className={`px-2.5 py-1 rounded-sm transition ${actionFilter === 'ALL' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
+                className={`px-2.5 py-1 rounded-sm transition ${actionFilter === 'ALL' ? 'bg-white text-slate-900 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
               >
                 全部
               </button>
               <button
                 type="button"
                 onClick={() => setActionFilter('AUTOPILOT_CRUISE')}
-                className={`px-2.5 py-1 rounded-sm transition ${actionFilter === 'AUTOPILOT_CRUISE' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
+                className={`px-2.5 py-1 rounded-sm transition ${actionFilter === 'AUTOPILOT_CRUISE' ? 'bg-white text-slate-900 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
               >
                 自动巡航
               </button>
               <button
                 type="button"
                 onClick={() => setActionFilter('DRAFT_GENERATE')}
-                className={`px-2.5 py-1 rounded-sm transition ${actionFilter === 'DRAFT_GENERATE' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
+                className={`px-2.5 py-1 rounded-sm transition ${actionFilter === 'DRAFT_GENERATE' ? 'bg-white text-slate-900 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
               >
                 文章创作
               </button>
@@ -171,7 +175,7 @@ export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
                 placeholder="搜索业务动作/租户..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-md bg-slate-50 focus:bg-white focus:outline-none focus:border-slate-400 w-48 transition"
+                className="pl-8 pr-3 py-1.5 text-xs border border-slate-200/80 rounded-md bg-slate-50 focus:bg-white focus:outline-none focus:border-slate-400 w-48 transition"
               />
             </div>
 
@@ -179,7 +183,7 @@ export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
               type="button"
               onClick={fetchUsages}
               disabled={loading}
-              className="p-1.5 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+              className="p-1.5 rounded-md border border-slate-200/80 text-slate-600 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
               title="刷新账单明细"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-rose-600' : ''}`} />
@@ -226,12 +230,12 @@ export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
                     <td className="py-3.5 px-4 font-mono font-bold text-rose-600 text-sm">
                       <div className="flex items-center gap-0.5">
                         <ArrowDownRight className="w-3.5 h-3.5" />
-                        <span>-{u.creditsDeducted} 积分</span>
+                        <span>-{u.creditsDeducted}</span>
                       </div>
                     </td>
 
                     <td className="py-3.5 px-4 font-mono font-medium text-slate-700">
-                      {(u.remainingCredits || 0).toLocaleString()} 积分
+                      {(u.remainingCredits || 0).toLocaleString()}
                     </td>
 
                     <td className="py-3.5 px-4 font-mono text-[11px] text-slate-400">

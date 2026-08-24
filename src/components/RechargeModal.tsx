@@ -120,7 +120,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
       <div 
         id="recharge-modal-card" 
-        className="relative w-full max-w-lg bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-150"
+        className="relative w-full max-w-lg bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-150"
       >
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80 sticky top-0 z-10">
@@ -143,7 +143,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
           <button 
             id="btn-close-recharge-modal"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition"
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-2xl transition"
           >
             <X className="w-5 h-5" />
           </button>
@@ -239,10 +239,10 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
                       value={customUsdt}
                       onChange={(e) => setCustomUsdt(e.target.value)}
                       placeholder="输入 USDT 数量"
-                      className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-medium focus:bg-white focus:outline-none focus:border-slate-400 transition"
+                      className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 text-xs font-medium focus:bg-white focus:outline-none focus:border-slate-400 transition"
                     />
                   </div>
-                  <div className="text-xs font-bold text-slate-900 px-4 py-2.5 bg-slate-100 rounded-xl border border-slate-200 whitespace-nowrap">
+                  <div className="text-xs font-bold text-slate-900 px-4 py-2.5 bg-slate-100 rounded-2xl border border-slate-200 whitespace-nowrap">
                     到账: {calculateCredits().toLocaleString()} 积分
                   </div>
                 </div>
@@ -263,7 +263,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
             </div>
 
             <div className="flex flex-col sm:flex-row items-center gap-3">
-              <div className="w-24 h-24 bg-white p-1.5 rounded-xl shrink-0 flex items-center justify-center border border-slate-200 shadow-2xs">
+              <div className="w-24 h-24 bg-white p-1.5 rounded-2xl shrink-0 flex items-center justify-center border border-slate-200 shadow-sm">
                 <img 
                   src={currentWallet.qrCodePlaceholder} 
                   alt="USDT Deposit QR" 
@@ -274,13 +274,13 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
 
               <div className="flex-1 w-full space-y-2">
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 px-3 py-2 bg-white rounded-xl border border-slate-200 text-xs font-mono text-slate-800 break-all select-all">
+                  <div className="flex-1 px-3 py-2 bg-white rounded-2xl border border-slate-200 text-xs font-mono text-slate-800 break-all select-all">
                     {currentWallet.address}
                   </div>
                   <button
                     type="button"
                     onClick={handleCopyAddress}
-                    className="p-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl transition flex items-center gap-1 shrink-0 text-xs font-bold cursor-pointer"
+                    className="p-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl transition flex items-center gap-1 shrink-0 text-xs font-bold cursor-pointer"
                     title="复制收款地址"
                   >
                     {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
