@@ -54,6 +54,7 @@ export interface ITenantRepository {
   getCreditTransactions(tenantId: string): CreditTransaction[];
   appendCreditTransaction(tenantId: string, tx: CreditTransaction): Promise<CreditTransaction>;
   consumeCredits(tenantId: string, amount: number, action: CreditActionType, description: string, metadata?: any): Promise<{ success: boolean; balance: number; tx?: CreditTransaction; message?: string }>;
+  refundCredits(tenantId: string, amount: number, action: CreditActionType, reason: string, metadata?: any): Promise<{ success: boolean; balance: number; tx?: CreditTransaction }>;
   rechargeUsdt(tenantId: string, usdtAmount: number, credits: number, txHash: string, network: UsdtNetwork): Promise<{ success: boolean; balance: number; tx: CreditTransaction }>;
   findTenantByEmailOrUsername(identifier: string): { tenantId: string; account: TenantAccount; passwordHash?: string } | undefined;
   createTenantAccount(account: TenantAccount, passwordHash: string): Promise<TenantAccount>;
@@ -67,6 +68,9 @@ export interface ITenantRepository {
   getTasks(tenantId: string): AutomatedTask[];
   saveTask(tenantId: string, task: AutomatedTask): Promise<AutomatedTask>;
   deleteTask(tenantId: string, taskId: string): Promise<boolean>;
+  getActionCost(action: CreditActionType | string, defaultCost: number): number;
+  isActionEnabled?(action: CreditActionType | string): boolean;
+  getPricingConfig(): any;
   appendAuditLog(tenantId: string, log: AuditLogItem): Promise<void>;
   appendBaiduLog(tenantId: string, log: BaiduSubmissionLog): Promise<void>;
 }

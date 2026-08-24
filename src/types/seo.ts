@@ -2,11 +2,109 @@ export type Language = 'zh-CN' | 'en' | 'en-US';
 
 export type NavItem = 
   | 'DASHBOARD'
+  | 'KEYWORD_RADAR'
   | 'AUTOPILOT_TASKS'
   | 'SITE_MANAGEMENT'
   | 'AUDIT_LEDGER'
   | 'CREDIT_LEDGER'
-  | 'PRICING_CONFIG';
+  | 'PRICING_CONFIG'
+  | 'SYSTEM_SERVICES_CONFIG'
+  | 'TENANT_MANAGEMENT'
+  | 'SYSTEM_PAYMENT_MANAGEMENT'
+  | 'SYSTEM_BILLING_MANAGEMENT';
+
+export interface SystemServicesConfig {
+  aiEngine: {
+    provider: 'GEMINI' | 'OPENAI_COMPATIBLE' | 'AZURE_OPENAI';
+    geminiModel: string;
+    fallbackModel?: string;
+    temperature: number;
+    maxOutputTokens: number;
+    customEndpoint?: string;
+    customApiKey?: string;
+    maxConcurrency: number;
+    timeoutMs: number;
+    systemPromptPrefix?: string;
+  };
+  searchEngine: {
+    googleIndexing: {
+      enabled: boolean;
+      serviceAccountJson?: string;
+      defaultAction: 'URL_UPDATED' | 'URL_DELETED';
+    };
+    baiduPush: {
+      enabled: boolean;
+      siteDomain: string;
+      token: string;
+      dailyQuotaThreshold?: number;
+    };
+    bingIndexNow: {
+      enabled: boolean;
+      apiKey: string;
+      keyLocation?: string;
+      autoPushOnPublish: boolean;
+    };
+    sitemapPing: {
+      enabled: boolean;
+      engines: string[];
+    };
+  };
+  serpData: {
+    provider: 'HYBRID_ENGINE' | 'DATAFORSEO' | 'SERPAPI' | 'GOOGLE_CSE';
+    dataForSeoLogin?: string;
+    dataForSeoPassword?: string;
+    serpApiKey?: string;
+    googleCseKey?: string;
+    googleCseCx?: string;
+    defaultLocation: string;
+    defaultLanguage: string;
+    cacheTtlHours: number;
+  };
+  mediaService: {
+    imageProvider: 'GEMINI_IMAGEN' | 'UNSPLASH' | 'PEXELS' | 'LOCAL_PLACEHOLDER';
+    unsplashAccessKey?: string;
+    pexelsApiKey?: string;
+    imageOrientation: 'landscape' | 'squarish' | 'portrait';
+    autoInsertAlt: boolean;
+    compressWebp: boolean;
+  };
+  webhookNotification: {
+    enabled: boolean;
+    webhookType: 'FEISHU' | 'DINGTALK' | 'WECHAT_WORK' | 'SLACK' | 'DISCORD' | 'CUSTOM';
+    webhookUrl: string;
+    secretKey?: string;
+    events: {
+      onPublishSuccess: boolean;
+      onTaskFailure: boolean;
+      onLowCreditAlert: boolean;
+      onNewTopupPending: boolean;
+    };
+    lowCreditThreshold: number;
+  };
+  blockchainGateway: {
+    network: 'TRC20';
+    tronGridApiKey?: string;
+    customRpcUrl?: string;
+    requiredConfirmations: number;
+    autoScanIntervalSeconds: number;
+  };
+  networkPolicy: {
+    requestTimeoutMs: number;
+    maxRetries: number;
+    crawlerUserAgent: string;
+    concurrencyLimitPerSite: number;
+  };
+}
+
+export interface ServiceConnectionTestResult {
+  service: string;
+  success: boolean;
+  latencyMs: number;
+  statusCode?: number;
+  message: string;
+  details?: Record<string, any>;
+  testedAt: string;
+}
 
 export type UsdtNetwork = 'TRC20';
 
@@ -35,7 +133,7 @@ export interface PricingConfig {
   packages: UsdtPackage[];
 }
 
-export type CreditTransactionType = 'RECHARGE' | 'CONSUME' | 'REFUND' | 'BONUS';
+export type CreditTransactionType = 'RECHARGE' | 'CONSUME';
 
 export type CreditActionType = 
   | 'USDT_TOPUP'
@@ -44,7 +142,7 @@ export type CreditActionType =
   | 'AUTOPILOT_CRUISE'
   | 'COMPETITOR_ANALYSIS'
   | 'SITE_AUDIT'
-  | 'REGISTER_BONUS';
+  | 'ADMIN_ADJUSTMENT';
 
 export interface CreditTransaction {
   id: string;
@@ -58,6 +156,9 @@ export interface CreditTransaction {
   txHash?: string;
   usdtAmount?: number;
   network?: UsdtNetwork;
+  status?: 'CONFIRMED' | 'PENDING' | 'REJECTED';
+  confirmedAt?: string;
+  confirmedBy?: string;
   metadata?: {
     siteId?: string;
     siteName?: string;
@@ -259,6 +360,7 @@ export interface AutomatedTask {
   scheduleTime: string;
   targetKeywordTopic: string;
   articleCountPerRun: number;
+  totalArticles?: number; // 累计文章
   status: 'ACTIVE' | 'PAUSED';
   lastRunAt?: string;
   nextRunAt: string;
@@ -369,4 +471,29 @@ export interface CompetitorAttackAnalysis {
   competitorWeaknesses: string[];
   attackKeywords: CompetitorAttackKeyword[];
   strategicAdvice: string;
+}
+
+export type KeywordVulnerabilityType = 
+  | 'KGR_GOLD'                  // 🟢 KGR黄金词 (<0.25)
+  | 'SERP_FORUM_VULNERABILITY'   // ⚡ SERP漏洞 (Reddit/知乎/论坛霸榜)
+  | 'PAIN_POINT_LONGTAIL'       // 🎯 痛点长尾词 (零搜索量假象/高转化)
+  | 'COMMERCIAL_CONVERSION'     // 💰 商业调查高转化词 (对比评测/替代方案)
+  | 'CONTENT_DECAY_EXPIRED';     // ⌛ 搜索结果过时超车词
+
+export interface KeywordOpportunityItem {
+  id: string;
+  keyword: string;
+  searchVolume: number;           // 月估算搜索量
+  kd: number;                    // 关键词难度 (0-100)
+  kgrIndex: number;              // KGR 黄金比例 (Allintitle/Volume)
+  serpVulnerabilityScore: number;// SERP漏洞指数 (0-100)
+  commercialIntentScore: number; // 商业转化意图 (0-100)
+  roiScore: number;              // 综合 ROI 性价比得分 (0-100)
+  vulnerabilityType: KeywordVulnerabilityType;
+  vulnerabilityLabel: string;
+  serpWeaknesses: string[];       // 扫描到的 SERP 漏洞列表
+  recommendedTitle: string;
+  recommendedAngle: string;
+  recommendedH2s: string[];
+  searchIntent: SearchIntentType;
 }

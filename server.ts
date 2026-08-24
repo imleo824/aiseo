@@ -9,14 +9,16 @@ import { fileTenantRepository } from "./server/infrastructure/persistence/fileTe
 import { geminiCircuitBreaker, indexingCircuitBreaker } from "./server/infrastructure/resilience/circuitBreaker";
 import { serpAnalysisCache } from "./server/utils/lruCache";
 import { cronScheduler } from "./server/application/cronScheduler";
+import { webhookNotifier } from "./server/application/webhookNotifier";
 import { logger } from "./server/utils/logger";
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Start background cron scheduler
+  // Start background cron scheduler & webhook event listener
   cronScheduler.start();
+  webhookNotifier.init();
 
   // Security Headers Middleware
   app.use((_req: Request, res: Response, next: NextFunction) => {

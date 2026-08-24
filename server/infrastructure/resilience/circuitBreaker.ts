@@ -18,6 +18,7 @@ export class CircuitBreaker {
   private failureCount: number = 0;
   private successCount: number = 0;
   private lastFailureTime: number = 0;
+  private halfOpenProbeInFlight: boolean = false;
   private readonly failureThreshold: number;
   private readonly recoveryTimeoutMs: number;
   public readonly name: string;
@@ -33,6 +34,7 @@ export class CircuitBreaker {
       const now = Date.now();
       if (now - this.lastFailureTime > this.recoveryTimeoutMs) {
         this.state = CircuitState.HALF_OPEN;
+        this.halfOpenProbeInFlight = false;
         logger.info('CIRCUIT_BREAKER', `[${this.name}] Transitioned from OPEN to HALF_OPEN`);
       }
     }
@@ -50,6 +52,17 @@ export class CircuitBreaker {
       throw new CircuitBreakerError(`[${this.name}] Circuit is OPEN. Operation short-circuited to protect downstream service.`);
     }
 
+    if (currentState === CircuitState.HALF_OPEN) {
+      if (this.halfOpenProbeInFlight) {
+        logger.warn('CIRCUIT_BREAKER', `[${this.name}] Circuit HALF_OPEN probe already in flight, rejecting concurrent probe.`);
+        if (fallback) {
+          return fallback();
+        }
+        throw new CircuitBreakerError(`[${this.name}] Circuit HALF_OPEN probe already in flight. Concurrent execution rejected.`);
+      }
+      this.halfOpenProbeInFlight = true;
+    }
+
     try {
       const result = await fn();
       this.onSuccess();
@@ -61,6 +74,10 @@ export class CircuitBreaker {
         return fallback();
       }
       throw error;
+    } finally {
+      if (currentState === CircuitState.HALF_OPEN) {
+        this.halfOpenProbeInFlight = false;
+      }
     }
   }
 

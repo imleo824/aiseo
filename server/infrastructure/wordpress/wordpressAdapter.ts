@@ -1,6 +1,7 @@
 import { WordPressSite } from '../../../src/types/seo';
 import { IWordPressPublisher } from '../../domain/ports';
 import { logger } from '../../utils/logger';
+import { generateSeoSlug } from '../../utils/validator';
 
 export class WordPressAdapter implements IWordPressPublisher {
   private getBaseEndpoint(site: WordPressSite): string {
@@ -141,16 +142,14 @@ export class WordPressAdapter implements IWordPressPublisher {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 12000);
 
+        const targetSlug = draft.slug || generateSeoSlug(draft.title);
         const payload: any = {
           title: draft.title,
           content: draft.contentHtml,
           excerpt: draft.summary || '',
+          slug: targetSlug,
           status: postStatus
         };
-
-        if (draft.slug) {
-          payload.slug = draft.slug;
-        }
 
         const response = await fetch(`${baseEndpoint}/wp/v2/posts`, {
           method: 'POST',
@@ -185,9 +184,7 @@ export class WordPressAdapter implements IWordPressPublisher {
 
     const fallbackPostId = Math.floor(Math.random() * 80000) + 10000;
     const cleanDomain = site.domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const cleanSlug = encodeURIComponent(
-      draft.title.toLowerCase().replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '-').slice(0, 40)
-    );
+    const cleanSlug = draft.slug || generateSeoSlug(draft.title);
     const fallbackUrl = `https://${cleanDomain}/${cleanSlug || `post-${fallbackPostId}`}/`;
 
     profiler.done('Fallback sandbox publish');

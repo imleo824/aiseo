@@ -38,7 +38,7 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
     { num: 4, title: '长文智造', icon: <FileText className="w-4 h-4" /> },
     { num: 5, title: '质量核验', icon: <Cpu className="w-4 h-4" /> },
     { num: 6, title: '智能内链', icon: <Network className="w-4 h-4" /> },
-    { num: 7, title: 'WP发布', icon: <Send className="w-4 h-4" /> },
+    { num: 7, title: '站点发布', icon: <Send className="w-4 h-4" /> },
     { num: 8, title: '引擎推送', icon: <Share2 className="w-4 h-4" /> }
   ];
 
@@ -56,7 +56,7 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
           return (
             <div
               key={s.num}
-              className={`p-3 sm:p-3.5 rounded-2xl border text-center transition-all duration-200 flex flex-col items-center justify-center gap-1.5 ${
+              className={`p-3 sm:p-3.5 rounded-xl border text-center transition-all duration-200 flex flex-col items-center justify-center gap-1.5 ${
                 isActive
                   ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-emerald-500/30'
                   : isCompleted
@@ -64,7 +64,7 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
                   : 'bg-slate-50/80 text-slate-600 border-slate-200/80'
               }`}
             >
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition ${
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition ${
                 isActive 
                   ? 'bg-slate-800 text-emerald-400' 
                   : isCompleted 
@@ -102,7 +102,7 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
 
       {/* Terminal Log Stream */}
       {executionLogs.length > 0 && (
-        <div className="bg-slate-950 text-slate-200 font-mono text-xs sm:text-sm rounded-2xl overflow-hidden border border-slate-800 shadow-lg">
+        <div className="bg-slate-950 text-slate-200 font-mono text-xs sm:text-sm rounded-xl overflow-hidden border border-slate-800 shadow-lg">
           <div 
             onClick={() => setShowLogs(!showLogs)}
             className="px-4 py-3 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between cursor-pointer select-none"

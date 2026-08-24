@@ -14,7 +14,9 @@ import {
   TenantAccount,
   CreditTransaction,
   UsdtPackage,
-  UsdtNetwork
+  UsdtNetwork,
+  SystemServicesConfig,
+  ServiceConnectionTestResult
 } from "../types/seo";
 
 export class ApiService {
@@ -23,7 +25,7 @@ export class ApiService {
 
   constructor(tenantId: string = 'tenant-a') {
     this.tenantId = tenantId;
-    this.authToken = localStorage.getItem('autopilot_auth_token');
+    this.authToken = typeof localStorage !== 'undefined' ? localStorage.getItem('autopilot_auth_token') : null;
   }
 
   public setTenantId(tenantId: string) {
@@ -43,7 +45,7 @@ export class ApiService {
     return this.authToken;
   }
 
-  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  private async request<T>(path: string, options: RequestInit = {}, retries = 2): Promise<T> {
     const headers = new Headers(options.headers);
     if (this.authToken) {
       headers.set('Authorization', `Bearer ${this.authToken}`);
@@ -53,24 +55,43 @@ export class ApiService {
       headers.set('Content-Type', 'application/json');
     }
 
-    try {
-      const response = await fetch(path, { ...options, headers });
-      const data = await response.json().catch(() => null);
+    let attempt = 0;
+    while (attempt <= retries) {
+      try {
+        const response = await fetch(path, { ...options, headers });
+        const data = await response.json().catch(() => null);
 
-      if (!response.ok) {
-        const errorMsg = data?.error?.message || data?.error || data?.message || `API Error: ${response.status} ${response.statusText}`;
-        const error = new Error(errorMsg);
-        (error as any).status = response.status;
-        (error as any).code = data?.error?.code;
-        (error as any).details = data?.error?.details;
-        throw error;
+        if (!response.ok) {
+          const isTransient = [502, 503, 504].includes(response.status);
+          if (isTransient && attempt < retries) {
+            attempt++;
+            const backoffMs = Math.pow(2, attempt) * 200;
+            await new Promise(r => setTimeout(r, backoffMs));
+            continue;
+          }
+
+          const errorMsg = data?.error?.message || data?.error || data?.message || `API Error: ${response.status} ${response.statusText}`;
+          const error = new Error(errorMsg);
+          (error as any).status = response.status;
+          (error as any).code = data?.error?.code;
+          (error as any).details = data?.error?.details;
+          throw error;
+        }
+
+        return data as T;
+      } catch (err: any) {
+        const isNetworkErr = !err.status && attempt < retries;
+        if (isNetworkErr) {
+          attempt++;
+          const backoffMs = Math.pow(2, attempt) * 200;
+          await new Promise(r => setTimeout(r, backoffMs));
+          continue;
+        }
+        console.error(`[ApiService] Request to ${path} failed (attempt ${attempt + 1}):`, err);
+        throw err;
       }
-
-      return data as T;
-    } catch (err: any) {
-      console.error(`[ApiService] Request to ${path} failed:`, err);
-      throw err;
     }
+    throw new Error(`[ApiService] Max retries reached for ${path}`);
   }
 
   // Auth & Tenant
@@ -126,6 +147,30 @@ export class ApiService {
     });
   }
 
+  public getSystemServicesConfig() {
+    return this.request<{ success: boolean; config: SystemServicesConfig }>('/api/system/services-config');
+  }
+
+  public updateSystemServicesConfig(config: Partial<SystemServicesConfig>) {
+    return this.request<{ success: boolean; message: string; config: SystemServicesConfig }>('/api/system/services-config', {
+      method: 'PUT',
+      body: JSON.stringify(config)
+    });
+  }
+
+  public resetSystemServicesConfig() {
+    return this.request<{ success: boolean; message: string; config: SystemServicesConfig }>('/api/system/services-config/reset', {
+      method: 'POST'
+    });
+  }
+
+  public testServiceConnection(serviceType: string, customParams?: Record<string, any>) {
+    return this.request<ServiceConnectionTestResult>('/api/system/services-config/test-connection', {
+      method: 'POST',
+      body: JSON.stringify({ serviceType, customParams })
+    });
+  }
+
   public getCreditBalance() {
     return this.request<{ success: boolean; credits: number; totalRechargedUsdt: number; totalConsumedCredits: number; account: TenantAccount }>('/api/credits/balance');
   }
@@ -138,6 +183,39 @@ export class ApiService {
     return this.request<{ success: boolean; message: string; credits: number; transaction: CreditTransaction }>('/api/credits/recharge', {
       method: 'POST',
       body: JSON.stringify(data)
+    });
+  }
+
+  public getAllTransactions() {
+    return this.request<{ success: boolean; transactions: CreditTransaction[] }>('/api/admin/transactions');
+  }
+
+  public getAllUsages() {
+    return this.request<{ success: boolean; usages: Array<{
+      id: string;
+      tenantId: string;
+      siteId?: string;
+      taskId?: string;
+      action: string;
+      actionName: string;
+      creditsDeducted: number;
+      remainingCredits: number;
+      createdAt: string;
+      description?: string;
+    }> }>('/api/admin/usages');
+  }
+
+  public adjustTenantCredits(targetTenantId: string, deltaCredits: number, reason: string) {
+    return this.request<{ success: boolean; message: string; balance: number; account: TenantAccount; transaction: CreditTransaction }>('/api/admin/tenants/adjust-credits', {
+      method: 'POST',
+      body: JSON.stringify({ targetTenantId, deltaCredits, reason })
+    });
+  }
+
+  public confirmPaymentStatus(txId: string, status: 'CONFIRMED' | 'PENDING' | 'REJECTED', targetTenantId?: string) {
+    return this.request<{ success: boolean; message: string; transaction: CreditTransaction }>('/api/admin/payments/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ txId, status, targetTenantId })
     });
   }
 
@@ -211,6 +289,18 @@ export class ApiService {
     return this.request<{ analysis: CompetitorAttackAnalysis }>(`/api/sites/${siteId}/competitor-attack`, {
       method: 'POST',
       body: JSON.stringify({ competitor })
+    });
+  }
+
+  public serpScan(data: { seedKeyword: string; location?: string }) {
+    return this.request<{ 
+      success: boolean; 
+      source?: string; 
+      quotaStatus?: any; 
+      opportunities: any[] 
+    }>('/api/keywords/serp-scan', {
+      method: 'POST',
+      body: JSON.stringify(data)
     });
   }
 

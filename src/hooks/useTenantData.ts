@@ -217,11 +217,18 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
       throw new Error(`当前积分余额 (${account.credits} 积分) 不足 20 积分，请先充值 USDT 兑换积分。`);
     }
 
-    addLog(`[准备启动] 正在为 ${targetSites.length} 个站点初始化全流程自动发文流水线...`);
+    let modeTitle = '自定义关键词';
+    if (keyword?.includes('[二次创作/改写]')) {
+      modeTitle = '内容二次创作 / 洗稿降重';
+    } else if (keyword?.includes('[竞品对标截流]')) {
+      modeTitle = '对标竞品截流';
+    }
+
+    addLog(`[准备启动] 模式：【${modeTitle}】· 正在为 ${targetSites.length} 个站点初始化全流程自动发文流水线...`);
     setActiveStep(1);
 
     // Step 1: SERP 意图发现
-    addLog(`[步骤 1/8 · 意图挖掘] 分析全网搜索热点与需求缺口...`);
+    addLog(`[步骤 1/8 · 意图挖掘] (${modeTitle}) 分析全网搜索热点、行业需求缺口与关键词结构...`);
     const opps: Opportunity[] = [];
     for (const site of targetSites) {
       const defaultKeyword = keyword || (site.siteLanguage === 'zh-CN' ? 'DeepSeek 企业级私有化微调' : 'Kubernetes FinOps Best Practices');
@@ -234,12 +241,12 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
 
     // Step 2: 竞品反向拆解
     setActiveStep(2);
-    addLog(`[步骤 2/8 · 竞品穿透] 深度解析头部竞品排名页面与核心关键词...`);
+    addLog(`[步骤 2/8 · 竞品穿透] (${modeTitle}) 深度解析头部竞品排名页面、盲区与核心长尾词...`);
     await new Promise(r => setTimeout(r, 400));
 
     // Step 3: 大纲生成
     setActiveStep(3);
-    addLog(`[步骤 3/8 · 大纲生成] 结合企业知识库，智能生成 E-E-A-T 深度文章大纲...`);
+    addLog(`[步骤 3/8 · 大纲生成] (${modeTitle}) 结合企业知识库与 E-E-A-T 规范，智能生成文章大纲...`);
     for (const opp of opps) {
       await api.generateBrief(opp.id);
     }
@@ -247,7 +254,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
 
     // Step 4: 3000+ 字 SEO 创作
     setActiveStep(4);
-    addLog(`[步骤 4/8 · 深度长文创作] 3000+ 字深度长文自动成稿，注入 Schema 标记与内链...`);
+    addLog(`[步骤 4/8 · 深度长文创作] (${modeTitle}) 3000+ 字深度长文自动成稿，注入 Schema 标记与内链...`);
     const draftsList: ArticleDraft[] = [];
     for (const opp of opps) {
       const draftRes = await api.generateDraft(opp.id);
@@ -267,15 +274,15 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     addLog(`[步骤 6/8 · 质量门禁] 执行 22 项 SEO 严格质量门禁检测...`);
     await new Promise(r => setTimeout(r, 400));
 
-    // Step 7: WordPress REST API 发布
+    // Step 7: 站点发布 (支持多 CMS 引擎)
     setActiveStep(7);
-    addLog(`[步骤 7/8 · 官网发布] 通过 REST API 自动发布上线至 WordPress 站点...`);
+    addLog(`[步骤 7/8 · 站点发布] 通过 API / Webhook 自动发布上线至目标站点...`);
     for (const draft of draftsList) {
       await api.approveAndPublishDraft(draft.id);
     }
     await new Promise(r => setTimeout(r, 400));
 
-    // Step 8: 百度 API & IndexNow 推送
+    // Step 8: 百度 API & Google Indexing 推送
     setActiveStep(8);
     let pushedCount = 0;
     for (const s of targetSites) {
@@ -313,7 +320,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     name: string; 
     domain: string; 
     niche?: string; 
-    siteType?: SiteType;
+    siteType?: SiteType; 
     siteLanguage?: Language | string;
     wpUsername?: string;
     wpAppPassword?: string;
@@ -321,9 +328,6 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     baiduToken?: string;
     indexNowKey?: string;
   }) => {
-    if (account && account.credits < 5) {
-      throw new Error(`当前积分余额 (${account.credits} 积分) 不足 5 积分，无法绑定新站点，请先充值 USDT。`);
-    }
     const res = await api.createSite({
       ...siteData,
       niche: siteData.niche || '通用行业',

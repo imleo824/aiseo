@@ -410,7 +410,7 @@ export const initialDrafts: ArticleDraft[] = [
       indexNowBroadcasted: true,
       googleSitemapPinged: true,
       pushedTimestamp: '2026-08-01T10:00:15Z',
-      responseStatus: '200 OK (百度+IndexNow秒推已索引)'
+      responseStatus: '200 OK (百度+Google Indexing 秒推已索引)'
     },
     summary: '针对 RAG 知识问答召回不准的核心痛点，详述 Parent-Document 递归切分、BGE-Reranker-v2 深度重排与语义去重的工业级调优策略。',
     contentHtml: `
@@ -461,7 +461,7 @@ export const initialDrafts: ArticleDraft[] = [
       indexNowBroadcasted: true,
       googleSitemapPinged: true,
       pushedTimestamp: '2026-08-02T11:20:10Z',
-      responseStatus: '200 OK (Google IndexNow Instant Broadcast)'
+      responseStatus: '200 OK (Google Indexing API Instant Submission)'
     },
     summary: 'A deep architectural dive into setting up zero-trust cross-cluster service discovery and eBPF-based L4/L7 routing across multi-cloud Kubernetes clusters using Cilium ClusterMesh.',
     contentHtml: `

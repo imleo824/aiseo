@@ -31,7 +31,7 @@ describe('TenantStore (FileTenantRepository)', () => {
     expect(data.automatedTasks).toEqual([]);
   });
 
-  it('should save data correctly', () => {
+  it('should save data correctly', async () => {
     vi.spyOn(fs, 'existsSync').mockReturnValue(false);
     const writeSpy = vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
 
@@ -54,7 +54,8 @@ describe('TenantStore (FileTenantRepository)', () => {
       }] 
     };
     
-    fileTenantRepository.saveTenantData('tenant-b', newData);
+    await fileTenantRepository.saveTenantData('tenant-b', newData);
+    await fileTenantRepository.forceFlush();
     
     const updatedData = fileTenantRepository.getTenantData('tenant-b');
     expect(updatedData.automatedTasks.length).toBe(1);

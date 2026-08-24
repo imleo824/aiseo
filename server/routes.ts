@@ -16,6 +16,7 @@ import {
   getSiteOpportunities, 
   scanOpportunities, 
   scanCompetitorAttack,
+  serpScan,
   generateBrief, 
   generateArticle,
   approveAndPublishDraft, 
@@ -28,7 +29,8 @@ import {
   getBaiduLogs, 
   getGrowthMetrics,
   authController,
-  creditController
+  creditController,
+  systemServiceConfigController
 } from "./controllers";
 
 export const apiRouter = Router();
@@ -46,6 +48,18 @@ apiRouter.post("/credits/config/reset", asyncHandler(creditController.resetConfi
 apiRouter.get("/credits/balance", asyncHandler(creditController.getBalance));
 apiRouter.get("/credits/transactions", asyncHandler(creditController.getTransactions));
 apiRouter.post("/credits/recharge", asyncHandler(creditController.recharge));
+
+// Admin Global Management Routes
+apiRouter.get("/admin/transactions", asyncHandler(creditController.getAllTransactions));
+apiRouter.get("/admin/usages", asyncHandler(creditController.getAllUsages));
+apiRouter.post("/admin/tenants/adjust-credits", asyncHandler(creditController.adjustCredits));
+apiRouter.post("/admin/payments/confirm", asyncHandler(creditController.confirmPayment));
+
+// System Services & API Configuration Routes (Admin Only)
+apiRouter.get("/system/services-config", asyncHandler(systemServiceConfigController.getServicesConfig));
+apiRouter.put("/system/services-config", asyncHandler(systemServiceConfigController.updateServicesConfig));
+apiRouter.post("/system/services-config/reset", asyncHandler(systemServiceConfigController.resetServicesConfig));
+apiRouter.post("/system/services-config/test-connection", asyncHandler(systemServiceConfigController.testServiceConnection));
 
 // Tasks Routes
 apiRouter.get("/tasks", asyncHandler(getTasks));
@@ -67,6 +81,7 @@ apiRouter.post("/sites/:id/test-connection", asyncHandler(testSiteConnection));
 apiRouter.get("/sites/:id/opportunities", asyncHandler(getSiteOpportunities));
 apiRouter.post("/sites/:id/scan-opportunities", asyncHandler(scanOpportunities));
 apiRouter.post("/sites/:id/competitor-attack", asyncHandler(scanCompetitorAttack));
+apiRouter.post("/keywords/serp-scan", asyncHandler(serpScan));
 apiRouter.post("/opportunities/:oppId/generate-brief", asyncHandler(generateBrief));
 apiRouter.post("/opportunities/:oppId/generate-article", asyncHandler(generateArticle));
 

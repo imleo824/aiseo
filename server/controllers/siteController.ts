@@ -61,6 +61,11 @@ export const createSite = async (req: TenantRequest, res: Response) => {
   }
 
   // 扣除积分 (新增站点诊断与初始化接入根据管理员配置动态扣除，默认 5 积分)
+  if (!fileTenantRepository.isActionEnabled('SITE_AUDIT')) {
+    res.status(403).json({ success: false, message: '“站点添加与深度连接体检”功能当前已被系统管理员暂停使用。' });
+    return;
+  }
+
   const auditCost = fileTenantRepository.getActionCost('SITE_AUDIT', 5);
   const creditRes = await fileTenantRepository.consumeCredits(
     req.tenantId,
@@ -75,56 +80,67 @@ export const createSite = async (req: TenantRequest, res: Response) => {
     return;
   }
 
-  const newSite: WordPressSite = {
-    id: `site-${Date.now()}`,
-    name: (name && String(name).trim()) || cleanDomain,
-    domain: cleanDomain,
-    niche: (niche && String(niche).trim()) || '通用行业',
-    siteType: siteType || 'WORDPRESS',
-    siteLanguage: siteLanguage || 'zh-CN',
-    pagesCount: 120,
-    connectorStatus: 'CONNECTED',
-    wpVersion: '6.7.1',
-    wpUsername: wpUsername ? String(wpUsername).trim() : undefined,
-    wpAppPassword: wpAppPassword ? String(wpAppPassword).trim() : undefined,
-    wpRestEndpoint: wpRestEndpoint ? String(wpRestEndpoint).trim() : undefined,
-    baiduToken: baiduToken ? String(baiduToken).trim() : undefined,
-    indexNowKey: indexNowKey ? String(indexNowKey).trim() : undefined,
-    pluginInstalled: true,
-    whitelistedCategories: ['技术干货', '行业新闻'],
-    gscConnected: true,
-    ga4Connected: true,
-    baiduConnected: Boolean(baiduToken) || siteLanguage === 'zh-CN',
-    autopilotEnabled: false,
-    weeklyPublishCap: Number(weeklyPublishCap) || 2,
-    currentWeeklyPublished: 0,
-    calibration: {
-      isCalibrating: true,
-      daysRemaining: 14,
-      totalApprovedRequired: 10,
-      approvedCount: 0,
-      rejectedCount: 0,
-      zeroFactErrorStreak: 0,
-      autoPublishUnlocked: false
-    },
-    monthlyBudgetLimit: Number(monthlyBudgetLimit) || 100,
-    monthlyBudgetUsed: 0,
-    createdAt: new Date().toISOString()
-  };
+  try {
+    const newSite: WordPressSite = {
+      id: `site-${Date.now()}`,
+      name: (name && String(name).trim()) || cleanDomain,
+      domain: cleanDomain,
+      niche: (niche && String(niche).trim()) || '通用行业',
+      siteType: siteType || 'WORDPRESS',
+      siteLanguage: siteLanguage || 'zh-CN',
+      pagesCount: 120,
+      connectorStatus: 'CONNECTED',
+      wpVersion: '6.7.1',
+      wpUsername: wpUsername ? String(wpUsername).trim() : undefined,
+      wpAppPassword: wpAppPassword ? String(wpAppPassword).trim() : undefined,
+      wpRestEndpoint: wpRestEndpoint ? String(wpRestEndpoint).trim() : undefined,
+      baiduToken: baiduToken ? String(baiduToken).trim() : undefined,
+      indexNowKey: indexNowKey ? String(indexNowKey).trim() : undefined,
+      pluginInstalled: true,
+      whitelistedCategories: ['技术干货', '行业新闻'],
+      gscConnected: true,
+      ga4Connected: true,
+      baiduConnected: Boolean(baiduToken) || siteLanguage === 'zh-CN',
+      autopilotEnabled: false,
+      weeklyPublishCap: Number(weeklyPublishCap) || 2,
+      currentWeeklyPublished: 0,
+      calibration: {
+        isCalibrating: true,
+        daysRemaining: 14,
+        totalApprovedRequired: 10,
+        approvedCount: 0,
+        rejectedCount: 0,
+        zeroFactErrorStreak: 0,
+        autoPublishUnlocked: false
+      },
+      monthlyBudgetLimit: Number(monthlyBudgetLimit) || 100,
+      monthlyBudgetUsed: 0,
+      createdAt: new Date().toISOString()
+    };
 
-  await fileTenantRepository.saveSite(req.tenantId, newSite);
-  await fileTenantRepository.appendAuditLog(req.tenantId, {
-    id: `log-${Date.now()}`,
-    siteId: newSite.id,
-    timestamp: new Date().toISOString(),
-    actor: 'USER_ADMIN',
-    action: 'CONNECT_WORDPRESS_SITE',
-    target: newSite.name,
-    result: 'SUCCESS',
-    details: `已接入 WordPress 独立站: ${newSite.domain}，初始化 14 天校准期模式。`
-  });
+    await fileTenantRepository.saveSite(req.tenantId, newSite);
+    await fileTenantRepository.appendAuditLog(req.tenantId, {
+      id: `log-${Date.now()}`,
+      siteId: newSite.id,
+      timestamp: new Date().toISOString(),
+      actor: 'USER_ADMIN',
+      action: 'CONNECT_WORDPRESS_SITE',
+      target: newSite.name,
+      result: 'SUCCESS',
+      details: `已接入 WordPress 独立站: ${newSite.domain}，初始化 14 天校准期模式。`
+    });
 
-  res.status(201).json({ site: newSite });
+    res.status(201).json({ site: newSite });
+  } catch (err: any) {
+    await fileTenantRepository.refundCredits(
+      req.tenantId,
+      auditCost,
+      'SITE_AUDIT',
+      `站点接入失败自动退款 (${cleanDomain})`,
+      { domain: cleanDomain, error: err?.message }
+    );
+    throw err;
+  }
 };
 
 export const updateSite = async (req: TenantRequest, res: Response) => {

@@ -64,7 +64,7 @@ export const approveAndPublishDraft = async (req: TenantRequest, res: Response) 
       pushDetail = baiduRes.message;
     }
 
-    await searchEngineAdapter.pushToIndexNow(site.domain, site.indexNowKey, [draft.publishedUrl]);
+    await searchEngineAdapter.pushToGoogle(site.domain, [draft.publishedUrl]);
   }
 
   if (site) {
@@ -92,7 +92,7 @@ export const approveAndPublishDraft = async (req: TenantRequest, res: Response) 
     action: 'MANUAL_APPROVE_PUBLISH',
     target: draft.title,
     result: 'SUCCESS',
-    details: `用户人工审核通过并推送至 WordPress！URL: ${draft.publishedUrl} · ${pushDetail} (${isFallback ? '沙盒协议' : 'REST API 实时写入'})`
+    details: `用户人工审核通过并推送至目标站点！URL: ${draft.publishedUrl} · ${pushDetail} (${isFallback ? '沙盒协议' : 'REST API 实时写入'})`
   });
 
   res.json({ draft, site, publishedUrl, wpPostId, isFallback });

@@ -22,7 +22,7 @@ export const CompetitorAnalysisSection: React.FC<CompetitorAnalysisSectionProps>
   isRunning
 }) => {
   return (
-    <div className="p-5 rounded-2xl bg-rose-50/40 border border-rose-200/90 space-y-3 animate-in fade-in duration-150">
+    <div className="p-4 sm:p-5 rounded-xl bg-slate-50/60 border border-slate-200 space-y-3 animate-in fade-in duration-150">
       <div className="text-xs text-slate-600">
         输入竞品网址，系统将自动分析其薄弱点并直接生成截流文章：
       </div>
@@ -35,14 +35,14 @@ export const CompetitorAnalysisSection: React.FC<CompetitorAnalysisSectionProps>
           onKeyDown={(e) => {
             if (e.key === 'Enter') onAnalyze();
           }}
-          placeholder="输入竞品域名 (如 notion.so, shopify.com, clickup.com)"
-          className="flex-1 px-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm focus:outline-none focus:border-rose-400"
+          placeholder="输入竞品域名/文章链接 (如 https://notion.so/blog/...)"
+          className="flex-1 px-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm focus:outline-none focus:border-slate-400"
         />
         <button
           type="button"
           onClick={onAnalyze}
           disabled={isAnalyzing || !competitorInput.trim()}
-          className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 flex items-center gap-1.5"
+          className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
         >
           {isAnalyzing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
           <span>提炼对标词</span>
@@ -59,10 +59,10 @@ export const CompetitorAnalysisSection: React.FC<CompetitorAnalysisSectionProps>
                 type="button"
                 onClick={() => onSelectAttackKeyword(kw.keyword)}
                 disabled={isRunning}
-                className="p-3 bg-white hover:bg-rose-50/60 border border-slate-200 hover:border-rose-300 rounded-xl text-left transition flex items-center justify-between group"
+                className="p-3 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl text-left transition flex items-center justify-between group cursor-pointer"
               >
                 <div className="min-w-0 pr-2">
-                  <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                  <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                     {kw.typeLabel}
                   </span>
                   <div className="text-xs font-bold text-slate-900 mt-1 truncate">{kw.keyword}</div>

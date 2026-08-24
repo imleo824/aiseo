@@ -5,7 +5,8 @@ import {
   Copy, 
   Check, 
   ShieldCheck, 
-  Zap
+  Zap,
+  QrCode
 } from 'lucide-react';
 import { UsdtPackage, UsdtNetwork, TenantAccount } from '../types/seo';
 import { ApiService } from '../services/api';
@@ -104,7 +105,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
         'TRC20', 
         selectedPkgId !== 'custom' ? selectedPkgId : undefined
       );
-      setSuccessMsg(res?.message || `充值成功！已到账 ${calculateCredits()} 积分`);
+      setSuccessMsg(res?.message || `充值成功！已到账 ${calculateCredits().toLocaleString()} 积分`);
       setTimeout(() => {
         onClose();
       }, 1600);
@@ -116,55 +117,57 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
       <div 
         id="recharge-modal-card" 
-        className="relative w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        className="relative w-full max-w-lg bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-150"
       >
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/90 sticky top-0 z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500/20 to-emerald-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
-              <Coins className="w-5 h-5" />
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80 sticky top-0 z-10">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center shadow-xs">
+              <Coins className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-white">USDT 充值兑换积分</h3>
-                <span className="px-2 py-0.5 text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full">
+                <h3 className="text-base font-bold text-slate-900">USDT 充值兑换积分</h3>
+                <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 rounded-md">
                   1 USDT = 100 积分
                 </span>
               </div>
-              <p className="text-xs text-slate-400">当前余额: <span className="font-semibold text-amber-400">{account?.credits ?? 0}</span> 积分</p>
+              <p className="text-xs text-slate-500">
+                当前可用余额: <span className="font-bold text-slate-900 font-mono">{account?.credits ?? 0}</span> 积分
+              </p>
             </div>
           </div>
           <button 
             id="btn-close-recharge-modal"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 overflow-y-auto space-y-5">
+        <div className="p-6 overflow-y-auto space-y-5 flex-1 text-sm">
           {successMsg && (
-            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex items-center gap-3 animate-fadeIn">
-              <Check className="w-5 h-5 text-emerald-400 shrink-0" />
-              <span className="text-sm font-medium">{successMsg}</span>
+            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-2.5">
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="text-xs font-bold">{successMsg}</span>
             </div>
           )}
 
           {error && (
-            <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 flex items-center gap-3">
-              <X className="w-5 h-5 text-red-400 shrink-0" />
-              <span className="text-sm">{error}</span>
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 flex items-center gap-2.5">
+              <X className="w-4 h-4 text-rose-600 shrink-0" />
+              <span className="text-xs font-bold">{error}</span>
             </div>
           )}
 
           {/* 1. 选择充值套餐 */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2.5">
+          <div className="space-y-2.5">
+            <label className="block text-xs font-bold text-slate-900">
               选择 USDT 充值套餐
             </label>
             <div className="grid grid-cols-2 gap-2.5">
@@ -178,24 +181,30 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
                       setSelectedPkgId(pkg.id);
                       setCustomUsdt('');
                     }}
-                    className={`relative p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    className={`relative p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
                       isSelected
-                        ? 'bg-amber-500/10 border-amber-500 shadow-md shadow-amber-500/10 ring-1 ring-amber-500'
-                        : 'bg-slate-800/60 border-slate-700/80 hover:bg-slate-800 hover:border-slate-600'
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-amber-400/30'
+                        : 'bg-slate-50/80 hover:bg-slate-100 text-slate-900 border-slate-200'
                     }`}
                   >
                     {pkg.popular && (
-                      <span className="absolute -top-2 right-2 px-1.5 py-0.2 text-[9px] font-bold uppercase bg-gradient-to-r from-amber-500 to-emerald-500 text-slate-950 rounded-full shadow">
+                      <span className={`absolute -top-2 right-2 px-2 py-0.5 text-[10px] font-bold rounded-full shadow-xs ${
+                        isSelected ? 'bg-amber-400 text-slate-950' : 'bg-emerald-600 text-white'
+                      }`}>
                         推荐
                       </span>
                     )}
-                    <div className="text-xs text-slate-400 font-medium mb-0.5">{pkg.name}</div>
-                    <div className="text-base font-extrabold text-white mb-0.5">
-                      ${pkg.usdtAmount} <span className="text-xs font-normal text-slate-400">USDT</span>
+                    <div className={`text-xs font-semibold ${isSelected ? 'text-slate-300' : 'text-slate-500'} mb-1`}>
+                      {pkg.name}
                     </div>
-                    <div className="flex items-center gap-1 text-xs font-semibold text-amber-400">
+                    <div className="text-lg font-black font-mono mb-1">
+                      ${pkg.usdtAmount} <span className="text-xs font-normal">USDT</span>
+                    </div>
+                    <div className={`flex items-center gap-1 text-xs font-bold ${
+                      isSelected ? 'text-amber-300' : 'text-amber-600'
+                    }`}>
                       <Zap className="w-3.5 h-3.5" />
-                      {pkg.credits.toLocaleString()} 积分
+                      <span>{pkg.credits.toLocaleString()} 积分</span>
                     </div>
                   </button>
                 );
@@ -203,36 +212,38 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
             </div>
 
             {/* 自定义金额 */}
-            <div className="mt-2.5">
+            <div className="pt-1">
               <button
                 type="button"
                 onClick={() => setSelectedPkgId('custom')}
-                className={`w-full p-2.5 rounded-xl border text-left text-xs flex items-center justify-between transition-all cursor-pointer ${
+                className={`w-full p-3 rounded-2xl border text-left text-xs font-bold flex items-center justify-between transition ${
                   selectedPkgId === 'custom'
-                    ? 'bg-amber-500/10 border-amber-500 text-white'
-                    : 'bg-slate-800/40 border-slate-700/60 text-slate-400 hover:bg-slate-800'
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
                 }`}
               >
-                <span>或者自定义 USDT 充值金额</span>
-                <span className="text-amber-400 font-semibold">1 USDT = 100 积分</span>
+                <span>自定义 USDT 充值数量</span>
+                <span className={selectedPkgId === 'custom' ? 'text-amber-300' : 'text-amber-600'}>
+                  1 USDT = 100 积分
+                </span>
               </button>
 
               {selectedPkgId === 'custom' && (
-                <div className="mt-2 flex items-center gap-2.5">
+                <div className="mt-2.5 flex items-center gap-2.5">
                   <div className="relative flex-1">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-semibold">$</span>
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
                     <input
                       type="number"
                       min="1"
                       step="1"
                       value={customUsdt}
                       onChange={(e) => setCustomUsdt(e.target.value)}
-                      placeholder="输入 USDT 充值数量"
-                      className="w-full pl-8 pr-4 py-2 bg-slate-950 border border-amber-500/50 rounded-xl text-white text-xs focus:outline-none focus:ring-1 focus:ring-amber-500"
+                      placeholder="输入 USDT 数量"
+                      className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-medium focus:bg-white focus:outline-none focus:border-slate-400 transition"
                     />
                   </div>
-                  <div className="text-xs font-semibold text-amber-400 px-3 py-2 bg-slate-800 rounded-xl border border-slate-700 whitespace-nowrap">
-                    兑换: {calculateCredits().toLocaleString()} 积分
+                  <div className="text-xs font-bold text-slate-900 px-4 py-2.5 bg-slate-100 rounded-xl border border-slate-200 whitespace-nowrap">
+                    到账: {calculateCredits().toLocaleString()} 积分
                   </div>
                 </div>
               )}
@@ -240,18 +251,19 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
           </div>
 
           {/* 收款地址与二维码 */}
-          <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-300">
-                USDT 充值地址
+              <span className="text-xs font-bold text-slate-900">
+                USDT 收款地址 (TRC20 网络)
               </span>
-              <span className="text-[11px] text-amber-400 flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5" /> 官方地址
+              <span className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>官方收款地址</span>
               </span>
             </div>
 
             <div className="flex flex-col sm:flex-row items-center gap-3">
-              <div className="w-24 h-24 bg-white p-1.5 rounded-xl shrink-0 flex items-center justify-center shadow">
+              <div className="w-24 h-24 bg-white p-1.5 rounded-xl shrink-0 flex items-center justify-center border border-slate-200 shadow-2xs">
                 <img 
                   src={currentWallet.qrCodePlaceholder} 
                   alt="USDT Deposit QR" 
@@ -262,16 +274,16 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
 
               <div className="flex-1 w-full space-y-2">
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 px-3 py-2 bg-slate-900 rounded-lg border border-slate-700 text-xs font-mono text-slate-200 break-all select-all">
+                  <div className="flex-1 px-3 py-2 bg-white rounded-xl border border-slate-200 text-xs font-mono text-slate-800 break-all select-all">
                     {currentWallet.address}
                   </div>
                   <button
                     type="button"
                     onClick={handleCopyAddress}
-                    className="p-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg border border-slate-600 transition-colors flex items-center gap-1 shrink-0 text-xs cursor-pointer"
+                    className="p-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl transition flex items-center gap-1 shrink-0 text-xs font-bold cursor-pointer"
                     title="复制收款地址"
                   >
-                    {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                     <span>{copied ? '已复制' : '复制'}</span>
                   </button>
                 </div>
@@ -280,14 +292,14 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
           </div>
 
           {/* 提交充值 */}
-          <form onSubmit={handleSubmitRecharge} className="space-y-3.5">
+          <form onSubmit={handleSubmitRecharge} className="space-y-3 pt-1">
             {/* 价格明细摘要 */}
-            <div className="p-3 bg-slate-800/40 rounded-xl border border-slate-700/60 flex items-center justify-between text-xs">
-              <div className="text-slate-400">
-                充值: <strong className="text-white">${getUsdtAmount()} USDT</strong>
+            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between text-xs">
+              <div className="text-slate-600">
+                充值: <strong className="text-slate-900 font-mono">${getUsdtAmount()} USDT</strong>
               </div>
-              <div className="text-slate-400">
-                预计到账: <strong className="text-amber-400 text-sm">+{calculateCredits().toLocaleString()} 积分</strong>
+              <div className="text-slate-600">
+                预计到账: <strong className="text-amber-600 font-bold text-sm">+{calculateCredits().toLocaleString()} 积分</strong>
               </div>
             </div>
 
@@ -295,16 +307,16 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
               id="btn-confirm-recharge-submit"
               type="submit"
               disabled={loading || getUsdtAmount() <= 0}
-              className="w-full py-3 px-4 bg-gradient-to-r from-amber-500 to-emerald-500 hover:from-amber-400 hover:to-emerald-400 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-xs cursor-pointer"
+              className="w-full py-3.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm active:scale-[0.99] cursor-pointer"
             >
               {loading ? (
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                  <span>正在处理充值...</span>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>正在入账处理中...</span>
                 </div>
               ) : (
                 <>
-                  <Coins className="w-4 h-4" />
+                  <Coins className="w-4 h-4 text-amber-400" />
                   <span>确认充值 ${getUsdtAmount()} USDT</span>
                 </>
               )}

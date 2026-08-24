@@ -5,18 +5,20 @@ import { MainDashboard } from './components/MainDashboard';
 import { ProAutopilotTasksTab } from './components/ProAutopilotTasksTab';
 import { ProAuditLedgerTab } from './components/ProAuditLedgerTab';
 import { ProSiteManagementTab } from './components/ProSiteManagementTab';
+import { ProCreditLedgerTab } from './components/ProCreditLedgerTab';
+import { ProKeywordRadarTab } from './components/ProKeywordRadarTab';
 import { OnboardingModal } from './components/OnboardingModal';
 import { RechargeModal } from './components/RechargeModal';
 import { AuthModal } from './components/AuthModal';
 import { ProPricingConfigTab } from './components/ProPricingConfigTab';
+import { ProTenantManagementTab } from './components/ProTenantManagementTab';
+import { ProSystemPaymentTab } from './components/ProSystemPaymentTab';
+import { ProSystemBillingTab } from './components/ProSystemBillingTab';
+import { ProSystemServicesTab } from './components/ProSystemServicesTab';
 import { 
   Globe, 
   ChevronRight, 
-  Menu, 
-  Wallet, 
-  ArrowDownLeft, 
-  ArrowUpRight,
-  Coins
+  Menu
 } from 'lucide-react';
 import { useTenantData } from './hooks/useTenantData';
 
@@ -37,6 +39,7 @@ export default function App() {
     drafts,
     account,
     transactions,
+    allTenants,
     loading,
     actions
   } = useTenantData(activeTenantId, globalLanguage, (newTid) => {
@@ -47,8 +50,13 @@ export default function App() {
     switch (activeNav) {
       case 'DASHBOARD': 
         return { 
-          title: '一键执行', 
-          desc: '选站点并输入主题，一键自动生成与发布' 
+          title: '手动执行', 
+          desc: '选站点并输入主题，手动生成与发布' 
+        };
+      case 'KEYWORD_RADAR':
+        return {
+          title: '我的词库',
+          desc: 'KGR 黄金词算法、SERP 漏洞扫描与高 ROI 关键词智能挖掘'
         };
       case 'AUTOPILOT_TASKS': 
         return { 
@@ -58,7 +66,7 @@ export default function App() {
       case 'SITE_MANAGEMENT': 
         return { 
           title: '我的站点', 
-          desc: 'WordPress 站点连接与管理' 
+          desc: '多 CMS 站点连接与发布管理' 
         };
       case 'AUDIT_LEDGER': 
         return { 
@@ -75,9 +83,24 @@ export default function App() {
           title: '付费配置',
           desc: '系统扣费单价、汇率与充值套餐包可视化管理'
         };
+      case 'TENANT_MANAGEMENT':
+        return {
+          title: '租户管理',
+          desc: ''
+        };
+      case 'SYSTEM_PAYMENT_MANAGEMENT':
+        return {
+          title: '付费管理',
+          desc: ''
+        };
+      case 'SYSTEM_BILLING_MANAGEMENT':
+        return {
+          title: '消耗管理',
+          desc: ''
+        };
       default: 
         return { 
-          title: 'SEO 自动发布', 
+          title: 'AI XEO', 
           desc: '内容自动化系统' 
         };
     }
@@ -108,8 +131,7 @@ export default function App() {
         isOpenMobile={isMobileMenuOpen}
         onCloseMobile={() => setIsMobileMenuOpen(false)}
         account={account}
-                onOpenAuth={() => setIsAuthOpen(true)}
-        onOpenPricingConfig={() => setActiveNav('PRICING_CONFIG')}
+        onOpenAuth={() => setIsAuthOpen(true)}
         onLogout={actions.handleLogout}
       />
 
@@ -131,7 +153,7 @@ export default function App() {
             </button>
 
             <div className="flex items-center space-x-1.5 text-xs text-slate-400 font-mono truncate">
-              <span className="text-slate-500 font-medium hidden xs:inline">SEO 自动化</span>
+              <span className="text-slate-500 font-medium hidden xs:inline">AI XEO</span>
               <ChevronRight className="w-3.5 h-3.5 text-slate-300 hidden xs:inline" />
               <span className="text-slate-900 font-semibold truncate">{pageInfo.title}</span>
             </div>
@@ -154,7 +176,7 @@ export default function App() {
         </header>
 
         {/* Main Workspace Content Views */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 w-full max-w-6xl mx-auto">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 w-full max-w-[1920px] mx-auto">
           {activeNav === 'DASHBOARD' && (
             <MainDashboard
               sites={sites}
@@ -163,6 +185,26 @@ export default function App() {
               onRollback={actions.handleRollback}
               onRunCruise={actions.handleRunCruise}
               onAnalyzeCompetitor={actions.handleAnalyzeCompetitorAttack}
+            />
+          )}
+
+          {activeNav === 'KEYWORD_RADAR' && (
+            <ProKeywordRadarTab
+              sites={sites}
+              onLaunchCruiseWithKeyword={async (keyword, siteId) => {
+                setActiveNav('DASHBOARD');
+                const targetSiteIds = siteId ? [siteId] : (sites.length > 0 ? [sites[0].id] : []);
+                return await actions.handleRunCruise(
+                  targetSiteIds,
+                  (msg) => console.log(msg),
+                  () => {},
+                  keyword
+                );
+              }}
+              onAddAutopilotTask={async (taskData) => {
+                await actions.handleCreateTask(taskData);
+                setActiveNav('AUTOPILOT_TASKS');
+              }}
             />
           )}
 
@@ -198,106 +240,18 @@ export default function App() {
           )}
 
           {activeNav === 'CREDIT_LEDGER' && (
-            <div className="space-y-6 animate-fadeIn">
-              {/* Top Credit Balance Card and Recharge Entry */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-500 shrink-0">
-                    <Wallet className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-400">当前账户可用积分</h3>
-                    <div className="flex items-baseline gap-2.5 mt-1">
-                      <span className="text-3xl font-black text-slate-900 font-mono">
-                        {account?.credits?.toLocaleString() ?? 0}
-                      </span>
-                      <span className="text-xs font-bold text-slate-500">积分</span>
-                      <span className="text-slate-200">|</span>
-                      <span className="text-xs font-medium text-slate-400">
-                        折合约 ${((account?.credits ?? 0) / 100).toFixed(2)} USDT
-                      </span>
-                    </div>
-                  </div>
-                </div>
+            <ProCreditLedgerTab
+              account={account}
+              transactions={transactions}
+              tenantId={activeTenantId}
+              onOpenRecharge={() => setIsRechargeOpen(true)}
+            />
+          )}
 
-                <div className="shrink-0 self-end sm:self-center">
-                  <button
-                    type="button"
-                    onClick={() => setIsRechargeOpen(true)}
-                    className="px-5 py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md shadow-amber-500/10 hover:shadow-amber-500/20 active:scale-95 transition-all flex items-center gap-2"
-                  >
-                    <Coins className="w-4 h-4 fill-slate-950 text-slate-950" />
-                    <span>立即充值积分</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Transactions List */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-                <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Wallet className="w-4 h-4 text-amber-500" />
-                    <h3 className="font-bold text-slate-900 text-sm">积分变动明细流水</h3>
-                  </div>
-                  <span className="text-xs text-slate-400">共 {transactions.length} 条记录</span>
-                </div>
-
-                <div className="divide-y divide-slate-100">
-                  {transactions.length === 0 ? (
-                    <div className="text-center py-12 text-slate-400 text-xs">
-                      暂无积分明细记录，充值或执行任务后将在此展示流水
-                    </div>
-                  ) : (
-                    transactions.map((tx) => {
-                      const isRecharge = tx.type === 'RECHARGE';
-                      return (
-                        <div key={tx.id} className="p-4 hover:bg-slate-50/80 transition-colors flex items-center justify-between gap-4">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                              isRecharge ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
-                            }`}>
-                              {isRecharge ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
-                            </div>
-
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5">
-                                <span className="text-xs font-bold text-slate-900 truncate">{tx.description}</span>
-                                {isRecharge ? (
-                                  <span className="px-2 py-0.5 text-[10px] bg-emerald-100 text-emerald-800 font-semibold rounded-full">
-                                    充值入账
-                                  </span>
-                                ) : (
-                                  <span className="px-2 py-0.5 text-[10px] bg-slate-100 text-slate-700 font-semibold rounded-full">
-                                    业务消费
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-3 text-[11px] text-slate-400">
-                                <span>{new Date(tx.createdAt).toLocaleString()}</span>
-                                {tx.txHash && (
-                                  <span className="font-mono text-slate-400 truncate max-w-xs">
-                                    Hash: {tx.txHash.slice(0, 8)}...{tx.txHash.slice(-6)}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="text-right shrink-0">
-                            <div className={`text-sm font-black ${isRecharge ? 'text-emerald-600' : 'text-amber-600'}`}>
-                              {isRecharge ? `+${tx.amount}` : `-${tx.amount}`} 积分
-                            </div>
-                            <div className="text-[10px] text-slate-400">
-                              余额: {tx.balance} 积分
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
+          {activeNav === 'SYSTEM_SERVICES_CONFIG' && (
+            <ProSystemServicesTab
+              tenantId={activeTenantId}
+            />
           )}
 
           {activeNav === 'PRICING_CONFIG' && (
@@ -307,6 +261,28 @@ export default function App() {
               onConfigSaved={() => {
                 actions.loadTenantData();
               }}
+            />
+          )}
+
+          {activeNav === 'TENANT_MANAGEMENT' && (
+            <ProTenantManagementTab
+              account={account}
+              allTenants={allTenants}
+              activeTenantId={activeTenantId}
+              onSwitchTenant={(tid) => setActiveTenantId(tid)}
+              onRefreshData={() => actions.loadTenantData()}
+            />
+          )}
+          {activeNav === 'SYSTEM_PAYMENT_MANAGEMENT' && (
+            <ProSystemPaymentTab
+              account={account}
+              activeTenantId={activeTenantId}
+            />
+          )}
+          {activeNav === 'SYSTEM_BILLING_MANAGEMENT' && (
+            <ProSystemBillingTab
+              account={account}
+              activeTenantId={activeTenantId}
             />
           )}
         </main>

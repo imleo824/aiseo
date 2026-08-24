@@ -14,7 +14,7 @@ export const ProAuditLedgerTab: React.FC<ProAuditLedgerTabProps> = ({
   onRePushIndexing
 }) => {
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-200">
+    <div className="w-full space-y-6 sm:space-y-8 animate-in fade-in duration-200">
       <RecentRecordsList
         drafts={drafts}
         sites={sites}

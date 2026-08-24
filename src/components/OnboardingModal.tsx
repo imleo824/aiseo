@@ -64,17 +64,16 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full my-8 max-h-[90vh] flex flex-col shadow-xl animate-in zoom-in-95 duration-150">
+      <div className="bg-white border border-slate-200 rounded-xl max-w-lg w-full my-8 max-h-[90vh] flex flex-col shadow-xl animate-in zoom-in-95 duration-150">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10 bg-white rounded-t-2xl">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10 bg-white rounded-t-xl">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-800 flex items-center justify-center">
               <Globe className="w-4 h-4 text-slate-700" />
             </div>
             <div>
               <h3 className="font-bold text-base text-slate-900">添加新站点</h3>
-              <p className="text-xs text-slate-500">填写站点基本信息与接口配置</p>
             </div>
           </div>
 

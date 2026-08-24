@@ -175,26 +175,26 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto animate-fadeIn">
-      {/* Page Title Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-2xs">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
-            <Settings className="w-6 h-6" />
-          </div>
+    <div className="w-full space-y-6 sm:space-y-8 animate-in fade-in duration-200">
+      <div className="bg-white border border-slate-200 rounded-lg p-6 sm:p-8 shadow-2xs space-y-6">
+        
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">计费与套餐配置</h2>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center shadow-2xs">
+                <Settings className="w-4 h-4 text-indigo-400" />
+              </span>
+              <span>付费配置</span>
+            </h2>
           </div>
-        </div>
 
-        {/* Global Save Action */}
         {isAdmin && (
           <div className="flex items-center gap-2 self-end sm:self-center">
             <button
               type="button"
               onClick={handleSave}
               disabled={saving || resetting || loading}
-              className="px-4.5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl flex items-center gap-1.5 shadow-sm shadow-indigo-600/15 transition duration-150 disabled:opacity-50 whitespace-nowrap"
+              className="px-4 py-2 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white rounded-md flex items-center gap-1.5 shadow-2xs transition duration-150 disabled:opacity-50 cursor-pointer whitespace-nowrap"
             >
               <Save className="w-4 h-4" />
               <span>{saving ? '正在保存...' : '保存配置'}</span>
@@ -203,7 +203,6 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
         )}
       </div>
 
-      {/* Alerts */}
       {error && (
         <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-xs flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0" />
@@ -218,9 +217,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
         </div>
       )}
 
-      {/* Main Tab Wrapper with Bento Layout */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
-        {/* Navigation Tabs */}
+      <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden">
         <div className="flex border-b border-slate-100 bg-slate-50/50 px-4 gap-1 overflow-x-auto">
           <button
             type="button"
@@ -232,7 +229,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
             }`}
           >
             <Coins className="w-4 h-4" />
-            <span>1. 任务扣费标准 ({actionPricing.length})</span>
+            <span>1. 核心收费标准 ({actionPricing.length} 项)</span>
           </button>
 
           <button
@@ -262,7 +259,6 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
           </button>
         </div>
 
-        {/* Tab Contents */}
         <div className="p-6">
           {loading ? (
             <div className="py-24 text-center space-y-3">
@@ -271,21 +267,8 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
             </div>
           ) : (
             <>
-              {/* TAB 1: ACTION PRICING */}
               {activeTab === 'ACTION_PRICING' && (
                 <div className="space-y-4">
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row justify-between sm:items-center gap-2.5">
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-900">业务链条模块化单独计费</h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        当系统节点执行不同类型的 AI 创作、定时任务、竞品分析或站点同步时，单次操作所扣除的智能积分余额。
-                      </p>
-                    </div>
-                    <span className="text-[11px] font-mono text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md self-start sm:self-center font-semibold shrink-0">
-                      实时扣费中枢
-                    </span>
-                  </div>
-
                   <div className="grid grid-cols-1 gap-3">
                     {actionPricing.map((item, idx) => (
                       <div 
@@ -347,7 +330,6 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                 </div>
               )}
 
-              {/* TAB 2: PACKAGES */}
               {activeTab === 'PACKAGES' && (
                 <div className="space-y-4">
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row justify-between sm:items-center gap-2.5">
@@ -379,7 +361,6 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                             : 'bg-white border-slate-200 hover:border-slate-300'
                         }`}
                       >
-                        {/* Top controls */}
                         <div className="flex items-center justify-between gap-2 mb-3.5">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <input
@@ -425,7 +406,6 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                           </div>
                         </div>
 
-                        {/* Numbers grid */}
                         <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200/60 text-xs">
                           <div>
                             <div className="text-[10px] text-slate-400 font-medium">支付 (USDT)</div>
@@ -472,10 +452,9 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                 </div>
               )}
 
-              {/* TAB 3: GLOBAL CONFIG */}
               {activeTab === 'GLOBAL' && (
                 <div className="space-y-4">
-                  <div className="p-5 rounded-2xl bg-white border border-slate-200 space-y-5">
+                  <div className="p-5 rounded-xl bg-white border border-slate-200 space-y-5">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1.5">
                         1. 基础换算汇率标语 / 自定义比例提示
@@ -516,6 +495,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 };

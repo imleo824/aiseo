@@ -8,7 +8,8 @@ import {
   Share2,
   CheckCircle2,
   ExternalLink,
-  X
+  X,
+  FileText
 } from 'lucide-react';
 
 interface RecentRecordsListProps {
@@ -72,22 +73,25 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
   }, [safeDrafts, searchQuery, statusFilter]);
 
   return (
-    <div className="bg-white border border-slate-200/90 rounded-3xl overflow-hidden shadow-sm">
+    <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-2xs">
       
       {/* Toast Notification */}
       {toastMsg && (
-        <div className="fixed top-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center space-x-2 text-sm font-medium animate-in fade-in slide-in-from-top-2 border border-slate-700">
+        <div className="fixed top-6 right-6 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-md shadow-xl flex items-center space-x-2 text-sm font-medium animate-in fade-in slide-in-from-top-2 border border-slate-700">
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           <span>{toastMsg}</span>
         </div>
       )}
 
       {/* Header with Search and Filter */}
-      <div className="p-6 sm:p-7 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-50/40">
-        <div className="space-y-1">
-          <h3 className="text-lg font-bold text-slate-900">
-            文章库与发布记录
-          </h3>
+      <div className="p-6 sm:p-8 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+            <span className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center shadow-2xs">
+              <FileText className="w-4 h-4 text-emerald-400" />
+            </span>
+            <span>我的内容</span>
+          </h2>
         </div>
 
         {/* Search & Status Filter */}
@@ -100,32 +104,32 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="搜索文章标题..."
-              className="w-full pl-9 pr-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 transition"
+              className="w-full pl-9 pr-3.5 py-2 bg-white border border-slate-200 rounded-md text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 transition"
             />
           </div>
 
           {/* Status Filter */}
-          <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-medium">
+          <div className="inline-flex p-1 bg-slate-100 rounded-md border border-slate-200 text-xs font-medium">
             <button
               onClick={() => setStatusFilter('ALL')}
-              className={`px-3 py-1.5 rounded-lg transition ${
-                statusFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-800'
+              className={`px-3 py-1.5 rounded transition cursor-pointer ${
+                statusFilter === 'ALL' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
               全部
             </button>
             <button
               onClick={() => setStatusFilter('PUBLISHED')}
-              className={`px-3 py-1.5 rounded-lg transition ${
-                statusFilter === 'PUBLISHED' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-800'
+              className={`px-3 py-1.5 rounded transition cursor-pointer ${
+                statusFilter === 'PUBLISHED' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
               已上线
             </button>
             <button
               onClick={() => setStatusFilter('DRAFT')}
-              className={`px-3 py-1.5 rounded-lg transition ${
-                statusFilter === 'DRAFT' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-800'
+              className={`px-3 py-1.5 rounded transition cursor-pointer ${
+                statusFilter === 'DRAFT' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
               草稿
@@ -158,13 +162,13 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
                 <tr key={draft.id} className="hover:bg-slate-50/60 transition">
                   
                   {/* Title */}
-                  <td className="px-6 py-4 max-w-sm sm:max-w-md">
+                  <td className="px-6 py-4">
                     <div 
                       onClick={() => {
                         if (onPreviewDraft) onPreviewDraft(draft);
                         else setActiveDraftModal(draft);
                       }}
-                      className="font-semibold text-slate-900 text-sm sm:text-base hover:text-indigo-600 cursor-pointer line-clamp-1"
+                      className="font-semibold text-slate-900 text-sm sm:text-base hover:text-indigo-600 cursor-pointer line-clamp-1 max-w-xl xl:max-w-3xl"
                     >
                       {draft.title}
                     </div>
@@ -256,7 +260,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
       {/* Modal Preview */}
       {activeDraftModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full max-h-[88vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-150">
+          <div className="bg-white border border-slate-200 rounded-xl max-w-2xl w-full max-h-[88vh] overflow-hidden flex flex-col shadow-xl animate-in zoom-in-95 duration-150">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
               <div className="min-w-0 pr-3">
                 <h3 className="font-bold text-slate-900 text-base truncate">{activeDraftModal.title}</h3>

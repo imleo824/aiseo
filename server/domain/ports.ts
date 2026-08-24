@@ -45,7 +45,14 @@ export interface ISearchEngineSubmitter {
     isSimulatedFallback?: boolean;
   }>;
 
-  pushToIndexNow(host: string, key?: string, urlList?: string[]): Promise<{
+  pushToGoogle(siteDomain: string, urls?: string[]): Promise<{
+    success: boolean;
+    statusCode?: number;
+    message: string;
+    isSimulatedFallback?: boolean;
+  }>;
+
+  pushToIndexNow?(host: string, key?: string, urlList?: string[]): Promise<{
     success: boolean;
     statusCode?: number;
     message: string;

@@ -36,6 +36,7 @@ export const createTask = async (req: TenantRequest, res: Response) => {
     scheduleTime: scheduleTime || '09:00',
     targetKeywordTopic: (targetKeywordTopic && String(targetKeywordTopic).trim()) || 'AI 架构与企业级自动化最佳实践',
     articleCountPerRun: Number(articleCountPerRun) || 1,
+    totalArticles: 0,
     status: 'ACTIVE',
     lastRunAt: undefined,
     nextRunAt: nextDate.toISOString(),
@@ -65,7 +66,7 @@ export const updateTask = async (req: TenantRequest, res: Response) => {
     throw new NotFoundError(`Task with ID "${req.params.id}" was not found.`);
   }
 
-  const { taskName, siteId, siteName, scheduleType, scheduleTime, targetKeywordTopic, articleCountPerRun, status } = req.body;
+  const { taskName, siteId, siteName, scheduleType, scheduleTime, targetKeywordTopic, articleCountPerRun, totalArticles, status } = req.body;
 
   if (taskName !== undefined) task.taskName = String(taskName).trim();
   if (siteId !== undefined) task.siteId = siteId;
@@ -74,6 +75,7 @@ export const updateTask = async (req: TenantRequest, res: Response) => {
   if (scheduleTime !== undefined) task.scheduleTime = scheduleTime;
   if (targetKeywordTopic !== undefined) task.targetKeywordTopic = String(targetKeywordTopic).trim();
   if (articleCountPerRun !== undefined) task.articleCountPerRun = Number(articleCountPerRun);
+  if (totalArticles !== undefined) task.totalArticles = Number(totalArticles);
   if (status !== undefined) task.status = status;
 
   await fileTenantRepository.saveTask(req.tenantId, task);
@@ -123,5 +125,7 @@ export const runTaskNow = async (req: TenantRequest, res: Response) => {
   }
 
   const success = await cronScheduler.runTaskImmediately(req.tenantId, task.id);
-  res.json({ success, message: `定时任务「${task.taskName}」已手动触发执行` });
+  const updatedTasks = fileTenantRepository.getTasks(req.tenantId);
+  const updatedTask = updatedTasks.find(t => t.id === req.params.id) || task;
+  res.json({ success, message: `定时任务「${task.taskName}」已手动触发执行`, task: updatedTask });
 };

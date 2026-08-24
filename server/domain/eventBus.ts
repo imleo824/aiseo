@@ -27,17 +27,40 @@ export interface DomainEvent<T = any> {
 }
 
 class DomainEventBus extends EventEmitter {
+  constructor() {
+    super();
+    this.setMaxListeners(50);
+  }
+
   public publish<T>(event: DomainEvent<T>): void {
-    this.emit(event.type, event);
-    this.emit('*', event);
+    try {
+      this.emit(event.type, event);
+      this.emit('*', event);
+    } catch (err) {
+      console.error(`[EVENT_BUS] Sync error publishing event ${event.type}:`, err);
+    }
   }
 
   public subscribe<T>(type: DomainEventType | '*', handler: (event: DomainEvent<T>) => void | Promise<void>): void {
-    this.on(type, handler);
+    const safeHandler = async (event: DomainEvent<T>) => {
+      try {
+        await Promise.resolve(handler(event));
+      } catch (err) {
+        console.error(`[EVENT_BUS] Error handling domain event ${event.type} (${event.id}):`, err);
+      }
+    };
+    // Attach underlying handler reference for unsubscribing
+    (safeHandler as any)._originalHandler = handler;
+    this.on(type, safeHandler);
   }
 
   public unsubscribe<T>(type: DomainEventType | '*', handler: (event: DomainEvent<T>) => void | Promise<void>): void {
-    this.off(type, handler);
+    const listeners = this.listeners(type);
+    for (const listener of listeners) {
+      if ((listener as any)._originalHandler === handler || listener === handler) {
+        this.off(type, listener as any);
+      }
+    }
   }
 }
 

@@ -98,6 +98,36 @@ export class CronScheduler {
     for (const site of targetSites) {
       try {
         const keyword = task.targetKeywordTopic || 'AI 架构与企业级自动化实践';
+
+        // 0. Credit Check & Deduction (Dynamic pricing with fallback)
+        if (typeof (this.repository as any).isActionEnabled === 'function' && !(this.repository as any).isActionEnabled('AUTOPILOT_CRUISE')) {
+          logger.warn('SCHEDULER', `“定时巡航自动发文”功能已被系统管理员关闭，跳过任务 ${task.taskName}`, { tenantId });
+          continue;
+        }
+
+        const cruiseCost = this.repository.getActionCost('AUTOPILOT_CRUISE', 20);
+        const creditRes = await this.repository.consumeCredits(
+          tenantId,
+          cruiseCost,
+          'AUTOPILOT_CRUISE',
+          `定时巡航自动发文 (${task.taskName} -> ${site.name})`,
+          { taskId: task.id, siteId: site.id, siteName: site.name, keyword }
+        );
+
+        if (!creditRes.success) {
+          logger.warn('SCHEDULER', `租户 ${tenantId} 积分不足 (${creditRes.balance}/${cruiseCost})，跳过站点 ${site.name} 的定时发文`, { tenantId });
+          await this.repository.appendAuditLog(tenantId, {
+            id: `log-task-err-${Date.now()}`,
+            siteId: site.id,
+            timestamp: nowIso,
+            actor: 'SYSTEM_AUTOPILOT',
+            action: 'CRON_AUTO_PUBLISH',
+            target: `${site.name} - ${task.taskName}`,
+            result: 'WARNING',
+            details: `定时任务执行跳过：账户积分不足 (需 ${cruiseCost} 积分，当前剩余 ${creditRes.balance} 积分)，请及时充值 USDT。`
+          });
+          continue;
+        }
         
         // 1. Synthesize article with AI Engine
         const articleResult = await this.aiEngine.generateArticleAndQualityCheck(
@@ -132,7 +162,7 @@ export class CronScheduler {
         }
 
         if (wpResult.publishedUrl) {
-          await this.searchEngineSubmitter.pushToIndexNow(site.domain, site.indexNowKey, [wpResult.publishedUrl]);
+          await this.searchEngineSubmitter.pushToGoogle(site.domain, [wpResult.publishedUrl]);
         }
 
         // 4. Update Opportunity & Draft
@@ -196,6 +226,7 @@ export class CronScheduler {
         await this.repository.saveOpportunity(tenantId, newOpp);
         await this.repository.saveDraft(tenantId, newDraft);
 
+        task.totalArticles = (task.totalArticles || 0) + 1;
         site.currentWeeklyPublished += 1;
         site.pagesCount += 1;
         await this.repository.saveSite(tenantId, site);
@@ -213,6 +244,31 @@ export class CronScheduler {
         });
       } catch (siteErr: any) {
         logger.error('SCHEDULER', `任务执行失败 (站点: ${site.name}): ${siteErr?.message}`, { tenantId });
+        
+        // Auto-refund credits if deducted
+        try {
+          const cruiseCost = this.repository.getActionCost('AUTOPILOT_CRUISE', 20);
+          await this.repository.refundCredits(
+            tenantId,
+            cruiseCost,
+            'AUTOPILOT_CRUISE',
+            `定时巡航发文异常补偿退款 (${task.taskName} -> ${site.name})`,
+            { taskId: task.id, siteId: site.id, error: siteErr?.message }
+          );
+        } catch (refundErr) {
+          logger.error('SCHEDULER', `Failed to refund credits for tenant ${tenantId}`, refundErr);
+        }
+
+        await this.repository.appendAuditLog(tenantId, {
+          id: `log-task-fail-${Date.now()}`,
+          siteId: site.id,
+          timestamp: nowIso,
+          actor: 'SYSTEM_AUTOPILOT',
+          action: 'CRON_AUTO_PUBLISH',
+          target: `${site.name} - ${task.taskName}`,
+          result: 'FAILED',
+          details: `定时巡航执行失败: ${siteErr?.message || siteErr}，扣除的积分已自动全额退还。`
+        });
       }
     }
 

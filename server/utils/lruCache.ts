@@ -29,6 +29,8 @@ export class LRUCache<K, V> {
   }
 
   public set(key: K, value: V, ttlMs?: number): void {
+    this.pruneExpired();
+
     const expiresAt = Date.now() + (ttlMs ?? this.defaultTtlMs);
 
     if (this.cache.has(key)) {
@@ -42,6 +44,22 @@ export class LRUCache<K, V> {
     }
 
     this.cache.set(key, { value, expiresAt });
+  }
+
+  public pruneExpired(): number {
+    const now = Date.now();
+    let pruned = 0;
+    for (const [k, entry] of this.cache.entries()) {
+      if (now > entry.expiresAt) {
+        this.cache.delete(k);
+        pruned++;
+      }
+    }
+    return pruned;
+  }
+
+  public delete(key: K): boolean {
+    return this.cache.delete(key);
   }
 
   public has(key: K): boolean {

@@ -68,7 +68,7 @@ function createMockRes(): { res: Response; json: any; status: any } {
 describe('Controllers Suite', () => {
   let mockReq: Partial<TenantRequest>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockReq = {
       tenantId: 'tenant-test',
       params: {},
@@ -176,6 +176,7 @@ describe('Controllers Suite', () => {
       }
     };
     fileTenantRepository.saveTenantData('tenant-test', mockReq.tenantData as any);
+    await fileTenantRepository.rechargeUsdt('tenant-test', 10, 1000, 'init-tx', 'TRC20');
   });
 
   it('should create and retrieve tasks in taskController', async () => {
@@ -190,12 +191,15 @@ describe('Controllers Suite', () => {
     await createTask(mockReq as TenantRequest, res);
     expect(status()).toBe(201);
     expect(json().task.taskName).toBe('每日自动热点抓取');
+    expect(json().task.totalArticles).toBe(0);
     const tenantData = fileTenantRepository.getTenantData('tenant-test');
     expect(tenantData.automatedTasks.length).toBe(1);
+    expect(tenantData.automatedTasks[0].totalArticles).toBe(0);
 
     const { res: getRes, json: getJson } = createMockRes();
     await getTasks(mockReq as TenantRequest, getRes);
     expect(getJson().tasks.length).toBe(1);
+    expect(getJson().tasks[0].totalArticles).toBe(0);
   });
 
   it('should run task now in taskController with auto discovery workflow', async () => {
@@ -210,6 +214,7 @@ describe('Controllers Suite', () => {
         scheduleTime: '09:00',
         targetKeywordTopic: 'K8s',
         articleCountPerRun: 1,
+        totalArticles: 0,
         status: 'ACTIVE',
         nextRunAt: '',
         createdAt: ''
@@ -224,6 +229,7 @@ describe('Controllers Suite', () => {
     const updatedData = fileTenantRepository.getTenantData('tenant-test');
     expect(json().success).toBe(true);
     expect(updatedData.automatedTasks[0].lastRunAt).toBeDefined();
+    expect(updatedData.automatedTasks[0].totalArticles).toBe(1);
     expect(updatedData.auditLogs.length).toBeGreaterThanOrEqual(1);
     expect(updatedData.drafts.length).toBe(2);
   });
@@ -345,6 +351,67 @@ describe('Controllers Suite', () => {
       await creditController.resetConfig(adminReq, resetRes.res);
       expect(resetRes.status()).toBe(200);
       expect(resetRes.json().success).toBe(true);
+    });
+
+    it('should allow ADMIN to retrieve global transaction logs and usages logs while forbidding non-admin', async () => {
+      const nonAdminReq: any = { headers: { 'x-tenant-id': 'tenant-b' } };
+      const adminReq: any = { headers: { 'x-tenant-id': 'tenant-a' } };
+
+      // Non-admin check
+      const txRes1 = createMockRes();
+      await creditController.getAllTransactions(nonAdminReq, txRes1.res);
+      expect(txRes1.status()).toBe(403);
+
+      const usageRes1 = createMockRes();
+      await creditController.getAllUsages(nonAdminReq, usageRes1.res);
+      expect(usageRes1.status()).toBe(403);
+
+      // Admin check
+      const txRes2 = createMockRes();
+      await creditController.getAllTransactions(adminReq, txRes2.res);
+      expect(txRes2.status()).toBe(200);
+      expect(txRes2.json().success).toBe(true);
+      expect(Array.isArray(txRes2.json().transactions)).toBe(true);
+
+      const usageRes2 = createMockRes();
+      await creditController.getAllUsages(adminReq, usageRes2.res);
+      expect(usageRes2.status()).toBe(200);
+      expect(usageRes2.json().success).toBe(true);
+      expect(Array.isArray(usageRes2.json().usages)).toBe(true);
+    });
+
+    it('should allow ADMIN to adjust tenant credits and confirm payment status while forbidding non-admin', async () => {
+      const nonAdminReq: any = {
+        headers: { 'x-tenant-id': 'tenant-b' },
+        body: { targetTenantId: 'tenant-b', deltaCredits: 500, reason: '测试上分' }
+      };
+      const adminAdjustReq: any = {
+        headers: { 'x-tenant-id': 'tenant-a' },
+        body: { targetTenantId: 'tenant-b', deltaCredits: 500, reason: '管理员客服补偿' }
+      };
+
+      // Non-admin adjust check
+      const adjRes1 = createMockRes();
+      await creditController.adjustCredits(nonAdminReq, adjRes1.res);
+      expect(adjRes1.status()).toBe(403);
+
+      // Admin adjust check (topup +500)
+      const adjRes2 = createMockRes();
+      await creditController.adjustCredits(adminAdjustReq, adjRes2.res);
+      expect(adjRes2.status()).toBe(200);
+      expect(adjRes2.json().success).toBe(true);
+      expect(adjRes2.json().transaction.action).toBe('ADMIN_ADJUSTMENT');
+
+      // Admin confirm payment check
+      const adminConfirmReq: any = {
+        headers: { 'x-tenant-id': 'tenant-a' },
+        body: { txId: adjRes2.json().transaction.id, status: 'CONFIRMED', targetTenantId: 'tenant-b' }
+      };
+      const confirmRes = createMockRes();
+      await creditController.confirmPayment(adminConfirmReq, confirmRes.res);
+      expect(confirmRes.status()).toBe(200);
+      expect(confirmRes.json().success).toBe(true);
+      expect(confirmRes.json().transaction.status).toBe('CONFIRMED');
     });
   });
 });

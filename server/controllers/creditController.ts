@@ -154,5 +154,115 @@ export const creditController = {
       credits: result.balance,
       transaction: result.tx
     });
+  },
+
+  /**
+   * 系统级付费管理：获取所有租户的充值记录
+   */
+  getAllTransactions: async (req: Request, res: Response): Promise<void> => {
+    const tenantReq = req as any;
+    const tenantId = req.headers['x-tenant-id'] as string || tenantReq.tenantId || 'tenant-a';
+    const account = tenantReq.account || fileTenantRepository.getAccount(tenantId);
+    if (account?.role !== 'ADMIN') {
+      res.status(403).json({ success: false, message: '权限拒绝：仅平台管理员（ADMIN）有权查看全局充值记录' });
+      return;
+    }
+    const ids = fileTenantRepository.getAllTenantIds();
+    const allTxs = ids.flatMap(id => fileTenantRepository.getCreditTransactions(id).map(tx => ({...tx, tenantId: id})));
+    allTxs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    res.json({ success: true, transactions: allTxs });
+  },
+
+  /**
+   * 系统级消耗管理：获取所有租户的账单流水
+   */
+  getAllUsages: async (req: Request, res: Response): Promise<void> => {
+    const tenantReq = req as any;
+    const tenantId = req.headers['x-tenant-id'] as string || tenantReq.tenantId || 'tenant-a';
+    const account = tenantReq.account || fileTenantRepository.getAccount(tenantId);
+    if (account?.role !== 'ADMIN') {
+      res.status(403).json({ success: false, message: '权限拒绝：仅平台管理员（ADMIN）有权查看全局消耗账单' });
+      return;
+    }
+    const ids = fileTenantRepository.getAllTenantIds();
+    const allUsages = ids.flatMap(id => {
+      const data = fileTenantRepository.getTenantData(id);
+      return (data.usageLedger || []).map(u => ({ ...u, tenantId: id }));
+    });
+    allUsages.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    res.json({ success: true, usages: allUsages });
+  },
+
+  /**
+   * 管理员对指定租户手动上下分
+   */
+  adjustCredits: async (req: Request, res: Response): Promise<void> => {
+    const tenantReq = req as any;
+    const adminTenantId = req.headers['x-tenant-id'] as string || tenantReq.tenantId || 'tenant-a';
+    const account = tenantReq.account || fileTenantRepository.getAccount(adminTenantId);
+    if (account?.role !== 'ADMIN') {
+      res.status(403).json({ success: false, message: '权限拒绝：仅系统管理员（ADMIN）有权进行手动上下分操作' });
+      return;
+    }
+
+    const { targetTenantId, deltaCredits, reason } = req.body;
+    const numDelta = Number(deltaCredits);
+    if (!targetTenantId || isNaN(numDelta) || numDelta === 0) {
+      res.status(400).json({ success: false, message: '参数无效：请输入有效的目标租户 ID 与变动积分数量' });
+      return;
+    }
+
+    try {
+      const result = await fileTenantRepository.adjustTenantCredits(
+        targetTenantId,
+        numDelta,
+        reason || '手动调整',
+        adminTenantId
+      );
+      res.json({
+        success: true,
+        message: `✅ 已成功对租户 ${targetTenantId} 完成${numDelta > 0 ? '上分 +' : '下扣 '}${Math.abs(numDelta)} 积分，最新余额: ${result.balance} 积分`,
+        balance: result.balance,
+        account: result.account,
+        transaction: result.tx
+      });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message || '上下分操作失败' });
+    }
+  },
+
+  /**
+   * 管理员手动确认 USDT 付费到账状态
+   */
+  confirmPayment: async (req: Request, res: Response): Promise<void> => {
+    const tenantReq = req as any;
+    const adminTenantId = req.headers['x-tenant-id'] as string || tenantReq.tenantId || 'tenant-a';
+    const account = tenantReq.account || fileTenantRepository.getAccount(adminTenantId);
+    if (account?.role !== 'ADMIN') {
+      res.status(403).json({ success: false, message: '权限拒绝：仅系统管理员（ADMIN）有权确认付费状态' });
+      return;
+    }
+
+    const { txId, status, targetTenantId = 'tenant-a' } = req.body;
+    if (!txId || !['CONFIRMED', 'PENDING', 'REJECTED'].includes(status)) {
+      res.status(400).json({ success: false, message: '参数无效：请提供有效的交易 ID 及状态 (CONFIRMED / PENDING / REJECTED)' });
+      return;
+    }
+
+    try {
+      const result = await fileTenantRepository.updatePaymentStatus(
+        targetTenantId,
+        txId,
+        status,
+        adminTenantId
+      );
+      res.json({
+        success: true,
+        message: `✅ 已成功将交易 ${txId} 状态更新为: ${status === 'CONFIRMED' ? '已确认到账' : status === 'REJECTED' ? '已拒绝/未到账' : '待核验'}`,
+        transaction: result.tx
+      });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message || '确认状态更新失败' });
+    }
   }
 };

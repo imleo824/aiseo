@@ -7,7 +7,7 @@
         "domain": "techpulse.media",
         "niche": "人工智能与企业SaaS架构",
         "siteLanguage": "zh-CN",
-        "pagesCount": 1422,
+        "pagesCount": 1424,
         "connectorStatus": "CONNECTED",
         "wpVersion": "6.7.1",
         "pluginInstalled": true,
@@ -21,7 +21,7 @@
         "baiduConnected": true,
         "autopilotEnabled": true,
         "weeklyPublishCap": 3,
-        "currentWeeklyPublished": 3,
+        "currentWeeklyPublished": 5,
         "calibration": {
           "isCalibrating": false,
           "daysRemaining": 0,
@@ -71,6 +71,117 @@
       }
     ],
     "opportunities": [
+      {
+        "id": "opp-1787556595180",
+        "siteId": "site-1",
+        "title": "针对“DeepSeek 企业级私有化微调”的企业级落地实践与性能调优全景指南",
+        "type": "NEW_CONTENT",
+        "language": "zh-CN",
+        "targetKeyword": "DeepSeek 企业级私有化微调",
+        "category": "AI实践案例",
+        "riskLevel": "LOW",
+        "estimatedMonthlyVisitsGain": 3500,
+        "demandEvidence": {
+          "sourceType": "GSC_QUERY",
+          "queryOrTopic": "DeepSeek 企业级私有化微调",
+          "monthlyImpressions": 16500,
+          "currentClicks": 140,
+          "currentPosition": 19.2,
+          "evidenceDescription": "GSC 包含该词的增量搜索展现，对应搜索意图：商业调查与技术选型 (Commercial Investigation)",
+          "reliabilityConfidence": 0.95
+        },
+        "scoreBreakdown": {
+          "businessValue": 19,
+          "searchDemand": 18,
+          "winProbability": 15,
+          "currentRanking": 10,
+          "engagementPotential": 9,
+          "googleBaiduReuse": 9,
+          "internalLinkValue": 5,
+          "freshness": 5,
+          "dataReliability": 5,
+          "riskPenalty": 0,
+          "costPenalty": 1,
+          "totalScore": 94
+        },
+        "status": "APPROVED",
+        "createdAt": "2026-08-24T07:29:55.180Z",
+        "updatedAt": "2026-08-24T07:29:57.796Z"
+      },
+      {
+        "id": "opp-1787556261027",
+        "siteId": "site-1",
+        "title": "针对“DeepSeek 企业级私有化微调”的企业级落地实践与性能调优全景指南",
+        "type": "NEW_CONTENT",
+        "language": "zh-CN",
+        "targetKeyword": "DeepSeek 企业级私有化微调",
+        "category": "AI实践案例",
+        "riskLevel": "LOW",
+        "estimatedMonthlyVisitsGain": 3500,
+        "demandEvidence": {
+          "sourceType": "GSC_QUERY",
+          "queryOrTopic": "DeepSeek 企业级私有化微调",
+          "monthlyImpressions": 16500,
+          "currentClicks": 140,
+          "currentPosition": 19.2,
+          "evidenceDescription": "GSC 包含该词的增量搜索展现，对应搜索意图：商业调查与技术选型 (Commercial Investigation)",
+          "reliabilityConfidence": 0.95
+        },
+        "scoreBreakdown": {
+          "businessValue": 19,
+          "searchDemand": 18,
+          "winProbability": 15,
+          "currentRanking": 10,
+          "engagementPotential": 9,
+          "googleBaiduReuse": 9,
+          "internalLinkValue": 5,
+          "freshness": 5,
+          "dataReliability": 5,
+          "riskPenalty": 0,
+          "costPenalty": 1,
+          "totalScore": 94
+        },
+        "status": "APPROVED",
+        "createdAt": "2026-08-24T07:24:21.027Z",
+        "updatedAt": "2026-08-24T07:24:23.671Z"
+      },
+      {
+        "id": "opp-1787487789053",
+        "siteId": "site-1",
+        "title": "针对“DeepSeek 企业级私有化微调”的企业级落地实践与性能调优全景指南",
+        "type": "NEW_CONTENT",
+        "language": "zh-CN",
+        "targetKeyword": "DeepSeek 企业级私有化微调",
+        "category": "AI实践案例",
+        "riskLevel": "LOW",
+        "estimatedMonthlyVisitsGain": 2800,
+        "demandEvidence": {
+          "sourceType": "GSC_QUERY",
+          "queryOrTopic": "DeepSeek 企业级私有化微调",
+          "monthlyImpressions": 16500,
+          "currentClicks": 140,
+          "currentPosition": 19.2,
+          "evidenceDescription": "GSC 包含该词的增量搜索展现，对应搜索意图：商业评估与技术落地选型意图 (Commercial & AEO)",
+          "reliabilityConfidence": 0.95
+        },
+        "scoreBreakdown": {
+          "businessValue": 19,
+          "searchDemand": 18,
+          "winProbability": 15,
+          "currentRanking": 10,
+          "engagementPotential": 9,
+          "googleBaiduReuse": 9,
+          "internalLinkValue": 5,
+          "freshness": 5,
+          "dataReliability": 5,
+          "riskPenalty": 0,
+          "costPenalty": 1,
+          "totalScore": 94
+        },
+        "status": "READY_TO_PUBLISH",
+        "createdAt": "2026-08-23T12:23:09.053Z",
+        "updatedAt": "2026-08-23T12:24:04.927Z"
+      },
       {
         "id": "opp-1787466064300",
         "siteId": "site-1",
@@ -447,6 +558,41 @@
     ],
     "drafts": [
       {
+        "id": "draft-1787487843143",
+        "opportunityId": "opp-1787487789053",
+        "siteId": "site-1",
+        "title": "深度解析 DeepSeek 企业级私有化微调：2026年生产环境架构演进与实践指引",
+        "language": "zh-CN",
+        "category": "AI实践案例",
+        "summary": "本文基于真实研发测试与权威测试数据，系统化梳理 DeepSeek 企业级私有化微调 的设计要点、典型瓶颈及调优手段。",
+        "contentHtml": "\n      <div class=\"seo-article-container space-y-6\">\n        <div class=\"bg-emerald-950/40 border border-emerald-500/40 rounded-2xl p-4 my-2 shadow-inner\">\n          <div class=\"flex items-center space-x-2 text-emerald-400 font-bold text-xs mb-1.5\">\n            <span class=\"px-2 py-0.5 rounded bg-emerald-500/20 text-[10px] font-mono\">AEO / GEO 快速概览</span>\n            <span>Google AI Overviews 提炼区</span>\n          </div>\n          <p class=\"text-slate-200 text-xs leading-relaxed\">\n            <strong>DeepSeek 企业级私有化微调</strong> 的核心在于通过匹配用户搜索意图、构建权威 E-E-A-T 专业知识体系以及嵌入 Schema.org 结构化数据，帮助网站在 Google 和百度搜索引擎中快速获取高排名与高转化自然流量。\n          </p>\n        </div>\n\n        <h2>一、技术背景与核心诉求</h2>\n        <p>在现代高并发与大数据量场景下，关于 <strong>DeepSeek 企业级私有化微调</strong> 的落地效率直接决定了系统的稳定性与扩展上限。</p>\n\n        <h2>二、生产实践方案与压测总结</h2>\n        <p>根据实际测试，在配置合适连接池与缓存策略后，QPS 可提升约 35%，P99 延迟降低至 120ms 以下。</p>\n        \n        <div class=\"overflow-x-auto my-4\">\n          <table class=\"w-full text-left border-collapse border border-slate-800 rounded-xl overflow-hidden text-xs\">\n            <thead>\n              <tr class=\"bg-slate-900 text-emerald-400\">\n                <th class=\"p-2.5 border border-slate-800\">评估维度</th>\n                <th class=\"p-2.5 border border-slate-800\">传统模式</th>\n                <th class=\"p-2.5 border border-slate-800\">SEO 巡航自动化模式</th>\n              </tr>\n            </thead>\n            <tbody class=\"text-slate-300\">\n              <tr class=\"border border-slate-800 bg-slate-950/40\">\n                <td class=\"p-2.5 font-bold border border-slate-800\">内容 E-E-A-T 深度</td>\n                <td class=\"p-2.5 border border-slate-800 text-slate-400\">普通泛泛而谈</td>\n                <td class=\"p-2.5 border border-slate-800 text-emerald-400 font-bold\">嵌入真实场景数据与 FAQ Schema</td>\n              </tr>\n              <tr class=\"border border-slate-800\">\n                <td class=\"p-2.5 font-bold border border-slate-800\">收录即时性 (Indexing)</td>\n                <td class=\"p-2.5 border border-slate-800 text-slate-400\">被动等待爬虫 (3-14 天)</td>\n                <td class=\"p-2.5 border border-slate-800 text-emerald-400 font-bold\">IndexNow / 百度 API 实时主动推送</td>\n              </tr>\n            </tbody>\n          </table>\n        </div>\n\n        <h2>三、常见问题解答 (FAQ)</h2>\n        <div class=\"space-y-3\">\n          <div class=\"bg-slate-900/80 p-3.5 rounded-xl border border-slate-800\">\n            <h4 class=\"font-bold text-white text-xs mb-1\">Q: DeepSeek 企业级私有化微调 对网站长期流量有何帮助？</h4>\n            <p class=\"text-[11px] text-slate-400\">A: 通过解决用户真实搜索痛点并挂载结构化数据，能显著提升搜索引擎收录权重与长尾词覆盖率。</p>\n          </div>\n        </div>\n\n        <script type=\"application/ld+json\">\n        {\n          \"@context\": \"https://schema.org\",\n          \"@type\": \"Article\",\n          \"headline\": \"深度解析 DeepSeek 企业级私有化微调：2026年生产环境架构演进与实践指引\",\n          \"description\": \"本文基于真实研发测试与权威测试数据，系统化梳理 DeepSeek 企业级私有化微调 的设计要点、典型瓶颈及调优手段。\",\n          \"author\": { \"@type\": \"Organization\", \"name\": \"SEO Cruise Engine\" }\n        }\n        </script>\n      </div>\n    <p class=\"mt-4 p-3 bg-slate-900/60 rounded-lg text-xs text-slate-300 border border-slate-800\">💡 <strong>延伸阅读</strong>：查看我们关于 <a href=\"https://techpulse.media/%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90-deepseek-%E7%A7%81%E6%9C%89%E5%8C%96%E9%83%A8%E7%BD%B2---vllm-%E6%80%A7%E8%83%BD%E8%B0%83%E4%BC%98%E6%8C%87%E5%8D%97-2026%E5%B9%B4%E7%94%9F/\" class=\"text-emerald-400 underline font-semibold hover:text-emerald-300\" target=\"_blank\">深度解析 DeepSeek 私有化部署 & vLLM 性能调优指南：2026年生产环境架构演进与实践指引</a> 的深度分析。</p>",
+        "sourcesUsed": [
+          "《2026 企业AI私有化算力白皮书与部署规范》: 规范包含 DeepSeek、Llama3 私有化部署基准案例、vLLM 参数调优指导、信创 GPU 兼容矩阵与安全隔离方案。",
+          "【可信来源白名单】vLLM & Kubernetes 官方更新日志与 RFC: 仅允许引用 vllm.ai, kubernetes.io, deepseek.com 官方技术博客及认证论文。"
+        ],
+        "qualityGate": {
+          "passed": true,
+          "overallScore": 95,
+          "factReliabilityScore": 98,
+          "hallucinationFree": true,
+          "languageMatch": true,
+          "sourceCheckPassed": true,
+          "duplicateContentCheck": true,
+          "issues": [],
+          "passedChecks": [
+            "E-E-A-T 评估：98/100 (已完成专家级论证与案例对齐)",
+            "AEO 结构提取：已生成适合 AI Overviews 直接采纳的直击回答块",
+            "Schema.org 微数据：已内置 Article & FAQ Page JSON-LD 代码",
+            "主动推送准备：实时挂载 IndexNow 与百度 Search Console 推送协议"
+          ]
+        },
+        "status": "PUBLISHED",
+        "publishedUrl": "https://techpulse.media/%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90-deepseek-%E4%BC%81%E4%B8%9A%E7%BA%A7%E7%A7%81%E6%9C%89%E5%8C%96%E5%BE%AE%E8%B0%83-2026%E5%B9%B4%E7%94%9F%E4%BA%A7%E7%8E%AF%E5%A2%83%E6%9E%B6%E6%9E%84%E6%BC%94%E8%BF%9B%E4%B8%8E%E5%AE%9E%E8%B7%B5%E6%8C%87/",
+        "publishedAt": "2026-08-23T12:24:04.927Z",
+        "wpPostId": 54248,
+        "createdAt": "2026-08-23T12:24:03.143Z"
+      },
+      {
         "id": "draft-task-1787419893073",
         "opportunityId": "opp-task-1787419893073",
         "siteId": "site-1",
@@ -604,6 +750,483 @@
       }
     ],
     "auditLogs": [
+      {
+        "id": "log-arch-test-1787560320247",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T08:32:00.247Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787560117285",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T08:28:37.285Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787560012756",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T08:26:52.756Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787559948907",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T08:25:48.907Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787559256257",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T08:14:16.257Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787559110737",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T08:11:50.737Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787558855275",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T08:07:35.275Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787558764977",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T08:06:04.977Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787558677751",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T08:04:37.751Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-1787558344206",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T07:59:04.206Z",
+        "actor": "USER_ADMIN",
+        "action": "UPDATE_SCHEDULED_TASK",
+        "target": "每日早间全自动发文",
+        "result": "SUCCESS",
+        "details": "已更新定时巡航任务配置 (状态: PAUSED)"
+      },
+      {
+        "id": "log-arch-test-1787558088113",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T07:54:48.113Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787558000080",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T07:53:20.080Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787557782444",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T07:49:42.444Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787557715190",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T07:48:35.190Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787557030005",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T07:37:10.005Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787556960178",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T07:36:00.178Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-1787556597796",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T07:29:57.796Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "GENERATE_CONTENT_BRIEF",
+        "target": "DeepSeek 企业级私有化微调",
+        "result": "SUCCESS",
+        "details": "已生成大纲 Content Brief，包含 E-E-A-T 结构及 Schema 规范。"
+      },
+      {
+        "id": "log-1787556595181",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T07:29:55.181Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "DeepSeek 企业级私有化微调",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"针对“DeepSeek 企业级私有化微调”的企业级落地实践与性能调优全景指南\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787556263671",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T07:24:23.671Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "GENERATE_CONTENT_BRIEF",
+        "target": "DeepSeek 企业级私有化微调",
+        "result": "SUCCESS",
+        "details": "已生成大纲 Content Brief，包含 E-E-A-T 结构及 Schema 规范。"
+      },
+      {
+        "id": "log-1787556261028",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T07:24:21.028Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "DeepSeek 企业级私有化微调",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"针对“DeepSeek 企业级私有化微调”的企业级落地实践与性能调优全景指南\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-arch-test-1787553663906",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T06:41:03.906Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-task-err-1787553223815",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T06:33:43.814Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "CRON_AUTO_PUBLISH",
+        "target": "TechPulse Media (科技脉搏) - 每日早间全自动发文",
+        "result": "WARNING",
+        "details": "定时任务执行跳过：账户积分不足 (需 150 积分，当前剩余 90 积分)，请及时充值 USDT。"
+      },
+      {
+        "id": "log-arch-test-1787552837340",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T06:27:17.340Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787551493188",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T06:04:53.188Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787550480757",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T05:48:00.757Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787549332580",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T05:28:52.580Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-task-err-1787549219435",
+        "siteId": "site-2",
+        "timestamp": "2026-08-24T05:26:59.434Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "CRON_AUTO_PUBLISH",
+        "target": "Global Cloud Architecture (英文站) - 每日晨间行业热点自动抓取与发布",
+        "result": "WARNING",
+        "details": "定时任务执行跳过：账户积分不足 (需 150 积分，当前剩余 90 积分)，请及时充值 USDT。"
+      },
+      {
+        "id": "log-task-err-1787549219434",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T05:26:59.434Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "CRON_AUTO_PUBLISH",
+        "target": "TechPulse Media (科技脉搏) - 每日晨间行业热点自动抓取与发布",
+        "result": "WARNING",
+        "details": "定时任务执行跳过：账户积分不足 (需 150 积分，当前剩余 90 积分)，请及时充值 USDT。"
+      },
+      {
+        "id": "log-arch-test-1787495549210",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T14:32:29.210Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787495527543",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T14:32:07.543Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787495509301",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T14:31:49.301Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787495488074",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T14:31:28.074Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787495454416",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T14:30:54.416Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787494980694",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T14:23:00.694Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787494477404",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T14:14:37.404Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787492192565",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T13:36:32.565Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787492104540",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T13:35:04.540Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787490063806",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T13:01:03.806Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787489820859",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T12:57:00.859Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787489627443",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T12:53:47.443Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787489577189",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T12:52:57.189Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787489528368",
+        "timestamp": "2026-08-23T12:52:08.368Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787489494367",
+        "timestamp": "2026-08-23T12:51:34.367Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787489456580",
+        "timestamp": "2026-08-23T12:50:56.580Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-1787487845119",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T12:24:05.119Z",
+        "actor": "USER_ADMIN",
+        "action": "MANUAL_APPROVE_PUBLISH",
+        "target": "深度解析 DeepSeek 企业级私有化微调：2026年生产环境架构演进与实践指引",
+        "result": "SUCCESS",
+        "details": "用户人工审核通过并推送至 WordPress！URL: https://techpulse.media/%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90-deepseek-%E4%BC%81%E4%B8%9A%E7%BA%A7%E7%A7%81%E6%9C%89%E5%8C%96%E5%BE%AE%E8%B0%83-2026%E5%B9%B4%E7%94%9F%E4%BA%A7%E7%8E%AF%E5%A2%83%E6%9E%B6%E6%9E%84%E6%BC%94%E8%BF%9B%E4%B8%8E%E5%AE%9E%E8%B7%B5%E6%8C%87/ · 已向百度主动推送通道提交 1 条 URL，状态正常 (沙盒协议)"
+      },
+      {
+        "id": "log-1787487843567",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T12:24:03.567Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "深度解析 DeepSeek 企业级私有化微调：2026年生产环境架构演进与实践指引",
+        "result": "SUCCESS",
+        "details": "过闸且符合低风险白名单，自动发布至 WordPress，文章 URL: https://techpulse.media/%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90-deepseek-%E4%BC%81%E4%B8%9A%E7%BA%A7%E7%A7%81%E6%9C%89%E5%8C%96%E5%BE%AE%E8%B0%83-2026%E5%B9%B4%E7%94%9F%E4%BA%A7%E7%8E%AF%E5%A2%83%E6%9E%B6%E6%9E%84%E6%BC%94%E8%BF%9B%E4%B8%8E%E5%AE%9E%E8%B7%B5%E6%8C%87/ 并已完成搜索引擎广播。"
+      },
+      {
+        "id": "log-1787487817350",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T12:23:37.350Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "GENERATE_CONTENT_BRIEF",
+        "target": "DeepSeek 企业级私有化微调",
+        "result": "SUCCESS",
+        "details": "已生成大纲 Content Brief，包含 E-E-A-T 结构及 Schema 规范。"
+      },
+      {
+        "id": "log-1787487789054",
+        "siteId": "site-1",
+        "timestamp": "2026-08-23T12:23:09.054Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "DeepSeek 企业级私有化微调",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"针对“DeepSeek 企业级私有化微调”的企业级落地实践与性能调优全景指南\"，综合得分 94 分。"
+      },
       {
         "id": "log-1787469101410",
         "siteId": "site-1",
@@ -829,6 +1452,22 @@
     ],
     "baiduLogs": [
       {
+        "id": "baidu-1787487844929",
+        "url": "https://techpulse.media/%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90-deepseek-%E4%BC%81%E4%B8%9A%E7%BA%A7%E7%A7%81%E6%9C%89%E5%8C%96%E5%BE%AE%E8%B0%83-2026%E5%B9%B4%E7%94%9F%E4%BA%A7%E7%8E%AF%E5%A2%83%E6%9E%B6%E6%9E%84%E6%BC%94%E8%BF%9B%E4%B8%8E%E5%AE%9E%E8%B7%B5%E6%8C%87/",
+        "submittedAt": "2026-08-23T12:24:04.929Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487843145",
+        "url": "https://techpulse.media/%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90-deepseek-%E4%BC%81%E4%B8%9A%E7%BA%A7%E7%A7%81%E6%9C%89%E5%8C%96%E5%BE%AE%E8%B0%83-2026%E5%B9%B4%E7%94%9F%E4%BA%A7%E7%8E%AF%E5%A2%83%E6%9E%B6%E6%9E%84%E6%BC%94%E8%BF%9B%E4%B8%8E%E5%AE%9E%E8%B7%B5%E6%8C%87/",
+        "submittedAt": "2026-08-23T12:24:03.145Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
         "id": "baidu-1787419892736",
         "url": "https://techpulse.media/%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90-deepseek-%E7%A7%81%E6%9C%89%E5%8C%96%E9%83%A8%E7%BD%B2---vllm-%E6%80%A7%E8%83%BD%E8%B0%83%E4%BC%98%E6%8C%87%E5%8D%97-2026%E5%B9%B4%E7%94%9F/",
         "submittedAt": "2026-08-22T17:31:32.736Z",
@@ -871,9 +1510,11 @@
         "scheduleTime": "09:00",
         "targetKeywordTopic": "行业热门高搜词",
         "articleCountPerRun": 1,
-        "status": "ACTIVE",
-        "nextRunAt": "2026-08-24T06:33:29.884Z",
-        "createdAt": "2026-08-23T06:33:29.884Z"
+        "totalArticles": 3,
+        "status": "PAUSED",
+        "nextRunAt": "2026-08-25T06:33:43.814Z",
+        "createdAt": "2026-08-23T06:33:29.884Z",
+        "lastRunAt": "2026-08-24T06:33:43.814Z"
       },
       {
         "id": "task-1",
@@ -884,9 +1525,10 @@
         "scheduleTime": "09:00",
         "targetKeywordTopic": "K8s / AI 基础设施最新部署实践与成本优化",
         "articleCountPerRun": 1,
+        "totalArticles": 24,
         "status": "ACTIVE",
-        "lastRunAt": "2026-08-22T17:31:32.197Z",
-        "nextRunAt": "2026-08-23T17:31:32.197Z",
+        "lastRunAt": "2026-08-24T05:26:59.434Z",
+        "nextRunAt": "2026-08-25T05:26:59.434Z",
         "createdAt": "2026-08-01T10:00:00.000Z"
       },
       {
@@ -898,6 +1540,7 @@
         "scheduleTime": "每周一 08:30",
         "targetKeywordTopic": "DeepSeek 私有化部署 & vLLM 性能调优指南",
         "articleCountPerRun": 2,
+        "totalArticles": 12,
         "status": "ACTIVE",
         "lastRunAt": "2026-08-22T17:31:32.736Z",
         "nextRunAt": "2026-08-29T17:31:32.736Z",
@@ -908,12 +1551,29 @@
       "id": "tenant-a",
       "username": "tenant-a",
       "email": "tenant-a@domain.com",
-      "credits": 100,
+      "credits": 90,
       "totalRechargedUsdt": 0,
-      "totalConsumedCredits": 0,
+      "totalConsumedCredits": 10,
       "role": "ADMIN",
       "createdAt": "2026-08-23T07:54:26.301Z"
-    }
+    },
+    "creditTransactions": [
+      {
+        "id": "tx-1787487817898-3sc05",
+        "tenantId": "tenant-a",
+        "type": "CONSUME",
+        "action": "DRAFT_GENERATE",
+        "amount": -10,
+        "balance": 90,
+        "description": "AI 深度文章创作 (DeepSeek 企业级私有化微调)",
+        "createdAt": "2026-08-23T12:23:37.898Z",
+        "metadata": {
+          "siteId": "site-1",
+          "siteName": "TechPulse Media (科技脉搏)",
+          "keyword": "DeepSeek 企业级私有化微调"
+        }
+      }
+    ]
   },
   "tenant-test": {
     "sites": [
@@ -981,9 +1641,9 @@
           "costPenalty": 0,
           "totalScore": 100
         },
-        "status": "APPROVED",
+        "status": "READY_TO_PUBLISH",
         "createdAt": "2026-08-01T00:00:00.000Z",
-        "updatedAt": "2026-08-01T00:00:00.000Z"
+        "updatedAt": "2026-08-23T12:56:58.753Z"
       }
     ],
     "drafts": [
@@ -1011,15 +1671,37 @@
             "事实核查"
           ]
         },
-        "status": "PENDING_APPROVAL",
-        "createdAt": "2026-08-02T00:00:00.000Z"
+        "status": "PUBLISHED",
+        "createdAt": "2026-08-02T00:00:00.000Z",
+        "publishedUrl": "https://cloudnative.tech/kubernetes/",
+        "publishedAt": "2026-08-23T12:56:58.753Z",
+        "wpPostId": 48917
       }
     ],
     "knowledgeSources": [],
     "auditLogs": [],
     "usageLedger": [],
-    "baiduLogs": [],
-    "automatedTasks": []
+    "baiduLogs": [
+      {
+        "id": "baidu-1787489818754",
+        "url": "https://cloudnative.tech/kubernetes/",
+        "submittedAt": "2026-08-23T12:56:58.754Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      }
+    ],
+    "automatedTasks": [],
+    "account": {
+      "id": "tenant-test",
+      "username": "tenant-test",
+      "email": "tenant-test@domain.com",
+      "credits": 100,
+      "totalRechargedUsdt": 0,
+      "totalConsumedCredits": 0,
+      "role": "TENANT",
+      "createdAt": "2026-08-23T12:57:27.510Z"
+    }
   },
   "test-tenant": {
     "sites": [
@@ -1028,7 +1710,7 @@
         "name": "Tech Site",
         "domain": "techsite.io",
         "connectorStatus": "CONNECTED",
-        "pagesCount": 5,
+        "pagesCount": 7,
         "calibration": {
           "isCalibrating": false,
           "approvedCount": 5,
@@ -1050,18 +1732,708 @@
         "baiduConnected": true,
         "autopilotEnabled": true,
         "weeklyPublishCap": 20,
-        "currentWeeklyPublished": 3,
+        "currentWeeklyPublished": 5,
         "monthlyBudgetLimit": 100,
         "monthlyBudgetUsed": 20,
-        "createdAt": "2026-08-23T11:06:13.963Z"
+        "createdAt": "2026-08-23T12:57:00.042Z"
       }
     ],
-    "opportunities": [],
-    "drafts": [],
+    "opportunities": [
+      {
+        "id": "opp-1787489820043-s4vi",
+        "siteId": "site-orch-1",
+        "title": "K8s 架构实践",
+        "type": "NEW_CONTENT",
+        "language": "zh-CN",
+        "targetKeyword": "Batch Task 2",
+        "category": "技术干货",
+        "riskLevel": "LOW",
+        "estimatedMonthlyVisitsGain": 2500,
+        "demandEvidence": {
+          "sourceType": "GSC_QUERY",
+          "queryOrTopic": "Batch Task 2",
+          "monthlyImpressions": 22000,
+          "currentClicks": 190,
+          "currentPosition": 16.5,
+          "evidenceDescription": "SERP 意图识别与 GSC 增量搜索意图: 技术选型",
+          "reliabilityConfidence": 0.98
+        },
+        "scoreBreakdown": {
+          "businessValue": 19,
+          "searchDemand": 19,
+          "winProbability": 17,
+          "currentRanking": 12,
+          "engagementPotential": 9,
+          "googleBaiduReuse": 9,
+          "internalLinkValue": 5,
+          "freshness": 5,
+          "dataReliability": 5,
+          "riskPenalty": 0,
+          "costPenalty": 1,
+          "totalScore": 98
+        },
+        "status": "AUTO_PUBLISHED",
+        "createdAt": "2026-08-23T12:57:00.043Z",
+        "updatedAt": "2026-08-23T12:57:00.043Z"
+      },
+      {
+        "id": "opp-1787489820043-gzfu",
+        "siteId": "site-orch-1",
+        "title": "K8s 架构实践",
+        "type": "NEW_CONTENT",
+        "language": "zh-CN",
+        "targetKeyword": "Batch Task 1",
+        "category": "技术干货",
+        "riskLevel": "LOW",
+        "estimatedMonthlyVisitsGain": 2500,
+        "demandEvidence": {
+          "sourceType": "GSC_QUERY",
+          "queryOrTopic": "Batch Task 1",
+          "monthlyImpressions": 22000,
+          "currentClicks": 190,
+          "currentPosition": 16.5,
+          "evidenceDescription": "SERP 意图识别与 GSC 增量搜索意图: 技术选型",
+          "reliabilityConfidence": 0.98
+        },
+        "scoreBreakdown": {
+          "businessValue": 19,
+          "searchDemand": 19,
+          "winProbability": 17,
+          "currentRanking": 12,
+          "engagementPotential": 9,
+          "googleBaiduReuse": 9,
+          "internalLinkValue": 5,
+          "freshness": 5,
+          "dataReliability": 5,
+          "riskPenalty": 0,
+          "costPenalty": 1,
+          "totalScore": 98
+        },
+        "status": "AUTO_PUBLISHED",
+        "createdAt": "2026-08-23T12:57:00.043Z",
+        "updatedAt": "2026-08-23T12:57:00.043Z"
+      }
+    ],
+    "drafts": [
+      {
+        "id": "draft-1787489820044-sx6w",
+        "opportunityId": "opp-1787489820043-s4vi",
+        "siteId": "site-orch-1",
+        "title": "K8s 架构实践",
+        "language": "zh-CN",
+        "category": "技术干货",
+        "summary": "摘要",
+        "contentHtml": "<h1>K8s</h1><p>内容</p>",
+        "sourcesUsed": [
+          "企业知识库及权威来源"
+        ],
+        "qualityGate": {
+          "passed": true,
+          "overallScore": 96,
+          "factReliabilityScore": 98,
+          "hallucinationFree": true,
+          "languageMatch": true,
+          "sourceCheckPassed": true,
+          "duplicateContentCheck": true,
+          "issues": [],
+          "passedChecks": [
+            "E-E-A-T 达标"
+          ]
+        },
+        "status": "PUBLISHED",
+        "publishedUrl": "https://techsite.io/guide-4b387320/",
+        "publishedAt": "2026-08-23T12:57:00.044Z",
+        "wpPostId": 68888,
+        "createdAt": "2026-08-23T12:57:00.044Z"
+      },
+      {
+        "id": "draft-1787489820044-6dlw",
+        "opportunityId": "opp-1787489820043-gzfu",
+        "siteId": "site-orch-1",
+        "title": "K8s 架构实践",
+        "language": "zh-CN",
+        "category": "技术干货",
+        "summary": "摘要",
+        "contentHtml": "<h1>K8s</h1><p>内容</p>",
+        "sourcesUsed": [
+          "企业知识库及权威来源"
+        ],
+        "qualityGate": {
+          "passed": true,
+          "overallScore": 96,
+          "factReliabilityScore": 98,
+          "hallucinationFree": true,
+          "languageMatch": true,
+          "sourceCheckPassed": true,
+          "duplicateContentCheck": true,
+          "issues": [],
+          "passedChecks": [
+            "E-E-A-T 达标"
+          ]
+        },
+        "status": "PUBLISHED",
+        "publishedUrl": "https://techsite.io/guide-4b387320/",
+        "publishedAt": "2026-08-23T12:57:00.044Z",
+        "wpPostId": 12288,
+        "createdAt": "2026-08-23T12:57:00.044Z"
+      }
+    ],
     "knowledgeSources": [],
     "auditLogs": [],
     "usageLedger": [],
     "baiduLogs": [
+      {
+        "id": "baidu-1787489820044",
+        "url": "https://techsite.io/guide-4b387320/",
+        "submittedAt": "2026-08-23T12:57:00.044Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489820044",
+        "url": "https://techsite.io/guide-4b387320/",
+        "submittedAt": "2026-08-23T12:57:00.044Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489819482",
+        "url": "https://techsite.io/guide-4b387320/",
+        "submittedAt": "2026-08-23T12:56:59.482Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489625416",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:53:45.416Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489625416",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:53:45.416Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489624890",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:53:44.890Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489576332",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:52:56.332Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489576332",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:52:56.332Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489576041",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:52:56.041Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489526367",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:52:06.367Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489526367",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:52:06.367Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489525927",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:52:05.927Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489495999",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:51:35.999Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489495999",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:51:35.999Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489495565",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:51:35.565Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489455709",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:50:55.709Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489455709",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:50:55.709Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489455358",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:50:55.358Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489339986",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:48:59.986Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489339984",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:48:59.984Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489339620",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:48:59.620Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487958349",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:25:58.349Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487958348",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:25:58.348Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487957783",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:25:57.783Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487611401",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:20:11.401Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487611399",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:20:11.399Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487611101",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:20:11.101Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487570185",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:19:30.185Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487570183",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:19:30.183Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487569733",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:19:29.733Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487522969",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:18:42.969Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487522967",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:18:42.967Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487522502",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:18:42.502Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487360882",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:16:00.882Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487360880",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:16:00.880Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487360442",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:16:00.442Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487346409",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:15:46.409Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487346407",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:15:46.407Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487345881",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:15:45.881Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487339470",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:15:39.470Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487339468",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:15:39.468Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487339042",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:15:39.042Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487246954",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:14:06.954Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487246953",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:14:06.953Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487246517",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:14:06.517Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487181849",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:13:01.849Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487181848",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:13:01.848Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487181317",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:13:01.317Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787486885840",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:08:05.840Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787486885839",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:08:05.839Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787486885400",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T12:08:05.400Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787486042515",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:54:02.515Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787486042514",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:54:02.514Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787486041960",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:54:01.960Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787485930350",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:52:10.350Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787485930349",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:52:10.349Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787485929999",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:52:09.999Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787485526969",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:45:26.969Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787485526968",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:45:26.968Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787485526620",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:45:26.620Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787485320969",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:42:00.969Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787485320968",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:42:00.968Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787485320542",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:42:00.542Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787485269825",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:41:09.825Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787485269824",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:41:09.824Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787485269261",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:41:09.261Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787485103162",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:38:23.162Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787485103162",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:38:23.162Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787485102623",
+        "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
+        "submittedAt": "2026-08-23T11:38:22.623Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
       {
         "id": "baidu-1787483173699",
         "url": "https://techsite.io/k8s-%E6%9E%B6%E6%9E%84%E5%AE%9E%E8%B7%B5/",
@@ -1636,13 +3008,1048 @@
       "id": "test-tenant",
       "username": "test_user",
       "email": "test@example.com",
-      "credits": 1000,
+      "credits": 960,
       "totalRechargedUsdt": 10,
-      "totalConsumedCredits": 0,
+      "totalConsumedCredits": 40,
       "role": "TENANT",
-      "createdAt": "2026-08-23T11:06:13.963Z"
+      "createdAt": "2026-08-23T12:57:00.042Z"
     },
     "creditTransactions": [
+      {
+        "id": "tx-1787489820042-kb92s",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:57:00.042Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787489820042-ki121",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:57:00.042Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787489819479-2rtxr",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:56:59.479Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787489625414-76q7b",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:53:45.414Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787489625414-aui00",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:53:45.414Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787489624887-hiqxs",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:53:44.887Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787489576330-oawxc",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:52:56.330Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787489576330-973wh",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:52:56.330Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787489576038-3u7v1",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:52:56.038Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787489526366-da5p4",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:52:06.366Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787489526366-bo70p",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:52:06.366Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787489525924-8gx7o",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:52:05.924Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787489495998-4opoh",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:51:35.998Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787489495998-0cof1",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:51:35.998Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787489495562-t2wud",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:51:35.562Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787489455707-o2z08",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:50:55.707Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787489455707-26n0z",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:50:55.707Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787489455355-1oion",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:50:55.355Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787489339971-f96k6",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:48:59.971Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787489339969-8gvhe",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:48:59.969Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787489339609-m6hd2",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:48:59.609Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787487958335-uyyev",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:25:58.335Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787487958333-gn9hp",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:25:58.333Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787487957773-707wh",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:25:57.773Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787487611386-s61ra",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:20:11.386Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787487611385-87np0",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:20:11.385Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787487611092-wesan",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:20:11.092Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787487570169-6g82z",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:19:30.169Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787487570167-t4hwd",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:19:30.167Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787487569724-21nd3",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:19:29.724Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787487522956-brjts",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:18:42.956Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787487522954-khncb",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:18:42.954Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787487522494-tls4l",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:18:42.494Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787487360862-0pxvv",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:16:00.862Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787487360861-fykyq",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:16:00.861Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787487360434-prisf",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:16:00.434Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787487346396-a2fju",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:15:46.396Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787487346395-zgnh9",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:15:46.395Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787487345872-w5pf0",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:15:45.872Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787487339457-r5dj9",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:15:39.457Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787487339456-082x5",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:15:39.456Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787487339034-wsrna",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:15:39.035Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787487246941-c5b8i",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:14:06.941Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787487246940-exl8w",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:14:06.940Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787487246509-vvlc3",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:14:06.509Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787487181838-kshmr",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:13:01.838Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787487181837-e76hb",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:13:01.837Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787487181309-h4ab5",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:13:01.309Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787486885828-iwmge",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:08:05.828Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787486885827-j2xtb",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:08:05.827Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787486885392-8l85u",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T12:08:05.392Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787486042504-pyp2s",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:54:02.504Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787486042503-qqyzi",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:54:02.503Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787486041953-3pjvo",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:54:01.953Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787485930339-6ghbu",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:52:10.339Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787485930339-0i6vq",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:52:10.339Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787485929992-w5l5c",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:52:09.992Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787485526959-92t4f",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:45:26.959Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787485526958-k35rr",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:45:26.958Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787485526613-ut06q",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:45:26.613Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787485320959-4gzr5",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:42:00.959Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787485320958-kif9m",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:42:00.958Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787485320535-z7shq",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:42:00.535Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787485269813-hr28q",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:41:09.813Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787485269812-r9i7b",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:41:09.812Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787485269253-ka4ny",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:41:09.253Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
+      {
+        "id": "tx-1787485103153-y69x4",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 960,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:38:23.153Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787485103152-cprhn",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:38:23.152Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787485102616-vigid",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -20,
+        "balance": 980,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-23T11:38:22.616Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
       {
         "id": "tx-1787483173686-b9fkw",
         "tenantId": "test-tenant",
@@ -2195,13 +4602,1399 @@
       {
         "id": "tx-reg-1787477470588",
         "tenantId": "tenant-b",
-        "type": "BONUS",
-        "action": "REGISTER_BONUS",
+        "type": "RECHARGE",
+        "action": "USDT_TOPUP",
         "amount": 100,
         "balance": 100,
-        "description": "新租户注册体验金 (+100 积分)",
-        "createdAt": "2026-08-23T09:31:10.588Z"
+        "description": "新租户注册体验金入账 (+100 积分)",
+        "createdAt": "2026-08-23T09:31:10.588Z",
+        "status": "PENDING",
+        "confirmedAt": "2026-08-24T07:54:22.113Z",
+        "confirmedBy": "tenant-a"
       }
     ]
+  },
+  "tenant-expert-alpha": {
+    "account": {
+      "id": "tenant-expert-alpha",
+      "username": "alpha_admin",
+      "email": "alpha@enterprise.com",
+      "companyName": "Alpha Cloud Corp",
+      "credits": 1000,
+      "totalRechargedUsdt": 50,
+      "totalConsumedCredits": 0,
+      "role": "ADMIN",
+      "createdAt": "2026-08-24T08:32:01.270Z"
+    },
+    "passwordHash": "password123",
+    "sites": [
+      {
+        "id": "site-alpha-1",
+        "name": "Alpha Secret Tech Site",
+        "domain": "alpha-secret.tech",
+        "connectorStatus": "CONNECTED",
+        "pagesCount": 20,
+        "calibration": {
+          "isCalibrating": false,
+          "approvedCount": 10,
+          "rejectedCount": 0,
+          "totalApprovedRequired": 2,
+          "autoPublishUnlocked": true,
+          "daysRemaining": 0,
+          "zeroFactErrorStreak": 10
+        },
+        "niche": "DevOps",
+        "siteLanguage": "zh-CN",
+        "wpVersion": "6.4.2",
+        "pluginInstalled": true,
+        "whitelistedCategories": [
+          "DevOps"
+        ],
+        "gscConnected": true,
+        "ga4Connected": true,
+        "baiduConnected": true,
+        "autopilotEnabled": true,
+        "weeklyPublishCap": 10,
+        "currentWeeklyPublished": 0,
+        "monthlyBudgetLimit": 500,
+        "monthlyBudgetUsed": 0,
+        "createdAt": "2026-08-24T08:32:01.243Z"
+      }
+    ],
+    "opportunities": [],
+    "drafts": [],
+    "knowledgeSources": [],
+    "auditLogs": [
+      {
+        "id": "log-1787560321268",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T08:32:01.268Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787560118284",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T08:28:38.284Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787560013758",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T08:26:53.758Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787559949897",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T08:25:49.897Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787559257298",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T08:14:17.298Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787559111741",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T08:11:51.741Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787558856333",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T08:07:36.333Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787558766026",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T08:06:06.026Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787558678808",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T08:04:38.808Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787558089127",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T07:54:49.127Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787558001101",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T07:53:21.101Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787557783505",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T07:49:43.505Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787557716206",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T07:48:36.206Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787557031036",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T07:37:11.036Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787556961232",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T07:36:01.232Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787553664914",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T06:41:04.914Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787552838451",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T06:27:18.451Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787551494119",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T06:04:54.119Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787550481691",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T05:48:01.691Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787549331318",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T05:28:51.318Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787495550070",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T14:32:30.070Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787495528402",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T14:32:08.402Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787495510146",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T14:31:50.146Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787495488933",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T14:31:28.933Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787495455353",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T14:30:55.353Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787494981651",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T14:23:01.651Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787494478342",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T14:14:38.342Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787492193524",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T13:36:33.524Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787492105472",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T13:35:05.472Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787490062887",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T13:01:02.887Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787489817911",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:56:57.911Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日自动化 SEO 巡航发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (每天 08:30)"
+      },
+      {
+        "id": "log-1787489817910",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:56:57.910Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "Kubernetes v1.31 升级",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"Kubernetes 生产级落地实践\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787489817803",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:56:57.803Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787489626732",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:53:46.732Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日自动化 SEO 巡航发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (每天 08:30)"
+      },
+      {
+        "id": "log-1787489626731",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:53:46.731Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "Kubernetes v1.31 升级",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"Kubernetes 生产级落地实践\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787489626625",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:53:46.625Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787489575534",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:52:55.534Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日自动化 SEO 巡航发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (每天 08:30)"
+      },
+      {
+        "id": "log-1787489575533",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:52:55.533Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "Kubernetes v1.31 升级",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"Kubernetes 生产级落地实践\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787489575427",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:52:55.427Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787489527755",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:52:07.755Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日自动化 SEO 巡航发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (每天 08:30)"
+      },
+      {
+        "id": "log-1787489527754",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:52:07.754Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "Kubernetes v1.31 升级",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"Kubernetes 生产级落地实践\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787489527648",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:52:07.648Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787489498226",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:51:38.226Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日自动化 SEO 巡航发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (每天 08:30)"
+      },
+      {
+        "id": "log-1787489498225",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:51:38.225Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "Kubernetes v1.31 升级",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"Kubernetes 生产级落地实践\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787489498120",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:51:38.120Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787489453790",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:50:53.790Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日自动化 SEO 巡航发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (每天 08:30)"
+      },
+      {
+        "id": "log-1787489453789",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:50:53.789Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "Kubernetes v1.31 升级",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"Kubernetes 生产级落地实践\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787489453682",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:50:53.682Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-task-1787489341779",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:49:01.495Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "CRON_AUTO_PUBLISH",
+        "target": "Alpha Secret Tech Site - Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "定时巡航触发成功！已发布并推送到搜索引擎（已向百度主动推送通道提交 1 条 URL，状态正常），URL: https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/"
+      },
+      {
+        "id": "log-1787489341493",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:49:01.492Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日自动化 SEO 巡航发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (每天 08:30)"
+      },
+      {
+        "id": "log-1787489341487",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:49:01.487Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "Kubernetes v1.31 升级",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"Kubernetes 生产级落地实践\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787489341373",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:49:01.373Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-task-1787487957468",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:25:57.255Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "CRON_AUTO_PUBLISH",
+        "target": "Alpha Secret Tech Site - Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "定时巡航触发成功！已发布并推送到搜索引擎（已向百度主动推送通道提交 1 条 URL，状态正常），URL: https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/"
+      },
+      {
+        "id": "log-1787487957253",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:25:57.252Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日自动化 SEO 巡航发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (每天 08:30)"
+      },
+      {
+        "id": "log-1787487957247",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:25:57.247Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "Kubernetes v1.31 升级",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"Kubernetes 生产级落地实践\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787487957132",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:25:57.132Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-task-1787487610767",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:20:10.549Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "CRON_AUTO_PUBLISH",
+        "target": "Alpha Secret Tech Site - Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "定时巡航触发成功！已发布并推送到搜索引擎（已向百度主动推送通道提交 1 条 URL，状态正常），URL: https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/"
+      },
+      {
+        "id": "log-1787487610547",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:20:10.545Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日自动化 SEO 巡航发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (每天 08:30)"
+      },
+      {
+        "id": "log-1787487610540",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:20:10.540Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "Kubernetes v1.31 升级",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"Kubernetes 生产级落地实践\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787487610425",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:20:10.425Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-task-1787487571999",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:19:31.800Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "CRON_AUTO_PUBLISH",
+        "target": "Alpha Secret Tech Site - Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "定时巡航触发成功！已发布并推送到搜索引擎（已向百度主动推送通道提交 1 条 URL，状态正常），URL: https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/"
+      },
+      {
+        "id": "log-1787487571798",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:19:31.796Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日自动化 SEO 巡航发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (每天 08:30)"
+      },
+      {
+        "id": "log-1787487571792",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:19:31.792Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "Kubernetes v1.31 升级",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"Kubernetes 生产级落地实践\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787487571676",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:19:31.676Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-task-1787487522179",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:18:42.032Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "CRON_AUTO_PUBLISH",
+        "target": "Alpha Secret Tech Site - Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "定时巡航触发成功！已发布并推送到搜索引擎（已向百度主动推送通道提交 1 条 URL，状态正常），URL: https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/"
+      },
+      {
+        "id": "log-1787487522030",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:18:42.029Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日自动化 SEO 巡航发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (每天 08:30)"
+      },
+      {
+        "id": "log-1787487522024",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:18:42.024Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "Kubernetes v1.31 升级",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"Kubernetes 生产级落地实践\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787487521907",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:18:41.907Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-task-1787487360125",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:15:59.931Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "CRON_AUTO_PUBLISH",
+        "target": "Alpha Secret Tech Site - Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "定时巡航触发成功！已发布并推送到搜索引擎（已向百度主动推送通道提交 1 条 URL，状态正常），URL: https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/"
+      },
+      {
+        "id": "log-1787487359929",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:15:59.928Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日自动化 SEO 巡航发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (每天 08:30)"
+      },
+      {
+        "id": "log-1787487359924",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:15:59.924Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "Kubernetes v1.31 升级",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"Kubernetes 生产级落地实践\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787487359809",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:15:59.809Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-task-1787487345564",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:15:45.374Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "CRON_AUTO_PUBLISH",
+        "target": "Alpha Secret Tech Site - Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "定时巡航触发成功！已发布并推送到搜索引擎（已向百度主动推送通道提交 1 条 URL，状态正常），URL: https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/"
+      },
+      {
+        "id": "log-1787487345373",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:15:45.372Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日自动化 SEO 巡航发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (每天 08:30)"
+      },
+      {
+        "id": "log-1787487345368",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:15:45.368Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "Kubernetes v1.31 升级",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"Kubernetes 生产级落地实践\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787487345250",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:15:45.250Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-task-1787487337727",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:15:37.445Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "CRON_AUTO_PUBLISH",
+        "target": "Alpha Secret Tech Site - Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "定时巡航触发成功！已发布并推送到搜索引擎（已向百度主动推送通道提交 1 条 URL，状态正常），URL: https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/"
+      },
+      {
+        "id": "log-1787487337443",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:15:37.442Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日自动化 SEO 巡航发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (每天 08:30)"
+      },
+      {
+        "id": "log-1787487337438",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:15:37.438Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "Kubernetes v1.31 升级",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"Kubernetes 生产级落地实践\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-1787487337318",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-23T12:15:37.318Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-task-fail-1787487246166",
+        "siteId": "site-alpha-cruise",
+        "timestamp": "2026-08-23T12:14:05.712Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "CRON_AUTO_PUBLISH",
+        "target": "Alpha Cruise Site - 每日自动化 SEO 巡航发文",
+        "result": "FAILED",
+        "details": "定时巡航执行失败: Cannot read properties of undefined (reading '0')，扣除的积分已自动全额退还。"
+      },
+      {
+        "id": "log-1787487245710",
+        "siteId": "site-alpha-cruise",
+        "timestamp": "2026-08-23T12:14:05.709Z",
+        "actor": "USER_ADMIN",
+        "action": "CREATE_SCHEDULED_TASK",
+        "target": "每日自动化 SEO 巡航发文",
+        "result": "SUCCESS",
+        "details": "已创建自动化巡航任务，执行周期: DAILY (每天 08:30)"
+      },
+      {
+        "id": "log-err-1787487245689",
+        "siteId": "site-fault-1",
+        "timestamp": "2026-08-23T12:14:05.689Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "PIPELINE_ERROR",
+        "target": "unreachable-wp-site.invalid",
+        "result": "FAILED",
+        "details": "执行阶段异常 [CREDIT_DEDUCTED]: Cannot read properties of undefined (reading '0')"
+      }
+    ],
+    "usageLedger": [],
+    "baiduLogs": [
+      {
+        "id": "baidu-1787560321268",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T08:32:01.268Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787560118284",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T08:28:38.284Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787560013757",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T08:26:53.757Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787559949896",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T08:25:49.896Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787559257298",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T08:14:17.298Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787559111740",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T08:11:51.740Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787558856332",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T08:07:36.332Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787558766025",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T08:06:06.025Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787558678808",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T08:04:38.808Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787558089126",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T07:54:49.126Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787558001101",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T07:53:21.101Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787557783504",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T07:49:43.504Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787557716205",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T07:48:36.205Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787557031035",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T07:37:11.035Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787556961218",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T07:36:01.218Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787553664914",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T06:41:04.914Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787552838451",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T06:27:18.451Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787551494119",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T06:04:54.119Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787550481691",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T05:48:01.691Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787549331318",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-24T05:28:51.318Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787495550070",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-23T14:32:30.070Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787495528402",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-23T14:32:08.402Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787495510145",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-23T14:31:50.145Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787495488933",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-23T14:31:28.933Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787495455353",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-23T14:30:55.353Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787494981650",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-23T14:23:01.650Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787494478341",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-23T14:14:38.341Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787492193524",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-23T13:36:33.524Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787492105472",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-23T13:35:05.472Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787490062887",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-23T13:01:02.887Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489817912",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-23T12:56:57.912Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489817270",
+        "url": "https://alpha-secret.tech/kubernetes/",
+        "submittedAt": "2026-08-23T12:56:57.270Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489626734",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:53:46.733Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489626107",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:53:46.107Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489575535",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:52:55.535Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489575081",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:52:55.081Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489527757",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:52:07.756Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489527119",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:52:07.119Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489498227",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:51:38.227Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489497772",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:51:37.772Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489453792",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:50:53.791Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489453360",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:50:53.360Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489341497",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:49:01.495Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787489340814",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:49:00.814Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487957258",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:25:57.255Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487956572",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:25:56.572Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487610550",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:20:10.549Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487610122",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:20:10.122Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487571802",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:19:31.800Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487571162",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:19:31.162Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487522034",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:18:42.032Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487521498",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:18:41.498Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487359933",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:15:59.931Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487359272",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:15:59.272Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487345376",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:15:45.374Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487344768",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:15:44.768Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487337447",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:15:37.445Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487336995",
+        "url": "https://alpha-secret.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:15:36.995Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      },
+      {
+        "id": "baidu-1787487245715",
+        "url": "https://alpha-cruise.tech/kubernetes-%E7%94%9F%E4%BA%A7%E7%BA%A7%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98/",
+        "submittedAt": "2026-08-23T12:14:05.712Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 92
+      }
+    ],
+    "automatedTasks": [],
+    "creditTransactions": []
+  },
+  "tenant-expert-beta": {
+    "account": {
+      "id": "tenant-expert-beta",
+      "username": "beta_user",
+      "email": "beta@starter.com",
+      "companyName": "Beta Startup Studio",
+      "credits": 10,
+      "totalRechargedUsdt": 0,
+      "totalConsumedCredits": 0,
+      "role": "TENANT",
+      "createdAt": "2026-08-24T08:32:01.271Z"
+    },
+    "passwordHash": "password123",
+    "sites": [],
+    "opportunities": [],
+    "drafts": [],
+    "knowledgeSources": [],
+    "auditLogs": [],
+    "usageLedger": [],
+    "baiduLogs": [],
+    "automatedTasks": [],
+    "creditTransactions": []
   }
 }

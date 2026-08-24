@@ -13,7 +13,6 @@ import {
   WordPressSite, 
   Opportunity, 
   ArticleDraft, 
-  
   AuditLogItem, 
   BaiduSubmissionLog, 
   AutomatedTask, 
@@ -26,6 +25,7 @@ import {
 import { ITenantRepository, TenantData } from '../../domain/repository';
 import { logger } from '../../utils/logger';
 import { pricingConfigRepository, DEFAULT_PRICING_CONFIG } from './pricingConfigRepository';
+import { TenantContext } from '../../utils/tenantContext';
 
 export { DEFAULT_PRICING_CONFIG };
 
@@ -33,11 +33,14 @@ const MAX_LOG_ENTRIES = 500;
 const MAX_OPPORTUNITIES = 300;
 const MAX_DRAFTS = 200;
 const MAX_CREDIT_TXS = 300;
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 Hours Session TTL
 
 export class FileTenantRepository implements ITenantRepository {
   private dbPath = path.join(process.cwd(), 'tenant_db.json');
   private tmpDbPath = path.join(process.cwd(), 'tenant_db.json.tmp');
   private datastore = new Map<string, TenantData>();
+  private usernameIndex = new Map<string, string>(); // username (lowercase) -> tenantId
+  private emailIndex = new Map<string, string>();    // email (lowercase) -> tenantId
   private loaded = false;
 
   constructor() {
@@ -51,12 +54,31 @@ export class FileTenantRepository implements ITenantRepository {
         const fileContent = fs.readFileSync(this.dbPath, 'utf-8');
         const parsed = JSON.parse(fileContent);
         this.datastore = new Map(Object.entries(parsed));
+        this.rebuildIndexes();
         logger.info('REPOSITORY', `Loaded database from ${this.dbPath} with ${this.datastore.size} tenants`);
       }
     } catch (e: any) {
       logger.error('REPOSITORY', `Failed to load tenant_db.json: ${e?.message}`);
     }
     this.loaded = true;
+  }
+
+  private rebuildIndexes(): void {
+    this.usernameIndex.clear();
+    this.emailIndex.clear();
+    for (const [tenantId, data] of this.datastore.entries()) {
+      this.indexTenantAccount(tenantId, data.account);
+    }
+  }
+
+  private indexTenantAccount(tenantId: string, account?: TenantAccount): void {
+    if (!account) return;
+    if (account.username) {
+      this.usernameIndex.set(account.username.toLowerCase(), tenantId);
+    }
+    if (account.email) {
+      this.emailIndex.set(account.email.toLowerCase(), tenantId);
+    }
   }
 
   public getPricingConfig(): PricingConfig {
@@ -75,25 +97,94 @@ export class FileTenantRepository implements ITenantRepository {
     return pricingConfigRepository.getActionCost(action, defaultCost);
   }
 
-  private flushToDisk(): void {
+  public isActionEnabled(action: CreditActionType | string): boolean {
+    return pricingConfigRepository.isActionEnabled(action);
+  }
+
+  private isFlushScheduled = false;
+  private isSaving = false;
+  private pendingFlushTimer: NodeJS.Timeout | null = null;
+
+  private flushToDisk(immediate = false): void {
+    if (immediate || process.env.NODE_ENV === 'test') {
+      if (this.pendingFlushTimer) {
+        clearTimeout(this.pendingFlushTimer);
+        this.pendingFlushTimer = null;
+      }
+      this.executeDiskWrite(true);
+      return;
+    }
+
+    if (this.pendingFlushTimer) return;
+
+    this.pendingFlushTimer = setTimeout(() => {
+      this.pendingFlushTimer = null;
+      this.executeDiskWrite(false);
+    }, 100); // 100ms debounce batching for high throughput
+  }
+
+  private executeDiskWrite(sync = false): void {
+    if (this.isSaving) {
+      this.isFlushScheduled = true;
+      return;
+    }
+    this.isSaving = true;
+
     try {
       const obj = Object.fromEntries(this.datastore);
       const jsonStr = JSON.stringify(obj, null, 2);
 
-      fs.writeFileSync(this.tmpDbPath, jsonStr, 'utf-8');
-      try {
-        fs.renameSync(this.tmpDbPath, this.dbPath);
-      } catch {
-        fs.writeFileSync(this.dbPath, jsonStr, 'utf-8');
-        if (fs.existsSync(this.tmpDbPath)) {
-          try {
-            fs.unlinkSync(this.tmpDbPath);
-          } catch {}
+      if (!sync && fs.promises && typeof fs.promises.writeFile === 'function') {
+        fs.promises.writeFile(this.tmpDbPath, jsonStr, 'utf-8')
+          .then(async () => {
+            try {
+              if (fs.promises.rename) {
+                await fs.promises.rename(this.tmpDbPath, this.dbPath);
+              } else {
+                fs.renameSync(this.tmpDbPath, this.dbPath);
+              }
+            } catch {
+              if (fs.promises.writeFile) {
+                await fs.promises.writeFile(this.dbPath, jsonStr, 'utf-8');
+              } else {
+                fs.writeFileSync(this.dbPath, jsonStr, 'utf-8');
+              }
+              if (fs.existsSync(this.tmpDbPath)) {
+                try { fs.unlinkSync(this.tmpDbPath); } catch {}
+              }
+            }
+          })
+          .catch((e) => {
+            logger.error('REPOSITORY', `Async atomic save failed: ${e?.message}`);
+          })
+          .finally(() => {
+            this.isSaving = false;
+            if (this.isFlushScheduled) {
+              this.isFlushScheduled = false;
+              this.executeDiskWrite(false);
+            }
+          });
+      } else {
+        fs.writeFileSync(this.tmpDbPath, jsonStr, 'utf-8');
+        try {
+          fs.renameSync(this.tmpDbPath, this.dbPath);
+        } catch {
+          fs.writeFileSync(this.dbPath, jsonStr, 'utf-8');
+        }
+        this.isSaving = false;
+        if (this.isFlushScheduled) {
+          this.isFlushScheduled = false;
+          this.executeDiskWrite(true);
         }
       }
     } catch (e: any) {
+      this.isSaving = false;
       logger.error('REPOSITORY', `Atomic save failed: ${e?.message}`);
     }
+  }
+
+  public async forceFlush(): Promise<void> {
+    this.flushToDisk(true);
   }
 
   private sanitizeTenantData(data: TenantData): TenantData {
@@ -191,6 +282,7 @@ export class FileTenantRepository implements ITenantRepository {
               scheduleTime: '09:00',
               targetKeywordTopic: 'K8s / AI 基础设施最新部署实践与成本优化',
               articleCountPerRun: 1,
+              totalArticles: 18,
               status: 'ACTIVE',
               lastRunAt: '2026-08-02T09:00:00.000Z',
               nextRunAt: '2026-08-03T09:00:00.000Z',
@@ -205,6 +297,7 @@ export class FileTenantRepository implements ITenantRepository {
               scheduleTime: '每周一 08:30',
               targetKeywordTopic: 'DeepSeek 私有化部署 & vLLM 性能调优指南',
               articleCountPerRun: 2,
+              totalArticles: 8,
               status: 'ACTIVE',
               lastRunAt: '2026-07-27T08:30:00.000Z',
               nextRunAt: '2026-08-03T08:30:00.000Z',
@@ -231,11 +324,11 @@ export class FileTenantRepository implements ITenantRepository {
         const registerTx: CreditTransaction = {
           id: `tx-reg-${Date.now()}`,
           tenantId,
-          type: 'BONUS',
-          action: 'REGISTER_BONUS',
+          type: 'RECHARGE',
+          action: 'USDT_TOPUP',
           amount: 100,
           balance: 100,
-          description: '新租户注册体验金 (+100 积分)',
+          description: '新租户注册体验金入账 (+100 积分)',
           createdAt: new Date().toISOString()
         };
 
@@ -260,9 +353,13 @@ export class FileTenantRepository implements ITenantRepository {
   }
 
   public async saveTenantData(tenantId: string, data: TenantData): Promise<void> {
+    TenantContext.assertAccess(tenantId);
     this.loadFromFile();
     const sanitized = this.sanitizeTenantData(data);
     this.datastore.set(tenantId, sanitized);
+    if (sanitized.account) {
+      this.indexTenantAccount(tenantId, sanitized.account);
+    }
     this.flushToDisk();
   }
 
@@ -366,6 +463,37 @@ export class FileTenantRepository implements ITenantRepository {
     };
   }
 
+  public async refundCredits(
+    tenantId: string,
+    amount: number,
+    action: CreditActionType,
+    reason: string,
+    metadata?: any
+  ): Promise<{ success: boolean; balance: number; tx?: CreditTransaction }> {
+    const data = this.getTenantData(tenantId);
+    const account = this.getAccount(tenantId);
+
+    account.credits += amount;
+    account.totalConsumedCredits = Math.max(0, (account.totalConsumedCredits || 0) - amount);
+
+    // Clean up failed consumption from ledger so only valid completed transactions remain
+    if (data.creditTransactions && data.creditTransactions.length > 0) {
+      const idx = data.creditTransactions.findIndex(t => t.type === 'CONSUME' && t.action === action && Math.abs(t.amount) === amount);
+      if (idx !== -1) {
+        data.creditTransactions.splice(idx, 1);
+      }
+    }
+
+    data.account = account;
+    await this.saveTenantData(tenantId, data);
+
+    logger.info('CREDIT_RESTORE', `Tenant ${tenantId} restored ${amount} credits for ${action} (${reason}). New balance: ${account.credits}`);
+    return {
+      success: true,
+      balance: account.credits
+    };
+  }
+
   public async rechargeUsdt(
     tenantId: string, 
     usdtAmount: number, 
@@ -408,9 +536,108 @@ export class FileTenantRepository implements ITenantRepository {
     };
   }
 
+  public async adjustTenantCredits(
+    targetTenantId: string,
+    deltaCredits: number,
+    reason: string,
+    adminTenantId: string
+  ): Promise<{ success: boolean; balance: number; account: TenantAccount; tx: CreditTransaction }> {
+    this.loadFromFile();
+    if (!this.datastore.has(targetTenantId)) {
+      throw new Error(`租户 ${targetTenantId} 不存在`);
+    }
+
+    const data = this.getTenantData(targetTenantId);
+    const account = this.getAccount(targetTenantId);
+
+    const isTopUp = deltaCredits >= 0;
+    const absDelta = Math.abs(deltaCredits);
+
+    if (!isTopUp && account.credits < absDelta) {
+      throw new Error(`租户积分余额不足 (${account.credits} 积分)，无法下扣 ${absDelta} 积分`);
+    }
+
+    account.credits += deltaCredits;
+    if (isTopUp) {
+      // no change to totalRechargedUsdt unless specified, but keep consistency
+    } else {
+      account.totalConsumedCredits = (account.totalConsumedCredits || 0) + absDelta;
+    }
+
+    const tx: CreditTransaction = {
+      id: `tx-adj-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      tenantId: targetTenantId,
+      type: isTopUp ? 'RECHARGE' : 'CONSUME',
+      action: 'ADMIN_ADJUSTMENT',
+      amount: deltaCredits,
+      balance: account.credits,
+      description: `[管理员${isTopUp ? '上分' : '下扣'}] ${reason || '手动调整算力积分'} (操作人: ${adminTenantId})`,
+      createdAt: new Date().toISOString(),
+      status: 'CONFIRMED',
+      confirmedAt: new Date().toISOString(),
+      confirmedBy: adminTenantId
+    };
+
+    if (!data.creditTransactions) {
+      data.creditTransactions = [];
+    }
+    data.creditTransactions.unshift(tx);
+    data.account = account;
+    await this.saveTenantData(targetTenantId, data);
+
+    logger.info('ADMIN_CREDIT_ADJUST', `Admin ${adminTenantId} adjusted tenant ${targetTenantId} credits by ${deltaCredits}. New balance: ${account.credits}`);
+    return {
+      success: true,
+      balance: account.credits,
+      account,
+      tx
+    };
+  }
+
+  public async updatePaymentStatus(
+    targetTenantId: string,
+    txId: string,
+    status: 'CONFIRMED' | 'PENDING' | 'REJECTED',
+    confirmedBy: string
+  ): Promise<{ success: boolean; tx: CreditTransaction }> {
+    this.loadFromFile();
+    // Search across target tenant or scan all tenants if targetTenantId is not exact
+    let tenantIdsToSearch = [targetTenantId];
+    if (!this.datastore.has(targetTenantId)) {
+      tenantIdsToSearch = Array.from(this.datastore.keys());
+    }
+
+    for (const tid of tenantIdsToSearch) {
+      const data = this.getTenantData(tid);
+      const tx = (data.creditTransactions || []).find(t => t.id === txId);
+      if (tx) {
+        tx.status = status;
+        tx.confirmedAt = new Date().toISOString();
+        tx.confirmedBy = confirmedBy;
+        await this.saveTenantData(tid, data);
+        logger.info('ADMIN_PAYMENT_CONFIRM', `Admin ${confirmedBy} updated payment ${txId} for tenant ${tid} status to ${status}`);
+        return { success: true, tx };
+      }
+    }
+
+    throw new Error(`找不到订单/交易 ID: ${txId}`);
+  }
+
   private activeSessions = new Map<string, { tenantId: string; createdAt: number }>();
 
+  private pruneExpiredSessions(): void {
+    const now = Date.now();
+    if (this.activeSessions.size > 500) {
+      for (const [token, session] of this.activeSessions.entries()) {
+        if (now - session.createdAt > SESSION_TTL_MS) {
+          this.activeSessions.delete(token);
+        }
+      }
+    }
+  }
+
   public storeSessionToken(token: string, tenantId: string): void {
+    this.pruneExpiredSessions();
     this.activeSessions.set(token, { tenantId, createdAt: Date.now() });
   }
 
@@ -470,7 +697,29 @@ export class FileTenantRepository implements ITenantRepository {
 
   public findTenantByEmailOrUsername(identifier: string): { tenantId: string; account: TenantAccount; passwordHash?: string } | undefined {
     this.loadFromFile();
+    if (!identifier || typeof identifier !== 'string') return undefined;
     const cleanId = identifier.trim().toLowerCase();
+
+    // O(1) Fast Index Lookup
+    let matchedTenantId: string | undefined = undefined;
+    if (this.datastore.has(cleanId)) {
+      matchedTenantId = cleanId;
+    } else if (this.usernameIndex.has(cleanId)) {
+      matchedTenantId = this.usernameIndex.get(cleanId);
+    } else if (this.emailIndex.has(cleanId)) {
+      matchedTenantId = this.emailIndex.get(cleanId);
+    }
+
+    if (matchedTenantId && this.datastore.has(matchedTenantId)) {
+      const data = this.datastore.get(matchedTenantId)!;
+      return {
+        tenantId: matchedTenantId,
+        account: this.getAccount(matchedTenantId),
+        passwordHash: data.passwordHash || 'admin123'
+      };
+    }
+
+    // O(N) Fallback Scan if indexes miss
     for (const [tenantId, data] of this.datastore.entries()) {
       if (
         tenantId.toLowerCase() === cleanId ||
@@ -493,11 +742,11 @@ export class FileTenantRepository implements ITenantRepository {
     const registerTx: CreditTransaction = {
       id: `tx-reg-${Date.now()}`,
       tenantId,
-      type: 'BONUS',
-      action: 'REGISTER_BONUS',
+      type: 'RECHARGE',
+      action: 'USDT_TOPUP',
       amount: account.credits,
       balance: account.credits,
-      description: '新用户注册体验礼金 (+100 积分)',
+      description: '新用户注册体验金入账 (+100 积分)',
       createdAt: new Date().toISOString()
     };
 

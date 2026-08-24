@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { fileTenantRepository } from "../infrastructure/persistence/fileTenantRepository";
 import { TenantData } from "../domain/repository";
 import { TenantAccount } from "../../src/types/seo";
+import { TenantContext } from "../utils/tenantContext";
 
 export interface TenantRequest extends Request {
   tenantId: string;
@@ -39,7 +40,15 @@ export const tenantMiddleware = (req: Request, res: Response, next: NextFunction
       tenantRequest.tenantId = 'tenant-a';
       tenantRequest.account = defaultData.account!;
       tenantRequest.tenantData = defaultData;
-      return next();
+
+      return TenantContext.run(
+        {
+          tenantId: 'tenant-a',
+          account: defaultData.account!,
+          role: defaultData.account?.role || 'ADMIN'
+        },
+        () => next()
+      );
     }
 
     res.status(401).json({
@@ -61,6 +70,14 @@ export const tenantMiddleware = (req: Request, res: Response, next: NextFunction
     }
   });
   
-  next();
+  TenantContext.run(
+    {
+      tenantId: session.tenantId,
+      account: session.account,
+      role: session.account?.role || 'TENANT'
+    },
+    () => next()
+  );
 };
+
 

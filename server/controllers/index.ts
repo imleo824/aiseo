@@ -6,4 +6,5 @@ export * from "./knowledgeController";
 export * from "./metricsController";
 export * from "./authController";
 export * from "./creditController";
+export * from "./systemServiceConfigController";
 

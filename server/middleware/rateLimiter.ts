@@ -9,6 +9,16 @@ interface RateLimitStore {
 
 const store: RateLimitStore = {};
 
+// Periodic garbage collection sweep every 2 minutes to prevent memory leaks
+setInterval(() => {
+  const now = Date.now();
+  for (const key of Object.keys(store)) {
+    if (store[key] && now > store[key].resetTime) {
+      delete store[key];
+    }
+  }
+}, 120000).unref();
+
 /**
  * Enterprise Rate Limiter Middleware
  * @param windowMs Window duration in milliseconds (default 60s)

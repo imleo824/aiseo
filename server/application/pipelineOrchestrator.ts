@@ -8,6 +8,7 @@ import { geminiAdapter } from '../infrastructure/ai/geminiAdapter';
 import { fileTenantRepository } from '../infrastructure/persistence/fileTenantRepository';
 import { logger } from '../utils/logger';
 import { NotFoundError } from '../domain/errors';
+import { generateSeoSlug } from '../utils/validator';
 
 export interface PipelineExecutionOptions {
   tenantId: string;
@@ -38,6 +39,7 @@ export class SEOPipelineOrchestrator {
     const startTime = Date.now();
     const { tenantId, siteId, keyword, actor = 'SYSTEM_AUTOPILOT', traceId } = options;
     const stagesCompleted: string[] = [];
+    let creditDeductedAmount = 0;
 
     const tenantData = this.repository.getTenantData(tenantId);
     const site = tenantData.sites.find(s => s.id === siteId);
@@ -55,7 +57,7 @@ export class SEOPipelineOrchestrator {
       const finalKeyword = keyword || (site.siteLanguage === 'zh-CN' ? 'DeepSeek K8s 部署实践' : 'Kubernetes FinOps Guide 2026');
 
       // 1. Credit Deduction
-      await this.deductPipelineCredits(tenantId, site, finalKeyword);
+      creditDeductedAmount = await this.deductPipelineCredits(tenantId, site, finalKeyword);
       stagesCompleted.push('CREDIT_DEDUCTED');
 
       // 2. Stage 1: SERP Intent & Search Demand Discovery
@@ -147,6 +149,21 @@ export class SEOPipelineOrchestrator {
     } catch (err: any) {
       profiler.fail(err);
 
+      // Automatic Credit Refund on fatal execution failure
+      if (creditDeductedAmount > 0 && typeof this.repository.refundCredits === 'function') {
+        try {
+          await this.repository.refundCredits(
+            tenantId,
+            creditDeductedAmount,
+            'CRUISE_PIPELINE',
+            `全流程发文异常自动补偿退款 (${site.name || site.domain})`,
+            { siteId: site.id, error: err?.message || String(err) }
+          );
+        } catch (refundErr) {
+          logger.error('PIPELINE', `Failed to refund credits for tenant ${tenantId}`, refundErr);
+        }
+      }
+
       await this.repository.appendAuditLog(tenantId, {
         id: `log-err-${Date.now()}`,
         siteId: site.id,
@@ -167,7 +184,13 @@ export class SEOPipelineOrchestrator {
     }
   }
 
-  private async deductPipelineCredits(tenantId: string, site: WordPressSite, finalKeyword: string): Promise<void> {
+  private async deductPipelineCredits(tenantId: string, site: WordPressSite, finalKeyword: string): Promise<number> {
+    if (typeof (this.repository as any).isActionEnabled === 'function') {
+      if (!(this.repository as any).isActionEnabled('CRUISE_PIPELINE')) {
+        throw new Error('“一键全流程发文”功能当前已被系统管理员暂停使用。');
+      }
+    }
+
     const actionCost = (this.repository as any).getActionCost 
       ? (this.repository as any).getActionCost('CRUISE_PIPELINE', 20) 
       : 20;
@@ -183,6 +206,8 @@ export class SEOPipelineOrchestrator {
     if (!creditRes.success) {
       throw new Error(creditRes.message || '积分不足，无法执行发文，请充值 USDT 兑换积分。');
     }
+
+    return actionCost;
   }
 
   private async discoverSearchDemand(
@@ -312,10 +337,12 @@ export class SEOPipelineOrchestrator {
       return {};
     }
 
+    const seoSlug = generateSeoSlug(articleResult.title);
     const wpRes = await this.wpPublisher.publishPost(site, {
       title: articleResult.title,
       contentHtml: finalContentHtml,
       summary: articleResult.summary,
+      slug: seoSlug,
       category,
       status: 'publish'
     });
@@ -389,8 +416,8 @@ export class SEOPipelineOrchestrator {
       stagesCompleted.push('BAIDU_INDEXING_DISPATCH');
     }
 
-    await this.searchEngineSubmitter.pushToIndexNow(site.domain, site.indexNowKey, [publishedUrl]);
-    stagesCompleted.push('INDEX_NOW_REALTIME_PUSH');
+    await this.searchEngineSubmitter.pushToGoogle(site.domain, [publishedUrl]);
+    stagesCompleted.push('GOOGLE_INDEXING_DISPATCH');
     stagesCompleted.push('SEARCH_ENGINE_PUSH');
 
     eventBus.publish({

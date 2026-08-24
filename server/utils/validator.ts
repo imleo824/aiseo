@@ -70,6 +70,23 @@ export function validateTaskInput(body: any): ValidationResult {
   };
 }
 
+export function generateSeoSlug(titleOrKeyword: string): string {
+  if (!titleOrKeyword || typeof titleOrKeyword !== 'string') return 'article-post';
+  
+  // Clean prefix tags like [二次创作/改写] or [竞品对标截流]
+  let cleaned = titleOrKeyword.replace(/\[.*?\]/g, '').trim();
+  
+  // Extract alphanumeric sequences or Latin characters
+  const latinMatches = cleaned.match(/[a-zA-Z0-9]+/g);
+  if (latinMatches && latinMatches.join('-').length >= 4) {
+    return latinMatches.join('-').toLowerCase().slice(0, 60);
+  }
+
+  // Fallback slug generation for non-latin titles
+  const hexHash = Buffer.from(cleaned).toString('hex').slice(0, 8);
+  return `guide-${hexHash}`;
+}
+
 export function validateKnowledgeInput(body: any): ValidationResult {
   const errors: string[] = [];
   if (!body || typeof body !== 'object') {
