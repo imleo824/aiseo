@@ -28,7 +28,6 @@ export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
   const [usages, setUsages] = useState<UsageRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [actionFilter, setActionFilter] = useState<string>('ALL');
 
   const fetchUsages = async () => {
     setLoading(true);
@@ -76,17 +75,16 @@ export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
 
   const filteredUsages = useMemo(() => {
     return usages.filter(u => {
-      const matchesAction = actionFilter === 'ALL' || u.action === actionFilter;
       const term = search.toLowerCase().trim();
-      if (!term) return matchesAction;
-      return matchesAction && (
+      if (!term) return true;
+      return (
         (u.actionName && u.actionName.toLowerCase().includes(term)) ||
         (u.tenantId && u.tenantId.toLowerCase().includes(term)) ||
         (u.description && u.description.toLowerCase().includes(term)) ||
         (u.siteId && u.siteId.toLowerCase().includes(term))
       );
     });
-  }, [usages, actionFilter, search]);
+  }, [usages, search]);
 
   const stats = useMemo(() => {
     const totalConsumed = usages.reduce((sum, u) => sum + (u.creditsDeducted || 0), 0);
@@ -98,14 +96,14 @@ export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
   const getActionBadgeClass = (action: string) => {
     switch (action) {
       case 'DRAFT_GENERATE':
-        return 'bg-purple-100 text-purple-800 border-purple-200';
+        return 'bg-purple-50 text-purple-700';
       case 'AUTOPILOT_CRUISE':
       case 'CRUISE_PIPELINE':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return 'bg-blue-50 text-blue-700';
       case 'COMPETITOR_ANALYSIS':
-        return 'bg-amber-100 text-amber-800 border-amber-200';
+        return 'bg-amber-50 text-amber-700';
       default:
-        return 'bg-slate-100 text-slate-800 border-slate-200/80';
+        return 'bg-slate-100 text-slate-700';
     }
   };
 
@@ -129,70 +127,74 @@ export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
       <div className="bg-white border border-slate-200/80 rounded-lg shadow-sm overflow-hidden">
         
         {/* Table Header */}
-        <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm shrink-0">
-              <Activity className="w-4 h-4 text-rose-400" />
-            </span>
-            <div className="space-y-0.5">
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <span>消耗管理</span>
-              </h2>
-            </div>
+        <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="text-xs font-bold text-slate-900">
+            算力消耗流水 ({filteredUsages.length})
           </div>
 
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* Action Filter Pills */}
-            <div className="inline-flex rounded-md bg-slate-100 p-0.5 border border-slate-200/80 text-xs font-medium">
-              <button
-                type="button"
-                onClick={() => setActionFilter('ALL')}
-                className={`px-2.5 py-1 rounded-sm transition ${actionFilter === 'ALL' ? 'bg-white text-slate-900 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
-              >
-                全部
-              </button>
-              <button
-                type="button"
-                onClick={() => setActionFilter('AUTOPILOT_CRUISE')}
-                className={`px-2.5 py-1 rounded-sm transition ${actionFilter === 'AUTOPILOT_CRUISE' ? 'bg-white text-slate-900 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
-              >
-                自动巡航
-              </button>
-              <button
-                type="button"
-                onClick={() => setActionFilter('DRAFT_GENERATE')}
-                className={`px-2.5 py-1 rounded-sm transition ${actionFilter === 'DRAFT_GENERATE' ? 'bg-white text-slate-900 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
-              >
-                文章创作
-              </button>
-            </div>
-
+          <div className="flex items-center gap-3">
             {/* Search Input */}
-            <div className="relative">
+            <div className="relative w-full sm:w-64">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="搜索业务动作/租户..."
+                placeholder="搜索业务动作/租户/站点..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 pr-3 py-1.5 text-xs border border-slate-200/80 rounded-md bg-slate-50 focus:bg-white focus:outline-none focus:border-slate-400 w-48 transition"
+                className="pl-8 pr-3 py-1.5 text-xs border border-slate-200/80 rounded-md bg-slate-50 focus:bg-white focus:outline-none focus:border-slate-400 w-full transition"
               />
             </div>
-
-            <button
-              type="button"
-              onClick={fetchUsages}
-              disabled={loading}
-              className="p-1.5 rounded-md border border-slate-200/80 text-slate-600 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
-              title="刷新账单明细"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-rose-600' : ''}`} />
-            </button>
           </div>
         </div>
 
-        {/* Usages Table */}
-        <div className="overflow-x-auto">
+        {/* Mobile View Card List (Visible on mobile, hidden on md+) */}
+        <div className="block md:hidden space-y-3.5 px-1 pb-4">
+          {filteredUsages.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-xs">
+              暂无消耗账单流水明细
+            </div>
+          ) : (
+            filteredUsages.map((u, index) => (
+              <div key={`${u.id}-${index}`} className="bg-slate-50/50 p-4 rounded-xl space-y-3.5 transition hover:bg-slate-100/50">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-bold text-slate-900 text-sm">{u.actionName || u.description || '算力消耗'}</div>
+                    <div className="text-[11px] text-slate-400 mt-1 font-mono">
+                      租户: {u.tenantId || 'tenant-a'}
+                    </div>
+                  </div>
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-lg shrink-0 ${getActionBadgeClass(u.action)}`}>
+                    <Layers className="w-3 h-3" /> {u.action}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                  <div>
+                    <div className="text-slate-400 text-[10px] uppercase tracking-wider font-semibold">扣除积分</div>
+                    <div className="font-mono font-black text-rose-600 text-sm mt-0.5 flex items-center">
+                      <ArrowDownRight className="w-3.5 h-3.5" />
+                      <span>-{u.creditsDeducted}</span>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="text-slate-400 text-[10px] uppercase tracking-wider font-semibold">余额 / 时间</div>
+                    <div className="text-slate-700 font-mono font-medium mt-0.5">
+                      {(u.remainingCredits || 0).toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">Credits</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-slate-400 font-mono pt-1 text-right">
+                  {u.createdAt ? new Date(u.createdAt).toLocaleString('zh-CN', { hour12: false }) : '2026-08-24'}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Usages Table (Hidden on mobile, visible on desktop) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-xs font-semibold select-none">
@@ -200,20 +202,19 @@ export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
                 <th className="py-3 px-4">业务分类</th>
                 <th className="py-3 px-4">扣除积分</th>
                 <th className="py-3 px-4">扣后余额</th>
-                <th className="py-3 px-4">上下文句柄</th>
                 <th className="py-3 px-4 text-right">时间</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredUsages.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={5} className="py-12 text-center text-slate-400">
                     暂无消耗账单流水明细
                   </td>
                 </tr>
               ) : (
-                filteredUsages.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50/60 transition">
+                filteredUsages.map((u, index) => (
+                  <tr key={`${u.id}-${index}`} className="hover:bg-slate-50/60 transition">
                     <td className="py-3.5 px-4">
                       <div className="font-semibold text-slate-900">{u.actionName || u.description || '算力消耗'}</div>
                       <div className="text-[11px] text-slate-400 font-mono">
@@ -222,7 +223,7 @@ export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
                     </td>
 
                     <td className="py-3.5 px-4">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold rounded border ${getActionBadgeClass(u.action)}`}>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold rounded-lg ${getActionBadgeClass(u.action)}`}>
                         <Layers className="w-3 h-3" /> {u.action}
                       </span>
                     </td>
@@ -236,10 +237,6 @@ export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
 
                     <td className="py-3.5 px-4 font-mono font-medium text-slate-700">
                       {(u.remainingCredits || 0).toLocaleString()}
-                    </td>
-
-                    <td className="py-3.5 px-4 font-mono text-[11px] text-slate-400">
-                      {u.siteId ? `站点: ${u.siteId}` : u.taskId ? `任务: ${u.taskId}` : '全局系统任务'}
                     </td>
 
                     <td className="py-3.5 px-4 text-right text-slate-400 font-mono text-[11px]">

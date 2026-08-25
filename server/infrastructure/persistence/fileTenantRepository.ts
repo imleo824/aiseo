@@ -49,6 +49,7 @@ export class FileTenantRepository implements ITenantRepository {
 
   private loadFromFile(): void {
     if (this.loaded) return;
+    this.loaded = true;
     try {
       if (fs.existsSync(this.dbPath)) {
         const fileContent = fs.readFileSync(this.dbPath, 'utf-8');
@@ -60,7 +61,6 @@ export class FileTenantRepository implements ITenantRepository {
       logger.error('REPOSITORY', `Failed to load tenant_db.json: ${e?.message}`);
     }
     this.ensureDefaultTenants();
-    this.loaded = true;
   }
 
   private ensureDefaultTenants(): void {
@@ -512,7 +512,7 @@ export class FileTenantRepository implements ITenantRepository {
     amount: number,
     action: CreditActionType,
     reason: string,
-    metadata?: any
+    _metadata?: any
   ): Promise<{ success: boolean; balance: number; tx?: CreditTransaction }> {
     return this.withTenantLock(tenantId, async () => {
       const data = this.getTenantData(tenantId);

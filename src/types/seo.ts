@@ -350,6 +350,7 @@ export interface WordPressSite {
   currentWeeklyPublished?: number;
   lastWeeklyResetAt?: string;
   calibration: CalibrationStatus;
+  autopilotEnabled?: boolean;
   createdAt: string;
 }
 

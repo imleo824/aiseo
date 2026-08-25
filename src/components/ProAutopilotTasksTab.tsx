@@ -99,7 +99,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
     setRunningTaskId(taskId);
     try {
       await onRunTaskNow(taskId);
-      showToast('🎉 计划任务已立即执行并发布完成！');
+      showToast('计划任务已执行并发布完成');
     } catch {
       showToast('执行异常，请稍后重试');
     } finally {
@@ -135,45 +135,31 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
         </div>
       )}
 
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
-        
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div className="flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm shrink-0">
-              <Bot className="w-4 h-4 text-emerald-400" />
-            </span>
-            <div className="space-y-0.5">
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <span>自动执行</span>
-              </h2>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 shrink-0 flex-wrap">
-            <button
-              type="button"
-              onClick={handleOpenCreateModal}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs sm:text-sm font-semibold transition shadow-sm flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>新建发文计划</span>
-            </button>
-          </div>
-        </div>
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-sm space-y-6">
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-slate-500" />
-              <span>当前计划列表</span>
-            </h3>
-            <div className="flex items-center gap-2 text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100/60 pb-3">
+            <div className="flex items-center gap-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-slate-500" />
+                <span>计划列表</span>
+              </h3>
+              <button
+                type="button"
+                onClick={handleOpenCreateModal}
+                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>新建计划</span>
+              </button>
+            </div>
+            <div className="flex items-center gap-2 text-xs self-start sm:self-auto">
               <span className="text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md font-medium">
                 共 {safeTasks.length} 个计划
               </span>
               <span className="text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-md font-medium flex items-center gap-1">
                 <FileText className="w-3 h-3 text-indigo-500" />
-                <span>累计发文 {safeTasks.reduce((acc, t) => acc + (t.totalArticles || 0), 0)} 篇</span>
+                <span>共 {safeTasks.reduce((acc, t) => acc + (t.totalArticles || 0), 0)} 篇</span>
               </span>
             </div>
           </div>
@@ -248,12 +234,12 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2.5 shrink-0 self-end md:self-center">
+                    <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 w-full sm:w-auto justify-end sm:justify-start">
                       <button
                         type="button"
                         onClick={() => handleRunNow(task.id)}
                         disabled={isRunning}
-                        className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 border ${
+                        className={`flex-1 sm:flex-initial px-3 sm:px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 border ${
                           isRunning 
                             ? 'bg-slate-100 text-slate-400 border-slate-200/80 cursor-wait' 
                             : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 active:scale-95'
@@ -317,21 +303,10 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleCreateSubmit} className="p-6 space-y-4 text-sm">
+            <form onSubmit={handleCreateSubmit} className="p-4 sm:p-6 space-y-4 text-sm">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="font-bold text-slate-800">任务名称</label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTaskName('每日早间全自动 SEO 内容更新计划');
-                      setScheduleTime('09:00');
-                      setTargetKeywordTopic('AI自动化与WordPress优化');
-                    }}
-                    className="text-[11px] font-bold text-emerald-700 hover:underline cursor-pointer"
-                  >
-                    ⚡ 一键使用推荐范本
-                  </button>
                 </div>
                 <input
                   type="text"
@@ -352,7 +327,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                 >
                   <option value="all">全部站点（轮询发布）</option>
                   {safeSites.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.domain})</option>
+                    <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
               </div>
@@ -384,7 +359,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
               </div>
 
               <div className="space-y-1.5">
-                <label className="font-bold text-slate-800">指定主题/词（可选）</label>
+                <label className="font-bold text-slate-800">指定关键词</label>
                 <input
                   type="text"
                   value={targetKeywordTopic}

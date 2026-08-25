@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Users, Shield, Search, RefreshCw, ArrowRightLeft, CheckCircle2, Coins, CreditCard, Sparkles, UserCheck, PlusCircle, MinusCircle, X, AlertCircle } from 'lucide-react';
+import { Users, Shield, Search, RefreshCw, ArrowRightLeft, CheckCircle2, Coins, CreditCard, UserCheck, PlusCircle, MinusCircle, X, AlertCircle } from 'lucide-react';
 import { TenantAccount } from '../types/seo';
 import { createApiService } from '../services/api';
 
@@ -12,7 +12,6 @@ interface ProTenantManagementTabProps {
 }
 
 export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
-  account,
   allTenants: initialTenants,
   activeTenantId = 'tenant-a',
   onSwitchTenant,
@@ -21,7 +20,6 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
   const [tenants, setTenants] = useState<TenantAccount[]>(initialTenants || []);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'ALL' | 'ADMIN' | 'TENANT'>('ALL');
   const [switchingId, setSwitchingId] = useState<string | null>(null);
 
   // Modal State for Credit Adjustment
@@ -72,16 +70,15 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
 
   const filteredTenants = useMemo(() => {
     return tenants.filter(t => {
-      const matchesRole = roleFilter === 'ALL' || t.role === roleFilter;
       const term = search.toLowerCase().trim();
       const matchesSearch = !term || 
         t.username.toLowerCase().includes(term) ||
         t.id.toLowerCase().includes(term) ||
         t.email.toLowerCase().includes(term) ||
         (t.companyName && t.companyName.toLowerCase().includes(term));
-      return matchesRole && matchesSearch;
+      return matchesSearch;
     });
-  }, [tenants, roleFilter, search]);
+  }, [tenants, search]);
 
   // Overall Statistics
   const stats = useMemo(() => {
@@ -172,71 +169,131 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
       <div className="bg-white border border-slate-200/80 rounded-lg shadow-sm overflow-hidden">
         
         {/* Header */}
-        <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm shrink-0">
-              <Users className="w-4 h-4 text-blue-400" />
-            </span>
-            <div className="space-y-0.5">
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <span>租户管理</span>
-              </h2>
-            </div>
+        <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="text-xs font-bold text-slate-900">
+            全部租户列表 ({filteredTenants.length})
           </div>
 
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
             {/* Search Input */}
-            <div className="relative">
+            <div className="relative w-full sm:w-64">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 placeholder="搜索租户名、Email或ID..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 pr-3 py-1.5 text-xs border border-slate-200/80 rounded-md bg-slate-50 focus:bg-white focus:outline-none focus:border-slate-400 w-52 transition"
+                className="pl-8 pr-3 py-1.5 text-xs border border-slate-200/80 rounded-md bg-slate-50 focus:bg-white focus:outline-none focus:border-slate-400 w-full transition"
               />
             </div>
-
-            {/* Role Filter Pills */}
-            <div className="inline-flex rounded-md bg-slate-100 p-0.5 border border-slate-200/80 text-xs font-medium">
-              <button
-                type="button"
-                onClick={() => setRoleFilter('ALL')}
-                className={`px-3 py-1 rounded-sm transition ${roleFilter === 'ALL' ? 'bg-white text-slate-900 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
-              >
-                全部
-              </button>
-              <button
-                type="button"
-                onClick={() => setRoleFilter('ADMIN')}
-                className={`px-3 py-1 rounded-sm transition ${roleFilter === 'ADMIN' ? 'bg-white text-slate-900 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
-              >
-                管理员
-              </button>
-              <button
-                type="button"
-                onClick={() => setRoleFilter('TENANT')}
-                className={`px-3 py-1 rounded-sm transition ${roleFilter === 'TENANT' ? 'bg-white text-slate-900 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'}`}
-              >
-                租户
-              </button>
-            </div>
-
-            {/* Refresh Button */}
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={loading}
-              className="p-1.5 rounded-md border border-slate-200/80 text-slate-600 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
-              title="刷新租户数据"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-blue-600' : ''}`} />
-            </button>
           </div>
         </div>
 
-        {/* Tenant Table */}
-        <div className="overflow-x-auto">
+        {/* Tenants Mobile View (Visible on mobile, hidden on md+) */}
+        <div className="block md:hidden space-y-4 px-1 pb-4">
+          {filteredTenants.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-xs">
+              未查找到匹配的租户记录
+            </div>
+          ) : (
+            filteredTenants.map((t) => {
+              const isActive = t.id === activeTenantId;
+              return (
+                <div 
+                  key={t.id} 
+                  className={`p-4 rounded-xl border space-y-3.5 transition ${isActive ? 'bg-blue-50/20 border-blue-200 shadow-xs' : 'bg-slate-50/60 border-slate-100 hover:border-slate-200'}`}
+                >
+                  {/* Title & Role */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shrink-0 ${t.role === 'ADMIN' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                        {t.username.substring(0, 1).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5 flex-wrap">
+                          <span>{t.companyName || t.username}</span>
+                          {isActive && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] bg-blue-100 text-blue-800 rounded font-black uppercase">
+                              <UserCheck className="w-2.5 h-2.5" /> 当前
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                          ID: {t.id} · {t.email}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0">
+                      {t.role === 'ADMIN' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-black bg-indigo-100 text-indigo-800 rounded border border-indigo-200">
+                          管理员
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded border border-slate-200/80">
+                          租户
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Metrics details */}
+                  <div className="grid grid-cols-3 gap-2 bg-white p-2.5 rounded-lg border border-slate-100 text-center text-xs">
+                    <div>
+                      <span className="text-slate-400 text-[9px] block">可用积分</span>
+                      <span className={`font-mono font-black text-[13px] block mt-0.5 ${t.credits < 100 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {t.credits.toLocaleString()}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[9px] block">累计充值</span>
+                      <span className="font-mono font-extrabold text-slate-700 text-[13px] block mt-0.5">
+                        ${t.totalRechargedUsdt || 0}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[9px] block">已消耗</span>
+                      <span className="font-mono font-semibold text-slate-500 text-[13px] block mt-0.5">
+                        {(t.totalConsumedCredits || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions & Created Date */}
+                  <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-3 text-xs flex-wrap">
+                    <span className="text-slate-400 text-[10px] font-mono">
+                      注册: {t.createdAt ? new Date(t.createdAt).toLocaleDateString('zh-CN') : '2026-08-24'}
+                    </span>
+
+                    <div className="flex items-center gap-1.5 ml-auto">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAdjustModal(t)}
+                        className="px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-white hover:bg-indigo-50 border border-slate-200/80 rounded-md transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <Coins className="w-3 h-3 text-indigo-600" /> 上下分
+                      </button>
+                      
+                      {!isActive && (
+                        <button
+                          type="button"
+                          onClick={() => handleSwitch(t.id)}
+                          disabled={switchingId === t.id}
+                          className="px-2.5 py-1 text-[11px] font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-md transition cursor-pointer"
+                        >
+                          模拟视角
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Tenant Table (Hidden on mobile, visible on desktop) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-xs font-semibold select-none">
@@ -360,7 +417,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
       {/* Credit Adjustment Modal */}
       {adjustTarget && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-5 border border-slate-200/80">
+          <div className="bg-white rounded-xl max-w-md w-full p-4 sm:p-6 shadow-xl space-y-5 border border-slate-200/80">
             
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">

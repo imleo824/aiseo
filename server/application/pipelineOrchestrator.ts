@@ -54,7 +54,9 @@ export class SEOPipelineOrchestrator {
     });
 
     try {
-      const finalKeyword = keyword || (site.siteLanguage === 'zh-CN' ? 'DeepSeek K8s 部署实践' : 'Kubernetes FinOps Guide 2026');
+      const finalKeyword = keyword || (site.niche && site.niche !== '通用行业' && site.niche !== '通用商业技术'
+        ? (site.siteLanguage === 'zh-CN' ? `${site.niche} 核心技术落地与选型指南` : `${site.niche} Architecture Best Practices`)
+        : (site.siteLanguage === 'zh-CN' ? 'DeepSeek K8s 部署实践' : 'Kubernetes FinOps Guide 2026'));
 
       // 1. Credit Deduction
       creditDeductedAmount = await this.deductPipelineCredits(tenantId, site, finalKeyword);
@@ -316,8 +318,8 @@ export class SEOPipelineOrchestrator {
     return contentHtml;
   }
 
-  private checkAutopilotEligibility(site: WordPressSite, opportunity: Opportunity, qualityGate: QualityGateResult): boolean {
-    return false;
+  private checkAutopilotEligibility(site: WordPressSite, _opportunity: Opportunity, qualityGate: QualityGateResult): boolean {
+    return (site.autopilotEnabled || site.calibration?.autoPublishUnlocked) && qualityGate.passed;
   }
 
   private async deployToWordPress(

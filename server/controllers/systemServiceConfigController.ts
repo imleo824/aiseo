@@ -53,7 +53,7 @@ export class SystemServiceConfigController {
       return;
     }
 
-    const updated = await systemServiceConfigRepository.saveServicesConfig(incoming);
+    await systemServiceConfigRepository.saveServicesConfig(incoming);
     logger.info('ADMIN_SERVICES', `Admin ${req.tenantId} updated system services config`);
 
     res.json({
@@ -73,7 +73,7 @@ export class SystemServiceConfigController {
       return;
     }
 
-    const reset = await systemServiceConfigRepository.resetServicesConfig();
+    await systemServiceConfigRepository.resetServicesConfig();
     logger.info('ADMIN_SERVICES', `Admin ${req.tenantId} reset system services config to defaults`);
 
     res.json({

@@ -35,7 +35,7 @@ export const DraftPreviewModal: React.FC<DraftPreviewModalProps> = ({
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto space-y-4 flex-1">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
           <div className="space-y-1 bg-slate-50 p-4 rounded-2xl border border-slate-200/80 text-sm">
             <div className="text-slate-500 font-medium">核心摘要：</div>
             <div className="text-slate-800">{draft.summary}</div>

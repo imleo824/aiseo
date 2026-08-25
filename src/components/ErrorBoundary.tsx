@@ -35,8 +35,8 @@ export class ErrorBoundary extends Component<Props, State> {
   public render(): ReactNode {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-6">
-          <div className="max-w-md w-full bg-slate-800 border border-slate-700/80 rounded-xl p-6 shadow-2xl space-y-4">
+        <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4 sm:p-6">
+          <div className="max-w-md w-full bg-slate-800 border border-slate-700/80 rounded-xl p-4 sm:p-6 shadow-2xl space-y-4">
             <div className="flex items-center space-x-3 text-amber-400">
               <AlertTriangle className="w-8 h-8 flex-shrink-0" />
               <h2 className="text-xl font-bold">系统捕获到前端异常</h2>

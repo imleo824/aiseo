@@ -1,4 +1,4 @@
-import { KeywordOpportunityItem, KeywordVulnerabilityType } from '../../../src/types/seo';
+import { KeywordOpportunityItem } from '../../../src/types/seo';
 import { logger } from '../../utils/logger';
 import { systemServiceConfigRepository } from '../persistence/systemServiceConfigRepository';
 

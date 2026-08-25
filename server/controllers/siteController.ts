@@ -280,5 +280,25 @@ export const deleteSite = async (req: TenantRequest, res: Response) => {
 };
 
 export const toggleAutopilot = async (req: TenantRequest, res: Response) => {
-  throw new ValidationError("自动发文策略与预算控制功能已被全局去除。");
+  const site = fileTenantRepository.getSite(req.tenantId, req.params.id);
+  if (!site) {
+    res.status(404).json({ success: false, message: `站点不存在` });
+    return;
+  }
+
+  site.autopilotEnabled = !site.autopilotEnabled;
+  await fileTenantRepository.saveSite(req.tenantId, site);
+
+  await fileTenantRepository.appendAuditLog(req.tenantId, {
+    id: `log-${Date.now()}`,
+    siteId: site.id,
+    timestamp: new Date().toISOString(),
+    actor: 'USER_ADMIN',
+    action: 'TOGGLE_AUTOPILOT',
+    target: site.name,
+    result: 'SUCCESS',
+    details: `更新自动发文策略状态为: ${site.autopilotEnabled ? '启用' : '禁用'}`
+  });
+
+  res.json({ success: true, site });
 };

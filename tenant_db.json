@@ -33,7 +33,8 @@
         },
         "monthlyBudgetLimit": 150,
         "monthlyBudgetUsed": 38.5,
-        "createdAt": "2026-01-15T08:00:00Z"
+        "createdAt": "2026-01-15T08:00:00Z",
+        "lastWeeklyResetAt": "2026-08-24T18:20:39.859Z"
       },
       {
         "id": "site-2",
@@ -71,6 +72,43 @@
       }
     ],
     "opportunities": [
+      {
+        "id": "opp-1787595657539",
+        "siteId": "site-1",
+        "title": "DeepSeek 企业级私有化微调全流程实战：算力选型、LoRA训练与合规部署指南 (2025)",
+        "type": "NEW_CONTENT",
+        "language": "zh-CN",
+        "targetKeyword": "DeepSeek 企业级私有化微调",
+        "category": "AI实践案例",
+        "riskLevel": "LOW",
+        "estimatedMonthlyVisitsGain": 4600,
+        "demandEvidence": {
+          "sourceType": "GSC_QUERY",
+          "queryOrTopic": "DeepSeek 企业级私有化微调",
+          "monthlyImpressions": 16500,
+          "currentClicks": 140,
+          "currentPosition": 19.2,
+          "evidenceDescription": "GSC 包含该词的增量搜索展现，对应搜索意图：Commercial Investigation & Informational",
+          "reliabilityConfidence": 0.95
+        },
+        "scoreBreakdown": {
+          "businessValue": 19,
+          "searchDemand": 18,
+          "winProbability": 15,
+          "currentRanking": 10,
+          "engagementPotential": 9,
+          "googleBaiduReuse": 9,
+          "internalLinkValue": 5,
+          "freshness": 5,
+          "dataReliability": 5,
+          "riskPenalty": 0,
+          "costPenalty": 1,
+          "totalScore": 94
+        },
+        "status": "PROPOSED",
+        "createdAt": "2026-08-24T18:20:57.540Z",
+        "updatedAt": "2026-08-24T18:20:57.540Z"
+      },
       {
         "id": "opp-1787556595180",
         "siteId": "site-1",
@@ -750,6 +788,116 @@
       }
     ],
     "auditLogs": [
+      {
+        "id": "log-arch-test-1787596089295",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T18:28:09.295Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787595686371",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T18:21:26.371Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-1787595657540",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T18:20:57.540Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SCAN_SEARCH_DEMAND",
+        "target": "DeepSeek 企业级私有化微调",
+        "result": "SUCCESS",
+        "details": "通过 GSC 与多模态需求分析挖掘到新机会: \"DeepSeek 企业级私有化微调全流程实战：算力选型、LoRA训练与合规部署指南 (2025)\"，综合得分 94 分。"
+      },
+      {
+        "id": "log-arch-test-1787595573402",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T18:19:33.402Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787595455003",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T18:17:35.003Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787595348201",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T18:15:48.201Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787595146504",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T18:12:26.504Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787594741066",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T18:05:41.066Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787581390239",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T14:23:10.239Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787581344034",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T14:22:24.034Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
+      {
+        "id": "log-arch-test-1787581039638",
+        "siteId": "site-1",
+        "timestamp": "2026-08-24T14:17:19.638Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "SITE_AUDIT",
+        "target": "Architecture Test",
+        "result": "SUCCESS",
+        "details": "Architecture Optimization Verified"
+      },
       {
         "id": "log-arch-test-1787563612439",
         "siteId": "site-1",
@@ -1601,13 +1749,39 @@
       "id": "tenant-a",
       "username": "tenant-a",
       "email": "tenant-a@domain.com",
-      "credits": 90,
-      "totalRechargedUsdt": 0,
+      "credits": 11090,
+      "totalRechargedUsdt": 100,
       "totalConsumedCredits": 10,
       "role": "ADMIN",
       "createdAt": "2026-08-23T07:54:26.301Z"
     },
     "creditTransactions": [
+      {
+        "id": "tx-1787581343313-33p4a",
+        "tenantId": "tenant-a",
+        "type": "RECHARGE",
+        "action": "USDT_TOPUP",
+        "amount": 5500,
+        "balance": 11090,
+        "description": "USDT 充值 (50 USDT / TRC20) 兑换 5500 积分",
+        "createdAt": "2026-08-24T14:22:23.313Z",
+        "txHash": "0xabc123456789deadbeef0987654321",
+        "usdtAmount": 50,
+        "network": "TRC20"
+      },
+      {
+        "id": "tx-1787581038537-60xt2",
+        "tenantId": "tenant-a",
+        "type": "RECHARGE",
+        "action": "USDT_TOPUP",
+        "amount": 5500,
+        "balance": 5590,
+        "description": "USDT 充值 (50 USDT / TRC20) 兑换 5500 积分",
+        "createdAt": "2026-08-24T14:17:18.537Z",
+        "txHash": "0xabc123456789deadbeef0987654321",
+        "usdtAmount": 50,
+        "network": "TRC20"
+      },
       {
         "id": "tx-1787487817898-3sc05",
         "tenantId": "tenant-a",
@@ -1623,7 +1797,8 @@
           "keyword": "DeepSeek 企业级私有化微调"
         }
       }
-    ]
+    ],
+    "passwordHash": "admin123"
   },
   "tenant-test": {
     "sites": [
@@ -1786,17 +1961,14 @@
         "gscConnected": true,
         "ga4Connected": true,
         "baiduConnected": true,
-        "autopilotEnabled": true,
-        "weeklyPublishCap": 20,
-        "currentWeeklyPublished": 5,
-        "monthlyBudgetLimit": 100,
-        "monthlyBudgetUsed": 20,
-        "createdAt": "2026-08-24T09:26:51.024Z"
+        "baiduToken": "test-baidu-token-123",
+        "createdAt": "2026-08-24T14:21:27.979Z",
+        "currentWeeklyPublished": null
       }
     ],
     "opportunities": [
       {
-        "id": "opp-1787563611025-7dv2",
+        "id": "opp-1787581287980-w166",
         "siteId": "site-orch-1",
         "title": "K8s 架构实践",
         "type": "NEW_CONTENT",
@@ -1829,11 +2001,11 @@
           "totalScore": 98
         },
         "status": "AUTO_PUBLISHED",
-        "createdAt": "2026-08-24T09:26:51.025Z",
-        "updatedAt": "2026-08-24T09:26:51.025Z"
+        "createdAt": "2026-08-24T14:21:27.980Z",
+        "updatedAt": "2026-08-24T14:21:27.980Z"
       },
       {
-        "id": "opp-1787563611025-l4ao",
+        "id": "opp-1787581287980-rcnn",
         "siteId": "site-orch-1",
         "title": "K8s 架构实践",
         "type": "NEW_CONTENT",
@@ -1866,20 +2038,20 @@
           "totalScore": 98
         },
         "status": "AUTO_PUBLISHED",
-        "createdAt": "2026-08-24T09:26:51.025Z",
-        "updatedAt": "2026-08-24T09:26:51.025Z"
+        "createdAt": "2026-08-24T14:21:27.980Z",
+        "updatedAt": "2026-08-24T14:21:27.980Z"
       }
     ],
     "drafts": [
       {
-        "id": "draft-1787563611026-9bxt",
-        "opportunityId": "opp-1787563611025-7dv2",
+        "id": "draft-1787581287981-so42",
+        "opportunityId": "opp-1787581287980-w166",
         "siteId": "site-orch-1",
         "title": "K8s 架构实践",
         "language": "zh-CN",
         "category": "技术干货",
         "summary": "摘要",
-        "contentHtml": "<h1>K8s</h1><p>内容</p>",
+        "contentHtml": "<h1>K8s</h1><p>内容</p><p class=\"mt-4 p-3 bg-slate-900/60 rounded-lg text-xs text-slate-300 border border-slate-800\">💡 <strong>延伸阅读</strong>：查看我们关于 <a href=\"https://techsite.io/guide-4b387320/\" class=\"text-emerald-400 underline font-semibold hover:text-emerald-300\" target=\"_blank\">K8s 架构实践</a> 的深度分析。</p>",
         "sourcesUsed": [
           "企业知识库及权威来源"
         ],
@@ -1898,13 +2070,13 @@
         },
         "status": "PUBLISHED",
         "publishedUrl": "https://techsite.io/guide-4b387320/",
-        "publishedAt": "2026-08-24T09:26:51.026Z",
-        "wpPostId": 29648,
-        "createdAt": "2026-08-24T09:26:51.026Z"
+        "publishedAt": "2026-08-24T14:21:27.981Z",
+        "wpPostId": 4558,
+        "createdAt": "2026-08-24T14:21:27.981Z"
       },
       {
-        "id": "draft-1787563611026-wkjw",
-        "opportunityId": "opp-1787563611025-l4ao",
+        "id": "draft-1787581287980-5o85",
+        "opportunityId": "opp-1787581287980-rcnn",
         "siteId": "site-orch-1",
         "title": "K8s 架构实践",
         "language": "zh-CN",
@@ -1929,15 +2101,23 @@
         },
         "status": "PUBLISHED",
         "publishedUrl": "https://techsite.io/guide-4b387320/",
-        "publishedAt": "2026-08-24T09:26:51.026Z",
-        "wpPostId": 12055,
-        "createdAt": "2026-08-24T09:26:51.026Z"
+        "publishedAt": "2026-08-24T14:21:27.980Z",
+        "wpPostId": 9698,
+        "createdAt": "2026-08-24T14:21:27.980Z"
       }
     ],
     "knowledgeSources": [],
     "auditLogs": [],
     "usageLedger": [],
     "baiduLogs": [
+      {
+        "id": "baidu-1787581287976",
+        "url": "https://techsite.io/guide-4b387320/",
+        "submittedAt": "2026-08-24T14:21:27.976Z",
+        "type": "DAILY_API",
+        "status": "SUBMITTED",
+        "remainQuota": 88
+      },
       {
         "id": "baidu-1787563611021",
         "url": "https://techsite.io/guide-4b387320/",
@@ -3132,9 +3312,54 @@
       "totalRechargedUsdt": 10,
       "totalConsumedCredits": 200,
       "role": "TENANT",
-      "createdAt": "2026-08-24T09:26:51.024Z"
+      "createdAt": "2026-08-24T14:21:27.979Z"
     },
     "creditTransactions": [
+      {
+        "id": "tx-1787581287980-y3lfq",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -100,
+        "balance": 800,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-24T14:21:27.980Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 2"
+        }
+      },
+      {
+        "id": "tx-1787581287979-xy0qc",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -100,
+        "balance": 900,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-24T14:21:27.979Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "Batch Task 1"
+        }
+      },
+      {
+        "id": "tx-1787581287138-excz1",
+        "tenantId": "test-tenant",
+        "type": "CONSUME",
+        "action": "CRUISE_PIPELINE",
+        "amount": -100,
+        "balance": 900,
+        "description": "一键全流程自动发文 (Tech Site)",
+        "createdAt": "2026-08-24T14:21:27.138Z",
+        "metadata": {
+          "siteId": "site-orch-1",
+          "siteName": "Tech Site",
+          "keyword": "K8s 生产实战"
+        }
+      },
       {
         "id": "tx-1787563611025-3suky",
         "tenantId": "test-tenant",
@@ -4965,11 +5190,11 @@
       "username": "alpha_admin",
       "email": "alpha@enterprise.com",
       "companyName": "Alpha Cloud Corp",
-      "credits": 900,
+      "credits": 1000,
       "totalRechargedUsdt": 50,
-      "totalConsumedCredits": 100,
+      "totalConsumedCredits": 0,
       "role": "ADMIN",
-      "createdAt": "2026-08-24T09:26:53.879Z"
+      "createdAt": "2026-08-24T18:28:10.114Z"
     },
     "passwordHash": "password123",
     "sites": [
@@ -4998,18 +5223,113 @@
         "gscConnected": true,
         "ga4Connected": true,
         "baiduConnected": true,
-        "autopilotEnabled": true,
-        "weeklyPublishCap": 10,
-        "currentWeeklyPublished": 0,
-        "monthlyBudgetLimit": 500,
-        "monthlyBudgetUsed": 0,
-        "createdAt": "2026-08-24T09:26:53.234Z"
+        "createdAt": "2026-08-24T18:28:10.098Z"
       }
     ],
     "opportunities": [],
     "drafts": [],
     "knowledgeSources": [],
     "auditLogs": [
+      {
+        "id": "log-1787596090113",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T18:28:10.113Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787595687196",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T18:21:27.196Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787595574206",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T18:19:34.206Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787595455832",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T18:17:35.832Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787595349019",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T18:15:49.019Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787595147335",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T18:12:27.335Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787594740105",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T18:05:40.105Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787581389470",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T14:23:09.470Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787581343324",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T14:22:23.324Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "AUTO_PUBLISH_ARTICLE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化全流程完成：已成功发布文章到 https://alpha-secret.tech 并触发搜索引擎实时推送。"
+      },
+      {
+        "id": "log-1787581038542",
+        "siteId": "site-alpha-1",
+        "timestamp": "2026-08-24T14:17:18.542Z",
+        "actor": "SYSTEM_AUTOPILOT",
+        "action": "PIPELINE_QUALITY_GATE",
+        "target": "Kubernetes 生产级高可用集群落地实战",
+        "result": "SUCCESS",
+        "details": "自动化内容已生成并通过 E-E-A-T 质检（得分 98）。已归入人工复核队列。"
+      },
       {
         "id": "log-1787563613880",
         "siteId": "site-alpha-1",
@@ -6560,41 +6880,8 @@
         "remainQuota": 92
       }
     ],
-    "automatedTasks": [
-      {
-        "id": "task-1787563613880",
-        "siteId": "site-alpha-1",
-        "siteName": "指定站点",
-        "taskName": "每日自动化 SEO 巡航发文",
-        "scheduleType": "DAILY",
-        "scheduleTime": "每天 08:30",
-        "targetKeywordTopic": "vLLM 生产部署优化",
-        "articleCountPerRun": 1,
-        "totalArticles": 0,
-        "status": "ACTIVE",
-        "lastRunAt": "2026-08-24T09:26:53.881Z",
-        "nextRunAt": "2026-08-25T09:26:53.881Z",
-        "createdAt": "2026-08-24T09:26:53.880Z"
-      }
-    ],
-    "creditTransactions": [
-      {
-        "id": "tx-1787563613881-ga8z3",
-        "tenantId": "tenant-expert-alpha",
-        "type": "CONSUME",
-        "action": "AUTOPILOT_CRUISE",
-        "amount": -100,
-        "balance": 900,
-        "description": "定时巡航自动发文 (每日自动化 SEO 巡航发文 -> Alpha Secret Tech Site)",
-        "createdAt": "2026-08-24T09:26:53.881Z",
-        "metadata": {
-          "taskId": "task-1787563613880",
-          "siteId": "site-alpha-1",
-          "siteName": "Alpha Secret Tech Site",
-          "keyword": "vLLM 生产部署优化"
-        }
-      }
-    ]
+    "automatedTasks": [],
+    "creditTransactions": []
   },
   "tenant-expert-beta": {
     "account": {
@@ -6606,7 +6893,7 @@
       "totalRechargedUsdt": 0,
       "totalConsumedCredits": 0,
       "role": "TENANT",
-      "createdAt": "2026-08-24T09:26:53.879Z"
+      "createdAt": "2026-08-24T18:28:10.114Z"
     },
     "passwordHash": "password123",
     "sites": [],

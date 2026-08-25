@@ -9,7 +9,6 @@ import { DraftPreviewModal } from './dashboard/DraftPreviewModal';
 import { CompetitorAnalysisSection } from './dashboard/CompetitorAnalysisSection';
 import { 
   Zap, 
-  Check, 
   CheckCircle2, 
   Globe, 
   Sparkles, 
@@ -18,10 +17,10 @@ import {
   ExternalLink,
   Eye,
   ArrowRight,
-  Layers,
   Repeat,
   KeyRound,
-  Link2
+  Link2,
+  Search
 } from 'lucide-react';
 
 interface MainDashboardProps {
@@ -36,7 +35,7 @@ interface MainDashboardProps {
     keyword?: string
   ) => Promise<ArticleDraft | undefined>;
   onAnalyzeCompetitor?: (siteId: string, competitor: string) => Promise<CompetitorAttackAnalysis>;
-  onNavigateToNav?: (nav: any) => void;
+  onOpenOnboarding?: () => void;
 }
 
 export const MainDashboard: React.FC<MainDashboardProps> = ({
@@ -46,7 +45,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   onRollback,
   onRunCruise,
   onAnalyzeCompetitor,
-  onNavigateToNav
+  onOpenOnboarding
 }) => {
   const safeSites = useMemo(() => sites || [], [sites]);
   const safeDrafts = useMemo(() => drafts || [], [drafts]);
@@ -166,13 +165,25 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     }
 
     let keywordToUse = overrideKeyword;
+    if (overrideKeyword && mode === 'COMPETITOR' && !overrideKeyword.startsWith('[竞品对标截流]')) {
+      keywordToUse = `[竞品对标截流] ${overrideKeyword}`;
+    }
+
     if (!keywordToUse) {
       if (mode === 'KEYWORD') {
-        keywordToUse = keywordInput.trim();
+        keywordToUse = keywordInput.trim() || undefined;
       } else if (mode === 'REWRITE') {
-        keywordToUse = rewriteInput.trim() ? `[二次创作/改写] ${rewriteInput.trim()}` : '';
+        if (!rewriteInput.trim()) {
+          showToast('请输入参考文章 URL 或改写素材');
+          return;
+        }
+        keywordToUse = `[二次创作/改写] ${rewriteInput.trim()}`;
       } else if (mode === 'COMPETITOR') {
-        keywordToUse = competitorInput.trim() ? `[竞品对标截流] ${competitorInput.trim()}` : '';
+        if (!competitorInput.trim()) {
+          showToast('请输入竞品网站 URL');
+          return;
+        }
+        keywordToUse = `[竞品对标截流] ${competitorInput.trim()}`;
       }
     }
     const targetSiteIds = targetSiteId ? [targetSiteId] : safeSites.map(s => s.id);
@@ -193,7 +204,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
         } else if (safeDrafts.length > 0) {
           setLatestPublishedDraft(safeDrafts[0]);
         }
-        showToast('🎉 文章已成功生成并发布上线！');
+        showToast('文章已成功生成并发布上线');
       } else {
         setActivePipelineStep(1);
         addLog(`[意图挖掘] 分析长尾关键词: ${keywordToUse || activeSite?.niche || '行业热词'}`);
@@ -266,128 +277,129 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
       )}
 
       {/* 核心操作主卡片 */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-sm space-y-6">
         
-        {/* 顶部标题区 */}
-        <div className="border-b border-slate-100 pb-5">
-          <div className="flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm shrink-0">
-              <Zap className="w-4 h-4 text-amber-400 fill-amber-400/20" />
-            </span>
-            <div className="space-y-0.5">
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <span>手动执行</span>
-              </h2>
-            </div>
-          </div>
-        </div>
+
 
         {/* 步骤 1 & 2 & 3 表单 */}
         <div className="space-y-6">
           
           {/* 第一步：选择发布站点 */}
           <div className="space-y-2.5">
-            <label className="text-lg sm:text-xl font-extrabold text-slate-900 flex items-center gap-3">
-              <span className="w-7 h-7 rounded-lg bg-slate-950 text-white flex items-center justify-center text-sm font-bold shadow-sm">1</span>
-              <span>选择发布网站</span>
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-base sm:text-lg font-extrabold text-slate-950 flex items-center gap-2.5">
+                <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-slate-950 text-white flex items-center justify-center text-xs sm:text-sm font-bold shadow-xs">1</span>
+                <span>选择站点</span>
+              </label>
+              
+              {safeSites.length > 0 && onOpenOnboarding && (
+                <button
+                  type="button"
+                  onClick={onOpenOnboarding}
+                  className="text-xs sm:text-[13px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <span>+ 添加站点</span>
+                </button>
+              )}
+            </div>
 
             {safeSites.length === 0 ? (
-              <div className="p-4 bg-amber-50/80 rounded-md border border-amber-200 text-sm text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="p-4 bg-amber-50/80 rounded-xl border border-amber-200 text-sm text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
                   <span>暂未绑定站点，请先接入目标 WordPress 网站。</span>
                 </div>
-                {onNavigateToNav && (
+                {onOpenOnboarding && (
                   <button
                     type="button"
-                    onClick={() => onNavigateToNav('SITE_MANAGEMENT')}
-                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-md shadow-sm transition shrink-0 cursor-pointer"
+                    onClick={onOpenOnboarding}
+                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg shadow-xs transition shrink-0 cursor-pointer"
                   >
                     + 接入 WordPress 站点
                   </button>
                 )}
               </div>
             ) : (
-              <div className="flex flex-wrap gap-2">
-                {safeSites.map((s) => {
-                  const isSelected = (selectedSiteId === s.id) || (!selectedSiteId && safeSites[0]?.id === s.id);
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setSelectedSiteId(s.id)}
-                      className={`px-3 py-1.5 rounded-lg border text-xs sm:text-sm font-semibold transition-all duration-150 flex items-center gap-2 cursor-pointer ${
-                        isSelected 
-                          ? 'bg-slate-900 text-white border-slate-900 shadow-sm' 
-                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200/80'
-                      }`}
-                    >
-                      <Globe className={`w-3.5 h-3.5 ${isSelected ? 'text-emerald-400' : 'text-slate-400'}`} />
-                      <span>{s.name} ({s.domain})</span>
-                      {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />}
-                    </button>
-                  );
-                })}
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                  <Globe className="w-4 h-4 text-slate-500" />
+                </div>
+                <select
+                  value={selectedSiteId || (safeSites.length > 0 ? safeSites[0].id : '')}
+                  onChange={(e) => setSelectedSiteId(e.target.value)}
+                  className="w-full pl-10 pr-10 py-2.5 bg-slate-50/80 hover:bg-slate-100/80 border border-slate-200/90 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:border-slate-400 focus:bg-white transition cursor-pointer appearance-none shadow-2xs"
+                >
+                  {safeSites.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none">
+                  <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
+                </div>
               </div>
             )}
           </div>
 
           {/* 第二步：设定发文主题 */}
           <div className="space-y-3 pt-1">
-            <label className="text-lg sm:text-xl font-extrabold text-slate-900 flex items-center gap-3">
-              <span className="w-7 h-7 rounded-lg bg-slate-950 text-white flex items-center justify-center text-sm font-bold shadow-sm">2</span>
-              <span>设定关键词</span>
+            <label className="text-base sm:text-lg font-extrabold text-slate-950 flex items-center gap-2.5">
+              <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-slate-950 text-white flex items-center justify-center text-xs sm:text-sm font-bold shadow-xs">2</span>
+              <span>选择主题</span>
             </label>
 
             {/* 3 种模式切换 Tab */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 p-1 bg-slate-100 rounded-lg gap-1">
+            <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-xl gap-1">
               <button
                 type="button"
                 onClick={() => setMode('KEYWORD')}
-                className={`px-3 py-2 rounded-md text-xs sm:text-sm font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer ${
+                className={`px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer ${
                   mode === 'KEYWORD'
-                    ? 'bg-slate-900 text-white shadow-sm'
+                    ? 'bg-slate-950 text-white shadow-xs font-bold'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                 }`}
               >
-                <KeyRound className="w-4 h-4 text-amber-400" />
-                <span>自定义关键词</span>
+                <KeyRound className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span className="hidden sm:inline">自定义关键词</span>
+                <span className="inline sm:hidden">关键词</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setMode('REWRITE')}
-                className={`px-3 py-2 rounded-md text-xs sm:text-sm font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer ${
+                className={`px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer ${
                   mode === 'REWRITE'
-                    ? 'bg-slate-900 text-white shadow-sm'
+                    ? 'bg-slate-950 text-white shadow-xs font-bold'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                 }`}
               >
-                <Repeat className="w-4 h-4 text-emerald-400" />
-                <span>二次创作</span>
+                <Repeat className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span className="hidden sm:inline">二次创作</span>
+                <span className="inline sm:hidden">改写/二创</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setMode('COMPETITOR')}
-                className={`px-3 py-2 rounded-md text-xs sm:text-sm font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer ${
+                className={`px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer ${
                   mode === 'COMPETITOR'
-                    ? 'bg-slate-900 text-white shadow-sm'
+                    ? 'bg-slate-950 text-white shadow-xs font-bold'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                 }`}
               >
-                <Swords className="w-4 h-4 text-rose-400" />
-                <span>对标竞品</span>
+                <Swords className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span className="hidden sm:inline">对标竞品</span>
+                <span className="inline sm:hidden">对标竞品</span>
               </button>
             </div>
 
             {/* 模式 1：自定义关键词 */}
             {mode === 'KEYWORD' && (
-              <div className="space-y-3 animate-in fade-in duration-150 bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80">
+              <div className="space-y-2.5 animate-in fade-in duration-150 bg-slate-50/70 p-3.5 sm:p-4 rounded-xl border border-slate-200/60">
                 <div className="flex items-center justify-between text-xs text-slate-500">
                   <span className="font-semibold text-slate-700 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <Search className="w-3.5 h-3.5 text-slate-500" />
                     输入核心词或主题（留空则自动挖掘行业热门词）：
                   </span>
                 </div>
@@ -397,29 +409,28 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                     value={keywordInput}
                     onChange={(e) => setKeywordInput(e.target.value)}
                     placeholder="例如：2026年企业级高可用架构实操指南..."
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200/80 rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150"
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs"
                   />
                   {keywordInput && (
                     <button
                       type="button"
                       onClick={() => setKeywordInput('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md"
                     >
                       清空
                     </button>
                   )}
                 </div>
-
               </div>
             )}
 
             {/* 模式 2：内容二次创作 */}
             {mode === 'REWRITE' && (
-              <div className="space-y-3 animate-in fade-in duration-150 bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80">
+              <div className="space-y-2.5 animate-in fade-in duration-150 bg-slate-50/70 p-3.5 sm:p-4 rounded-xl border border-slate-200/60">
                 <div className="flex items-center justify-between text-xs text-slate-500">
                   <span className="font-semibold text-slate-700 flex items-center gap-1.5">
-                    <Link2 className="w-3.5 h-3.5 text-emerald-500" />
-                    输入参考文章 URL 或改写素材：
+                    <Link2 className="w-3.5 h-3.5 text-slate-500" />
+                    输入参考文章 URL
                   </span>
                 </div>
                 <div className="relative">
@@ -427,21 +438,19 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                     type="text"
                     value={rewriteInput}
                     onChange={(e) => setRewriteInput(e.target.value)}
-                    placeholder="粘贴目标文章链接 (如 https://example.com/blog/...) 或输入创作要求..."
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200/80 rounded-lg text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150"
+                    placeholder="粘贴目标文章链接 (如 https://example.com/blog/...) "
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs"
                   />
                   {rewriteInput && (
                     <button
                       type="button"
                       onClick={() => setRewriteInput('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md"
                     >
                       清空
                     </button>
                   )}
                 </div>
-
-
               </div>
             )}
 
@@ -453,7 +462,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 onAnalyze={() => handleRunCompetitorScan()}
                 isAnalyzing={isAnalyzingCompetitor}
                 competitorAnalysis={competitorAnalysis}
-                onSelectAttackKeyword={(kw) => handleExecuteGenerateAndPublish(kw)}
+                onSelectAttackKeyword={(kw) => {
+                  setCompetitorInput(kw);
+                  handleExecuteGenerateAndPublish(kw);
+                }}
                 isRunning={isRunning}
               />
             )}
@@ -461,18 +473,18 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
           {/* 第三步：一键启动执行 */}
           <div className="space-y-2.5 pt-1">
-            <label className="text-lg sm:text-xl font-extrabold text-slate-900 flex items-center gap-3">
-              <span className="w-7 h-7 rounded-lg bg-slate-950 text-white flex items-center justify-center text-sm font-bold shadow-sm">3</span>
-              <span>执行发布</span>
+            <label className="text-base sm:text-lg font-extrabold text-slate-950 flex items-center gap-2.5">
+              <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-slate-950 text-white flex items-center justify-center text-xs sm:text-sm font-bold shadow-xs">3</span>
+              <span>一键发布</span>
             </label>
             <button
               type="button"
               onClick={() => handleExecuteGenerateAndPublish()}
               disabled={isRunning || safeSites.length === 0}
-              className={`w-full py-3.5 sm:py-4 rounded-lg font-bold text-sm sm:text-base transition-all flex items-center justify-center gap-2.5 shadow-sm cursor-pointer ${
+              className={`w-full py-3.5 sm:py-4 rounded-xl font-extrabold text-sm sm:text-base transition-all flex items-center justify-center gap-2.5 shadow-sm cursor-pointer min-h-[48px] sm:min-h-[52px] active:scale-[0.99] ${
                 isRunning
                   ? 'bg-slate-800 text-slate-300 cursor-wait'
-                  : 'bg-slate-900 hover:bg-slate-800 text-white'
+                  : 'bg-slate-950 hover:bg-slate-900 text-white'
               }`}
             >
               {isRunning ? (
@@ -483,12 +495,12 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               ) : (
                 <>
                   <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
-                  <span>
+                  <span className="truncate">
                     {mode === 'KEYWORD' && (keywordInput ? `针对「${keywordInput.slice(0, 16)}${keywordInput.length > 16 ? '...' : ''}」生成并发布` : '自动挖掘热词生成并发布到官网')}
                     {mode === 'REWRITE' && (rewriteInput ? `二次创作并发布上线` : '二次创作并发布上线')}
                     {mode === 'COMPETITOR' && (competitorInput ? `针对竞品「${competitorInput.slice(0, 16)}」对标发布` : '对标竞品并发布上线')}
                   </span>
-                  <ArrowRight className="w-4 h-4" />
+                  <ArrowRight className="w-4 h-4 shrink-0" />
                 </>
               )}
             </button>
@@ -511,8 +523,9 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 />
               </svg>
             </div>
-            <span className="text-xs font-bold text-slate-500 tracking-wider uppercase bg-white px-4 z-10">
-              一键触发并发启动 · 下属 8 阶段高可用自动化发布流水线
+            <span className="text-xs font-bold text-slate-500 tracking-wider uppercase bg-white px-4 z-10 text-center">
+              <span className="hidden sm:inline">一键触发并发启动 · 下属 8 阶段高可用自动化发布流水线</span>
+              <span className="inline sm:hidden">8 阶段自动巡航发布流水线</span>
             </span>
           </div>
 
@@ -526,7 +539,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
       {/* 最新生成结果直接呈现（直达结果） */}
       {latestPublishedDraft && (
-        <div className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-6 space-y-4 shadow-sm animate-in zoom-in-95 duration-200">
+        <div className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-4 sm:p-6 space-y-4 shadow-sm animate-in zoom-in-95 duration-200">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-emerald-900 font-bold text-base">
               <span className="w-6 h-6 rounded-md bg-emerald-600 text-white flex items-center justify-center text-xs">
@@ -589,7 +602,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
       {/* 底部：最近发布的文章列表 */}
       {recentArticles.length > 0 && (
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-emerald-600" />

@@ -309,5 +309,3 @@ export const serpScan = async (req: TenantRequest, res: Response) => {
   const result = await serpService.scanKeywordOpportunities({ seedKeyword: seedKeyword.trim(), location });
   res.json(result);
 };
-
-

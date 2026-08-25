@@ -12,15 +12,11 @@ import {
   Key,
   Layers,
   Languages,
-  Zap,
   Sliders,
   X,
-  Target,
   RefreshCw,
   Play,
-  FileCheck2,
-  AlertTriangle,
-  HelpCircle
+  AlertTriangle
 } from 'lucide-react';
 
 interface ProSiteManagementTabProps {
@@ -35,7 +31,6 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
   sites = [],
   onUpdateSite,
   onDeleteSite,
-  
   onOpenOnboarding
 }) => {
   const safeSites = sites || [];
@@ -93,11 +88,11 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
     const trimmedDomain = editForm.domain.trim();
 
     if (!trimmedName) {
-      showToast('⚠️ 站点名称不能为空');
+      showToast('站点名称不能为空');
       return;
     }
     if (!trimmedDomain) {
-      showToast('⚠️ 绑定域名不能为空');
+      showToast('绑定域名不能为空');
       return;
     }
 
@@ -106,13 +101,13 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
     const cleanDomain = trimmedDomain.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
     
     if (!domainRegex.test(cleanDomain)) {
-      showToast('⚠️ 域名格式不正确，请不要包含 http(s):// 或路径 (如: mydomain.com)');
+      showToast('域名格式不正确，请不要包含 http(s):// 或路径 (如: mydomain.com)');
       return;
     }
 
     // If one WP credential field is entered, recommend the other is also filled
     if ((editForm.wpUsername.trim() && !editForm.wpAppPassword.trim()) || (!editForm.wpUsername.trim() && editForm.wpAppPassword.trim())) {
-      showToast('⚠️ 配置 WordPress REST API 时，账号和应用密码必须同时提供。');
+      showToast('配置 WordPress REST API 时，账号和应用密码必须同时提供');
       return;
     }
 
@@ -129,7 +124,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
     });
     
     setEditingSiteId(null);
-    showToast('🎉 站点全量配置已保存成功');
+    showToast('站点配置已保存成功');
   };
 
   const handleTestSearchEngine = async (engineType: 'BAIDU' | 'GOOGLE') => {
@@ -195,27 +190,27 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
 
   const getLanguageLabel = (lang: string) => {
     switch (lang) {
-      case 'zh-CN': return '🇨🇳 简体中文';
-      case 'en-US': return '🇺🇸 英语(美国)';
-      case 'en': return '🌐 英语(通用)';
-      case 'ja': return '🇯🇵 日本语';
-      case 'ko': return '🇰🇷 韩语';
-      case 'de': return '🇩🇪 德语';
-      case 'fr': return '🇫🇷 法语';
-      case 'es': return '🇪🇸 西班牙语';
-      default: return `🌐 ${lang}`;
+      case 'zh-CN': return '简体中文 (zh-CN)';
+      case 'en-US': return '英语 / 美国 (en-US)';
+      case 'en': return '英语 / 通用 (en)';
+      case 'ja': return '日语 (ja)';
+      case 'ko': return '韩语 (ko)';
+      case 'de': return '德语 (de)';
+      case 'fr': return '法语 (fr)';
+      case 'es': return '西班牙语 (es)';
+      default: return lang || '默认语言';
     }
   };
 
   const getSiteTypeLabel = (type?: SiteType) => {
     switch (type) {
-      case 'SHOPIFY': return '🛍️ Shopify';
-      case 'GHOST': return '👻 Ghost';
-      case 'WEBFLOW': return '🎨 Webflow';
-      case 'CUSTOM_REST': return '⚡ Custom REST';
+      case 'SHOPIFY': return 'Shopify';
+      case 'GHOST': return 'Ghost';
+      case 'WEBFLOW': return 'Webflow';
+      case 'CUSTOM_REST': return 'Custom REST';
       case 'WORDPRESS':
       default:
-        return '🔷 WordPress';
+        return 'WordPress';
     }
   };
 
@@ -229,36 +224,22 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
         </div>
       )}
 
-      <div className="bg-white border border-slate-200/80/80 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
-        
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div className="flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm shrink-0">
-              <Globe2 className="w-4 h-4 text-emerald-400" />
-            </span>
-            <div className="space-y-0.5">
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <span>我的站点</span>
-              </h2>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onOpenOnboarding}
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs sm:text-sm font-semibold transition shadow-sm flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>接入新站点</span>
-          </button>
-        </div>
+      <div className="bg-white border border-slate-200/80/80 rounded-2xl p-4 sm:p-6 shadow-sm space-y-6">
 
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100/60 pb-3">
+            <div className="flex items-center gap-3">
               <h3 className="text-base font-bold text-slate-900">
                 站点列表 ({filteredSites.length})
               </h3>
+              <button
+                type="button"
+                onClick={onOpenOnboarding}
+                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition shadow-xs flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>接入新站点</span>
+              </button>
             </div>
           </div>
 
@@ -267,18 +248,18 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
               return (
                 <div 
                   key={site.id} 
-                  className="bg-white border border-slate-200/80/90 hover:border-slate-300 rounded-xl p-5 sm:p-6 space-y-4 shadow-sm transition"
+                  className="bg-white border border-slate-200/80 rounded-xl p-4 sm:p-5 space-y-4 shadow-xs transition"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="space-y-2 min-w-0 flex-1">
-                      <div className="flex items-center gap-2.5 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="font-bold text-slate-900 text-base sm:text-lg">{site.name}</h4>
                         
-                        <span className="text-xs font-semibold text-slate-800 bg-slate-100 border border-slate-200/80 px-2.5 py-1 rounded-lg">
+                        <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg">
                           {getSiteTypeLabel(site.siteType)}
                         </span>
 
-                        <span className="text-xs text-slate-700 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-lg font-medium">
+                        <span className="text-xs text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg font-medium">
                           {getLanguageLabel(site.siteLanguage)}
                         </span>
 
@@ -286,7 +267,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                           href={`https://${site.domain}`} 
                           target="_blank" 
                           rel="noreferrer"
-                          className="text-xs font-mono text-slate-500 hover:text-slate-800 flex items-center gap-1 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200/80"
+                          className="text-xs font-mono text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center gap-1 bg-slate-50 px-2.5 py-1 rounded-lg transition"
                         >
                           https://{site.domain}
                           <ExternalLink className="w-3 h-3 text-slate-400" />
@@ -294,40 +275,40 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                       </div>
 
                       <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
-                        <span className="bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md">
+                        <span className="bg-slate-50 px-2.5 py-0.5 rounded-md font-medium text-slate-600">
                           行业: {site.niche || '通用'}
                         </span>
                         
                         {site.wpAppPassword ? (
-                          <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center gap-1 font-medium">
+                          <span className="text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-md flex items-center gap-1 font-medium">
                             <Key className="w-3 h-3" />
                             凭证就绪
                           </span>
                         ) : (
-                          <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md font-medium">
+                          <span className="text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-md font-medium">
                             未配置密码
                           </span>
                         )}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end sm:justify-start">
 
                       <button
                         type="button"
                         onClick={() => handleStartEdit(site)}
-                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
-                        title="编辑站点全部配置"
+                        className="flex-1 sm:flex-none px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5"
+                        title="编辑站点配置"
                       >
                         <Edit3 className="w-3.5 h-3.5 text-slate-600" />
-                        <span>全量编辑</span>
+                        <span>编辑</span>
                       </button>
 
                       {onDeleteSite && (
                         <button
                           type="button"
                           onClick={() => handleDelete(site.id)}
-                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
+                          className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition shrink-0"
                           title="解绑站点"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -370,7 +351,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
               </button>
             </div>
 
-            <div className="p-6 space-y-6 text-sm overflow-y-auto flex-1">
+            <div className="p-4 sm:p-6 space-y-6 text-sm overflow-y-auto flex-1">
               
               <div className="space-y-3">
                 <div className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-100">
@@ -410,7 +391,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                     </label>
                     <div className="w-full px-3.5 py-2 bg-slate-100/80 border border-slate-200/80 rounded-xl text-slate-700 text-xs font-semibold flex items-center gap-1.5 select-none h-[34px]">
                       <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                      <span>WordPress 独立站</span>
+                      <span>WordPress</span>
                     </div>
                   </div>
 

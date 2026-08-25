@@ -4,6 +4,21 @@ import { UsdtNetwork, PricingConfig } from '../../src/types/seo';
 import { logger } from '../utils/logger';
 import { TenantRequest } from '../middleware/tenant';
 
+const ensureTenantResolved = (req: Request): void => {
+  const tenantReq = req as TenantRequest;
+  if (!tenantReq.account) {
+    const authHeader = req.headers['authorization'] as string;
+    const token = authHeader ? authHeader.replace(/^Bearer\s+/i, '') : (req.headers['x-auth-token'] as string);
+    const tenantIdHeader = req.headers['x-tenant-id'] as string;
+    const session = fileTenantRepository.resolveTenantFromTokenOrHeader(token, tenantIdHeader);
+    if (session) {
+      tenantReq.tenantId = session.tenantId;
+      tenantReq.account = session.account;
+      tenantReq.tenantData = session.tenantData;
+    }
+  }
+};
+
 export const creditController = {
   /**
    * 获取充值配置信息（套餐、收款钱包地址、汇率说明、扣费标准）
@@ -32,6 +47,7 @@ export const creditController = {
    * 管理员更新系统定价与套餐配置
    */
   updateConfig: async (req: Request, res: Response): Promise<void> => {
+    ensureTenantResolved(req);
     const tenantReq = req as TenantRequest;
     if (tenantReq.account?.role !== 'ADMIN') {
       res.status(403).json({ 
@@ -63,6 +79,7 @@ export const creditController = {
    * 管理员恢复默认定价与套餐配置
    */
   resetConfig: async (req: Request, res: Response): Promise<void> => {
+    ensureTenantResolved(req);
     const tenantReq = req as TenantRequest;
     if (tenantReq.account?.role !== 'ADMIN') {
       res.status(403).json({ 
@@ -86,6 +103,7 @@ export const creditController = {
    * 获取当前租户积分余额与简报
    */
   getBalance: async (req: Request, res: Response): Promise<void> => {
+    ensureTenantResolved(req);
     const tenantReq = req as TenantRequest;
     const tenantId = tenantReq.tenantId || 'tenant-a';
     const account = fileTenantRepository.getAccount(tenantId);
@@ -102,6 +120,7 @@ export const creditController = {
    * 获取积分变动明细（账单流水）
    */
   getTransactions: async (req: Request, res: Response): Promise<void> => {
+    ensureTenantResolved(req);
     const tenantReq = req as TenantRequest;
     const tenantId = tenantReq.tenantId || 'tenant-a';
     const txs = fileTenantRepository.getCreditTransactions(tenantId);
@@ -115,6 +134,7 @@ export const creditController = {
    * 提交 USDT 充值兑换积分
    */
   recharge: async (req: Request, res: Response): Promise<void> => {
+    ensureTenantResolved(req);
     const tenantReq = req as TenantRequest;
     const tenantId = tenantReq.tenantId || 'tenant-a';
     const { usdtAmount, txHash, network = 'TRC20', packageId } = req.body;
@@ -159,6 +179,7 @@ export const creditController = {
    * 系统级付费管理：获取所有租户的充值记录
    */
   getAllTransactions: async (req: Request, res: Response): Promise<void> => {
+    ensureTenantResolved(req);
     const tenantReq = req as TenantRequest;
     if (tenantReq.account?.role !== 'ADMIN') {
       res.status(403).json({ success: false, message: '权限拒绝：仅平台管理员（ADMIN）有权查看全局充值记录' });
@@ -174,6 +195,7 @@ export const creditController = {
    * 系统级消耗管理：获取所有租户的账单流水
    */
   getAllUsages: async (req: Request, res: Response): Promise<void> => {
+    ensureTenantResolved(req);
     const tenantReq = req as TenantRequest;
     if (tenantReq.account?.role !== 'ADMIN') {
       res.status(403).json({ success: false, message: '权限拒绝：仅平台管理员（ADMIN）有权查看全局消耗账单' });
@@ -192,6 +214,7 @@ export const creditController = {
    * 管理员对指定租户手动上下分
    */
   adjustCredits: async (req: Request, res: Response): Promise<void> => {
+    ensureTenantResolved(req);
     const tenantReq = req as TenantRequest;
     if (tenantReq.account?.role !== 'ADMIN') {
       res.status(403).json({ success: false, message: '权限拒绝：仅系统管理员（ADMIN）有权进行手动上下分操作' });
@@ -228,6 +251,7 @@ export const creditController = {
    * 管理员手动确认 USDT 付费到账状态
    */
   confirmPayment: async (req: Request, res: Response): Promise<void> => {
+    ensureTenantResolved(req);
     const tenantReq = req as TenantRequest;
     if (tenantReq.account?.role !== 'ADMIN') {
       res.status(403).json({ success: false, message: '权限拒绝：仅系统管理员（ADMIN）有权确认付费状态' });

@@ -6,21 +6,27 @@
     --color-primary-hover: #4338ca;
   }
   
+  html {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
   body {
     @apply bg-slate-50 text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-700;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    overscroll-behavior-y: none;
   }
 
   /* Custom smooth scrollbar */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-slate-200 hover:bg-slate-300 rounded-full transition-colors;
+    @apply bg-slate-300/80 hover:bg-slate-400 rounded-full transition-colors;
   }
 }
 

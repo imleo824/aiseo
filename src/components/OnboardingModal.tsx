@@ -23,6 +23,15 @@ interface OnboardingModalProps {
   }) => Promise<void>;
 }
 
+const getDefaultLanguage = (): string => {
+  if (typeof navigator !== 'undefined' && navigator.language) {
+    const lang = navigator.language.toLowerCase();
+    if (lang.startsWith('zh')) return 'zh-CN';
+    if (lang.startsWith('en')) return 'en-US';
+  }
+  return 'zh-CN';
+};
+
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   isOpen,
   onClose,
@@ -31,7 +40,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [domain, setDomain] = useState('');
   const [name, setName] = useState('');
   const [siteType, setSiteType] = useState<SiteType>('WORDPRESS');
-  const [siteLanguage, setSiteLanguage] = useState<string>('zh-CN');
+  const [siteLanguage, setSiteLanguage] = useState<string>(getDefaultLanguage());
   const [wpUsername, setWpUsername] = useState('');
   const [wpAppPassword, setWpAppPassword] = useState('');
   const [niche, setNiche] = useState('企业出海与技术服务');
@@ -85,7 +94,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 text-xs overflow-y-auto flex-1">
           
           {/* Site Type & Language */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

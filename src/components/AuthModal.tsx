@@ -4,18 +4,16 @@ import {
   Lock, 
   User, 
   Mail, 
-  Building2, 
   Sparkles, 
   ShieldAlert,
-  KeyRound,
-  Check
+  KeyRound
 } from 'lucide-react';
 import { TenantAccount } from '../types/seo';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentAccount: TenantAccount | null;
+  currentAccount?: TenantAccount | null;
   onLogin: (usernameOrEmail: string, password?: string) => Promise<any>;
   onRegister: (data: { username: string; email: string; password?: string; companyName?: string }) => Promise<any>;
   isMandatoryLogin?: boolean;
@@ -34,7 +32,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [regUsername, setRegUsername] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
-  const [companyName, setCompanyName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,7 +72,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         username: regUsername.trim(),
         email: regEmail.trim(),
         password: regPassword.trim(),
-        companyName: companyName.trim() || undefined
+        
       });
       onClose();
     } catch (err: any) {
@@ -135,7 +132,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-4">
+        <div className="p-4 sm:p-6 space-y-4">
           {error && (
             <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
               <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />

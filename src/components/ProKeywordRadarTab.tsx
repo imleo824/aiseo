@@ -7,7 +7,6 @@ import {
 } from '../types/seo';
 import { createApiService } from '../services/api';
 import { 
-  Target, 
   Zap, 
   Search, 
   Check, 
@@ -75,11 +74,9 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
   const [seedKeyword, setSeedKeyword] = useState<string>('SaaS Billing');
   const [selectedSiteId, setSelectedSiteId] = useState<string>(() => sites[0]?.id || '');
   const [filterType, setFilterType] = useState<'ALL' | KeywordVulnerabilityType>('ALL');
-  const [dataSourceType, setDataSourceType] = useState<string>('HYBRID_INTELLIGENCE_ENGINE');
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [quotaInfo, setQuotaInfo] = useState<any>(null);
   
   // 指标说明 Modal 状态
   const [activeHelpKey, setActiveHelpKey] = useState<string | null>(null);
@@ -96,7 +93,7 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
       commercialIntentScore: 98,
       roiScore: 96,
       vulnerabilityType: 'KGR_GOLD',
-      vulnerabilityLabel: '🟢 KGR 黄金词',
+      vulnerabilityLabel: 'KGR 黄金词',
       serpWeaknesses: [
         '首页包含 2 个 Reddit 论坛讨论帖，缺乏专业长文',
         '排名靠前内容停留在 2023 年，缺乏 2026 最新合规解读'
@@ -116,7 +113,7 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
       commercialIntentScore: 92,
       roiScore: 92,
       vulnerabilityType: 'SERP_FORUM_VULNERABILITY',
-      vulnerabilityLabel: '⚡ SERP 漏洞词',
+      vulnerabilityLabel: 'SERP 漏洞词',
       serpWeaknesses: [
         'Google 首页前 3 名均为 StackOverflow 简短问答',
         '缺乏生产级排坑 Checklist 与断流自愈方案'
@@ -136,7 +133,7 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
       commercialIntentScore: 99,
       roiScore: 95,
       vulnerabilityType: 'COMMERCIAL_CONVERSION',
-      vulnerabilityLabel: '💰 商业高转化',
+      vulnerabilityLabel: '商业高转化',
       serpWeaknesses: [
         '现有结果多为高昂软件软文，缺乏透明 TCO 部署成本对比'
       ],
@@ -155,7 +152,7 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
       commercialIntentScore: 94,
       roiScore: 97,
       vulnerabilityType: 'PAIN_POINT_LONGTAIL',
-      vulnerabilityLabel: '🎯 痛点长尾词',
+      vulnerabilityLabel: '痛点长尾词',
       serpWeaknesses: [
         '精准覆盖非自愿流失痛点，竞争极其微弱，搜索者具备强付费意愿'
       ],
@@ -178,10 +175,8 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
 
       if (data && Array.isArray(data.opportunities) && data.opportunities.length > 0) {
         setOpportunities(data.opportunities);
-        setDataSourceType(data.source || 'HYBRID_INTELLIGENCE_ENGINE');
         
         if (data.quotaStatus) {
-          setQuotaInfo(data.quotaStatus);
         }
         return;
       }
@@ -268,53 +263,42 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
   return (
     <div className="w-full space-y-6 sm:space-y-8 animate-in fade-in duration-200">
       
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
-        
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div className="flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm shrink-0">
-              <Target className="w-4 h-4 text-rose-400" />
-            </span>
-            <div className="space-y-0.5">
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <span>我的词库</span>
-              </h2>
-            </div>
-          </div>
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-sm space-y-6">
 
-          {sites.length > 0 && (
-            <select
-              value={selectedSiteId}
-              onChange={(e) => setSelectedSiteId(e.target.value)}
-              className="px-3 py-1.5 bg-slate-50 border border-slate-200/80 rounded-md text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer self-start sm:self-auto"
-            >
-              {sites.map(s => (
-                <option key={s.id} value={s.id}>
-                  目标站点: {s.name} ({s.domain})
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
+        <div className="space-y-4">
+          <div className="flex flex-col md:flex-row gap-2.5 md:items-center">
+            <div className="flex flex-row items-center gap-2 flex-1">
+              {sites.length > 0 && (
+                <select
+                  value={selectedSiteId}
+                  onChange={(e) => setSelectedSiteId(e.target.value)}
+                  className="px-3 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-bold text-slate-800 focus:outline-none cursor-pointer shrink-0 transition"
+                >
+                  {sites.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
 
-        <div className="space-y-2">
-          <div className="flex flex-col sm:flex-row gap-2.5">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={seedKeyword}
-                onChange={(e) => setSeedKeyword(e.target.value)}
-                placeholder="输入核心种子词 (如 SaaS Billing / 外贸软件 / WordPress)..."
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-md text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white transition font-medium"
-              />
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={seedKeyword}
+                  onChange={(e) => setSeedKeyword(e.target.value)}
+                  placeholder="输入核心种子词 (如 SaaS Billing / 外贸软件 / WordPress)..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white transition font-medium"
+                />
+              </div>
             </div>
 
             <button
               type="button"
               onClick={() => handleRunRadarScan()}
               disabled={isScanning || !seedKeyword.trim()}
-              className="px-5 py-2.5 rounded-md bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm shrink-0 disabled:opacity-50 cursor-pointer"
+              className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm shrink-0 disabled:opacity-50 cursor-pointer h-[38px]"
             >
               {isScanning ? (
                 <>
@@ -323,7 +307,7 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
                 </>
               ) : (
                 <>
-                  <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                  <Search className="w-3.5 h-3.5 text-slate-300" />
                   <span>分析高 ROI 关键词</span>
                 </>
               )}
@@ -335,16 +319,16 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
 
       </div>
 
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-sm space-y-6">
         
         <div className="flex items-center justify-between flex-wrap gap-2 border-b border-slate-100 pb-4">
           <div className="flex items-center gap-1 overflow-x-auto">
             {[
               { id: 'ALL', label: `全部 (${opportunities.length})`, helpKey: null },
-              { id: 'KGR_GOLD', label: '🟢 黄金词 (KGR<0.25)', helpKey: 'KGR' },
-              { id: 'SERP_FORUM_VULNERABILITY', label: '⚡ SERP 漏洞词', helpKey: 'SERP_VULNERABILITY' },
-              { id: 'COMMERCIAL_CONVERSION', label: '💰 商业高转化', helpKey: 'COMMERCIAL' },
-              { id: 'PAIN_POINT_LONGTAIL', label: '🎯 痛点长尾词', helpKey: 'PAIN_POINT' }
+              { id: 'KGR_GOLD', label: '黄金词 (KGR<0.25)', helpKey: 'KGR' },
+              { id: 'SERP_FORUM_VULNERABILITY', label: 'SERP 漏洞词', helpKey: 'SERP_VULNERABILITY' },
+              { id: 'COMMERCIAL_CONVERSION', label: '商业高转化', helpKey: 'COMMERCIAL' },
+              { id: 'PAIN_POINT_LONGTAIL', label: '痛点长尾词', helpKey: 'PAIN_POINT' }
             ].map(tab => (
               <div key={tab.id} className="flex items-center">
                 <button
@@ -394,12 +378,12 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
             return (
               <div 
                 key={item.id}
-                className="p-4 sm:p-5 rounded-md border border-slate-200/80 bg-white hover:border-slate-300 transition shadow-sm space-y-3"
+                className="p-4 sm:p-5 rounded-xl border border-slate-200/80 bg-white shadow-xs space-y-3 transition"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="space-y-1.5 min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200/80">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700">
                         <span>{item.vulnerabilityLabel}</span>
                         <button
                           type="button"
@@ -411,7 +395,7 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
                         </button>
                       </span>
 
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-lg">
                         <span>ROI: {item.roiScore}分</span>
                         <button
                           type="button"
@@ -445,11 +429,11 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
                     </h3>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+                  <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end sm:justify-start flex-wrap">
                     <button
                       type="button"
                       onClick={() => handleCopyText(item.keyword, item.id)}
-                      className="p-2 text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200/80 transition"
+                      className="p-2 text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-lg transition"
                       title="复制关键词"
                     >
                       {copiedId === item.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
@@ -458,7 +442,7 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
                     <button
                       type="button"
                       onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition flex items-center gap-1"
+                      className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition flex items-center gap-1"
                     >
                       <span>{isExpanded ? '收起大纲' : '查看建议'}</span>
                       {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -471,7 +455,7 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
                           onLaunchCruiseWithKeyword(item.keyword, selectedSiteId);
                         }
                       }}
-                      className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer"
                     >
                       <Zap className="w-3.5 h-3.5 fill-white text-white" />
                       <span>一键巡航发文</span>
@@ -485,7 +469,7 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
                 </p>
 
                 {isExpanded && (
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80/80 space-y-2 text-xs text-slate-700 animate-in fade-in duration-150">
+                  <div className="p-3 bg-slate-50/80 rounded-xl space-y-2 text-xs text-slate-700 animate-in fade-in duration-150">
                     <div>
                       <span className="font-bold text-slate-900">推荐拟定标题：</span>
                       <span className="text-slate-800 font-medium">{item.recommendedTitle}</span>
@@ -497,7 +481,7 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
                     <div className="flex items-center gap-1.5 flex-wrap pt-1">
                       <span className="font-bold text-slate-900">建议 H2 提纲：</span>
                       {item.recommendedH2s.map((h2, idx) => (
-                        <span key={idx} className="px-2 py-0.5 rounded-md bg-white border border-slate-200/80 text-slate-600 text-[11px]">
+                        <span key={idx} className="px-2 py-0.5 rounded-md bg-white shadow-xs text-slate-600 text-[11px]">
                           H2: {h2}
                         </span>
                       ))}
@@ -515,7 +499,7 @@ export const ProKeywordRadarTab: React.FC<ProKeywordRadarTabProps> = ({
       {activeHelpKey && METRIC_HELP_MAP[activeHelpKey] && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div 
-            className="bg-white border border-slate-200/80 rounded-xl p-6 max-w-md w-full shadow-xl space-y-4 animate-in zoom-in-95 duration-150"
+            className="bg-white border border-slate-200/80 rounded-xl p-4 sm:p-6 max-w-md w-full shadow-xl space-y-4 animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">

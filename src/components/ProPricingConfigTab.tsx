@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Settings, 
   DollarSign, 
   Coins, 
   Plus, 
   Trash2, 
   Save, 
-  RotateCcw, 
   CheckCircle2, 
   AlertCircle, 
   QrCode
@@ -27,7 +25,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [resetting, setResetting] = useState(false);
+  
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -102,31 +100,6 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
     }
   };
 
-  const handleReset = async () => {
-    if (!isAdmin) return;
-    if (!window.confirm('确定要将所有任务扣费标准和充值套餐恢复为系统默认配置吗？')) {
-      return;
-    }
-
-    setResetting(true);
-    setError(null);
-    setSuccessMsg(null);
-
-    try {
-      const api = new ApiService(tenantId);
-      const res = await api.resetPricingConfig();
-      setSuccessMsg(res.message || '已成功恢复默认配置！');
-      await loadConfig();
-      if (onConfigSaved) onConfigSaved();
-      setTimeout(() => {
-        setSuccessMsg(null);
-      }, 4000);
-    } catch (err: any) {
-      setError(err?.message || '重置失败');
-    } finally {
-      setResetting(false);
-    }
-  };
 
   const handleUpdateActionCredits = (index: number, credits: number) => {
     const next = [...actionPricing];
@@ -175,93 +148,82 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
   };
 
   return (
-    <div className="w-full space-y-6 sm:space-y-8 animate-in fade-in duration-200">
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
+    <div className="w-full space-y-4 sm:space-y-6 animate-in fade-in duration-200">
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-xs space-y-4 sm:space-y-6">
         
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div className="flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm shrink-0">
-              <Settings className="w-4 h-4 text-indigo-400" />
-            </span>
-            <div className="space-y-0.5">
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <span>付费配置</span>
-              </h2>
-            </div>
-          </div>
-
-        {isAdmin && (
-          <div className="flex items-center gap-2 self-end sm:self-center">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || resetting || loading}
-              className="px-4 py-2 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white rounded-md flex items-center gap-1.5 shadow-sm transition duration-150 disabled:opacity-50 cursor-pointer whitespace-nowrap"
-            >
-              <Save className="w-4 h-4" />
-              <span>{saving ? '正在保存...' : '保存配置'}</span>
-            </button>
-          </div>
-        )}
-      </div>
-
       {error && (
-        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-xs flex items-center gap-2">
+        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-100/50 text-rose-700 text-xs flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {successMsg && (
-        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs flex items-center gap-2">
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-100/50 text-emerald-700 text-xs flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           <span>{successMsg}</span>
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-slate-200/80/80 shadow-sm overflow-hidden">
-        <div className="flex border-b border-slate-100 bg-slate-50/50 px-4 gap-1 overflow-x-auto">
-          <button
-            type="button"
-            onClick={() => setActiveTab('ACTION_PRICING')}
-            className={`px-4 py-3.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
-              activeTab === 'ACTION_PRICING'
-                ? 'border-indigo-600 text-indigo-600 bg-white'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Coins className="w-4 h-4" />
-            <span>1. 核心收费标准 ({actionPricing.length} 项)</span>
-          </button>
+      <div className="bg-slate-50/50 rounded-xl overflow-hidden border border-slate-200/80">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200/80 bg-white px-2 sm:px-4 gap-2">
+          <div className="flex gap-1 overflow-x-auto scrollbar-hide">
+            <button
+              type="button"
+              onClick={() => setActiveTab('ACTION_PRICING')}
+              className={`px-4 py-3.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
+                activeTab === 'ACTION_PRICING'
+                  ? 'border-indigo-600 text-indigo-600 bg-white'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Coins className="w-4 h-4" />
+              <span>1. 核心收费标准 ({actionPricing.length} 项)</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('PACKAGES')}
-            className={`px-4 py-3.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
-              activeTab === 'PACKAGES'
-                ? 'border-indigo-600 text-indigo-600 bg-white'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <DollarSign className="w-4 h-4" />
-            <span>2. USDT 充值套餐 ({packages.length})</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('PACKAGES')}
+              className={`px-4 py-3.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
+                activeTab === 'PACKAGES'
+                  ? 'border-indigo-600 text-indigo-600 bg-white'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <DollarSign className="w-4 h-4" />
+              <span>2. USDT 充值套餐 ({packages.length})</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('GLOBAL')}
-            className={`px-4 py-3.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
-              activeTab === 'GLOBAL'
-                ? 'border-indigo-600 text-indigo-600 bg-white'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <QrCode className="w-4 h-4" />
-            <span>3. 汇率与 TRC20 收款地址</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('GLOBAL')}
+              className={`px-4 py-3.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-all whitespace-nowrap ${
+                activeTab === 'GLOBAL'
+                  ? 'border-indigo-600 text-indigo-600 bg-white'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <QrCode className="w-4 h-4" />
+              <span>3. 汇率与 TRC20 收款地址</span>
+            </button>
+          </div>
+
+          {isAdmin && (
+            <div className="py-2 sm:py-0 px-2 sm:px-0 flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving || loading}
+                className="px-4 py-2 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white rounded-lg flex items-center gap-1.5 shadow-xs transition duration-150 disabled:opacity-50 cursor-pointer whitespace-nowrap"
+              >
+                <Save className="w-4 h-4" />
+                <span>{saving ? '正在保存...' : '保存配置'}</span>
+              </button>
+            </div>
+          )}
         </div>
 
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {loading ? (
             <div className="py-24 text-center space-y-3">
               <div className="w-9 h-9 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
@@ -497,7 +459,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
           )}
         </div>
       </div>
-    </div>
+      </div>
     </div>
   );
 };

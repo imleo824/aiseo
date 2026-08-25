@@ -13,7 +13,8 @@ import {
   Settings,
   LogIn,
   Target,
-  Cpu
+  Cpu,
+  ShieldCheck
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -53,18 +54,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { 
           id: 'DASHBOARD', 
           label: '手动执行', 
-          icon: <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
+          icon: <Zap className="w-4 h-4" />
         },
         { 
           id: 'AUTOPILOT_TASKS', 
           label: '自动执行', 
-          icon: <Bot className="w-4 h-4 text-emerald-500" />,
+          icon: <Bot className="w-4 h-4" />,
           badge: safeTasks.length > 0 ? `${activeTasksCount}` : undefined
         },
         { 
           id: 'KEYWORD_RADAR', 
           label: '我的词库', 
-          icon: <Target className="w-4 h-4 text-rose-500" />
+          icon: <Target className="w-4 h-4" />
         },
       ]
     },
@@ -74,23 +75,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { 
           id: 'SITE_MANAGEMENT', 
           label: '我的站点', 
-          icon: <Layers className="w-4 h-4 text-blue-500" />,
+          icon: <Layers className="w-4 h-4" />,
           badge: safeSites.length > 0 ? `${safeSites.length}` : undefined
         },
         { 
           id: 'AUDIT_LEDGER', 
           label: '我的内容', 
-          icon: <Activity className="w-4 h-4 text-indigo-500" /> 
+          icon: <Activity className="w-4 h-4" /> 
         },
       ]
     },
     {
       title: '账户与账单',
       items: [
-        {
+        { 
           id: 'CREDIT_LEDGER', 
           label: '我的账单', 
-          icon: <Wallet className="w-4 h-4 text-amber-500" />
+          icon: <Wallet className="w-4 h-4" />
         },
       ]
     }
@@ -100,27 +101,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { 
       id: 'PRICING_CONFIG', 
       label: '付费配置', 
-      icon: <Settings className="w-4 h-4 text-indigo-500" /> 
+      icon: <Settings className="w-4 h-4" /> 
     },
     { 
       id: 'TENANT_MANAGEMENT', 
       label: '租户管理', 
-      icon: <User className="w-4 h-4 text-blue-500" /> 
+      icon: <User className="w-4 h-4" /> 
     },
     { 
       id: 'SYSTEM_PAYMENT_MANAGEMENT', 
       label: '付费管理', 
-      icon: <Wallet className="w-4 h-4 text-emerald-500" /> 
+      icon: <Wallet className="w-4 h-4" /> 
     },
     { 
       id: 'SYSTEM_BILLING_MANAGEMENT', 
       label: '消耗管理', 
-      icon: <Activity className="w-4 h-4 text-rose-500" /> 
+      icon: <Activity className="w-4 h-4" /> 
     },
     { 
       id: 'SYSTEM_SERVICES_CONFIG', 
       label: '服务集成', 
-      icon: <Cpu className="w-4 h-4 text-indigo-500" />
+      icon: <Cpu className="w-4 h-4" />
     },
   ];
 
@@ -132,20 +133,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const navContent = (
-    <div className="flex flex-col h-full bg-white text-slate-800 select-none justify-between">
-      <div>
+    <div className="flex flex-col h-full bg-white text-slate-800 select-none">
+      {/* Scrollable Navigation Area */}
+      <div className="flex-1 overflow-y-auto">
         {/* Brand Header */}
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-sm z-10">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-sm">
-              <Sparkles className="w-4 h-4 text-emerald-400" />
+            <div className="w-8 h-8 rounded-xl bg-slate-950 text-white flex items-center justify-center font-bold text-sm shadow-xs ring-1 ring-slate-900/15">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
             </div>
             <div>
-              <div className="font-bold text-sm text-slate-900 tracking-tight">
-                AI XEO
+              <div className="font-extrabold text-sm text-slate-950 tracking-tight flex items-center gap-1.5">
+                <span>AI XEO</span>
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200">PRO</span>
               </div>
-              <div className="text-[11px] text-slate-500 font-normal">
-                领先的全自动内容工具
+              <div className="text-[11px] text-slate-500 font-medium">
+                全自动内容生产与发布系统
               </div>
             </div>
           </div>
@@ -155,19 +158,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={onCloseMobile}
-              className="md:hidden p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition"
+              className="md:hidden p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition cursor-pointer"
               aria-label="关闭菜单"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
           )}
         </div>
 
         {/* Navigation List */}
-        <nav className="px-3 py-3 space-y-4">
+        <nav className="px-3 py-3.5 space-y-4">
           {navGroups.map((group, groupIdx) => (
             <div key={groupIdx} className="space-y-1">
-              <div className="px-3 pb-1 text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+              <div className="px-3 pb-1.5 text-[10px] font-bold text-slate-400 tracking-wider uppercase">
                 {group.title}
               </div>
               {group.items.map(item => {
@@ -176,25 +179,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <button
                     key={item.id}
                     onClick={() => handleNavClick(item.id)}
-                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer ${
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer ${
                       isActive 
-                        ? 'bg-slate-900 text-white shadow-sm font-semibold' 
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                        ? 'bg-slate-950 text-white shadow-xs font-semibold' 
+                        : 'text-slate-600 hover:text-slate-950 hover:bg-slate-100/90'
                     }`}
                   >
                     <div className="flex items-center space-x-2.5">
-                      <span className="shrink-0">{item.icon}</span>
+                      <span className={`shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`}>{item.icon}</span>
                       <span>{item.label}</span>
                     </div>
                     {item.badge && (
-                      <span className={`px-1.5 py-0.5 text-[10px] rounded-md font-mono font-medium ${
+                      <span className={`px-1.5 py-0.5 text-[10px] rounded-md font-mono font-bold ${
                         isActive 
-                          ? 'bg-slate-800 text-amber-300' 
-                          : item.id === 'CREDIT_LEDGER'
-                            ? 'bg-amber-50 text-amber-700 border border-amber-200/80'
-                            : 'bg-slate-100 text-slate-600 border border-slate-200/60'
+                          ? 'bg-slate-800 text-slate-200' 
+                          : 'bg-slate-100 text-slate-700 border border-slate-200/80'
                       }`}>
-                        {item.badge === 'HOT' ? '热门' : item.badge}
+                        {item.badge}
                       </span>
                     )}
                   </button>
@@ -204,8 +205,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ))}
 
           {account?.role === 'ADMIN' && (
-            <div className="pt-2 border-t border-slate-100 space-y-1">
-              <div className="px-3 pb-1 text-[10px] font-bold text-indigo-500 tracking-wider uppercase">
+            <div className="pt-2.5 border-t border-slate-100 space-y-1">
+              <div className="px-3 pb-1.5 text-[10px] font-bold text-indigo-500 tracking-wider uppercase">
                 管理和配置
               </div>
               {adminNavItems.map(item => {
@@ -214,10 +215,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <button
                     key={item.id}
                     onClick={() => handleNavClick(item.id)}
-                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer ${
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer ${
                       isActive 
-                        ? 'bg-slate-900 text-white shadow-sm font-semibold' 
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                        ? 'bg-slate-950 text-white shadow-xs font-semibold' 
+                        : 'text-slate-600 hover:text-slate-950 hover:bg-slate-100/90'
                     }`}
                   >
                     <div className="flex items-center space-x-2.5">
@@ -225,7 +226,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <span>{item.label}</span>
                     </div>
                     {item.badge && (
-                      <span className="px-1.5 py-0.5 text-[10px] rounded-md font-mono font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                      <span className="px-1.5 py-0.5 text-[10px] rounded-md font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200">
                         {item.badge}
                       </span>
                     )}
@@ -238,59 +239,56 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Tenant Account & Credit Quick Panel in Sidebar Footer */}
-      <div className="p-3 border-t border-slate-200/80 bg-slate-50/50">
-        <div className="p-2.5 bg-white rounded-md border border-slate-200 shadow-sm space-y-2">
-          {/* Tenant Profile info */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className={`w-6 h-6 rounded flex items-center justify-center font-medium text-xs shrink-0 ${
-                account?.role === 'ADMIN'
-                  ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                  : 'bg-slate-100 text-slate-700 border border-slate-200'
-              }`}>
-                <User className="w-3.5 h-3.5" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs font-semibold text-slate-900 truncate flex items-center gap-1.5">
-                  <span className="truncate">{account?.username || '未登录'}</span>
-                  {account?.role === 'ADMIN' ? (
-                    <span className="px-1 py-0.2 bg-amber-50 text-amber-700 text-[9px] font-medium rounded shrink-0 border border-amber-200">
-                      管理员
-                    </span>
-                  ) : (
-                    <span className="px-1 py-0.2 bg-slate-100 text-slate-600 text-[9px] font-medium rounded shrink-0 border border-slate-200">
-                      租户
-                    </span>
-                  )}
-                </div>
-                <div className="text-[10px] text-slate-400 truncate">
-                  {account?.companyName || (account?.role === 'ADMIN' ? '管理控制台' : account?.id || '独立租户')}
-                </div>
-              </div>
+      <div className="p-4 border-t border-slate-100 bg-slate-50/50 shrink-0 space-y-3">
+        {/* Tenant Profile info */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className={`w-6 h-6 rounded flex items-center justify-center font-medium text-xs shrink-0 ${
+              account?.role === 'ADMIN'
+                ? 'bg-amber-100 text-amber-700 border border-amber-200/50'
+                : 'bg-slate-100 text-slate-700 border border-slate-200/50'
+            }`}>
+              <User className="w-3.5 h-3.5" />
             </div>
-            <div className="flex items-center gap-1">
-              {account ? (
-                <button
-                  type="button"
-                  onClick={onLogout}
-                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors shrink-0"
-                  title="退出登录"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={onOpenAuth}
-                  className="px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-100 font-medium rounded transition-colors border border-slate-200 flex items-center gap-1"
-                >
-                  <LogIn className="w-3 h-3" />
-                  <span>登录</span>
-                </button>
-              )}
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-slate-900 truncate flex items-center gap-1.5">
+                <span className="truncate">{account?.username || '未登录'}</span>
+                {account?.role === 'ADMIN' ? (
+                  <span className="px-1 py-0.2 bg-amber-50 text-amber-700 text-[9px] font-medium rounded shrink-0 border border-amber-200/40">
+                    管理员
+                  </span>
+                ) : (
+                  <span className="px-1 py-0.2 bg-slate-100 text-slate-600 text-[9px] font-medium rounded shrink-0 border border-slate-200/40">
+                    租户
+                  </span>
+                )}
+              </div>
+              <div className="text-[10px] text-slate-400 truncate">
+                {account?.companyName || (account?.role === 'ADMIN' ? '管理控制台' : account?.id || '独立租户')}
+              </div>
             </div>
           </div>
-
+          <div className="flex items-center gap-1">
+            {account ? (
+              <button
+                type="button"
+                onClick={onLogout}
+                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors shrink-0"
+                title="退出登录"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onOpenAuth}
+                className="px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-100 font-medium rounded transition-colors border border-slate-200 flex items-center gap-1"
+              >
+                <LogIn className="w-3 h-3" />
+                <span>登录</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

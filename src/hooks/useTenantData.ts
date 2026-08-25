@@ -216,11 +216,13 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
       throw new Error(`当前积分余额 (${account.credits} 积分) 不足 20 积分，请先充值 USDT 兑换积分。`);
     }
 
-    let modeTitle = '自定义关键词';
+    let modeTitle = '雷达自动选题';
     if (keyword?.includes('[二次创作/改写]')) {
       modeTitle = '内容二次创作 / 洗稿降重';
     } else if (keyword?.includes('[竞品对标截流]')) {
       modeTitle = '对标竞品截流';
+    } else if (keyword && keyword.trim()) {
+      modeTitle = '手动指定关键词';
     }
 
     addLog(`[准备启动] 模式：【${modeTitle}】· 正在为 ${targetSites.length} 个站点初始化全流程自动发文流水线...`);
@@ -230,7 +232,9 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     addLog(`[步骤 1/8 · 意图挖掘] (${modeTitle}) 分析全网搜索热点、行业需求缺口与关键词结构...`);
     const opps: Opportunity[] = [];
     for (const site of targetSites) {
-      const defaultKeyword = keyword || (site.siteLanguage === 'zh-CN' ? 'DeepSeek 企业级私有化微调' : 'Kubernetes FinOps Best Practices');
+      const defaultKeyword = keyword || (site.niche && site.niche !== '通用行业' && site.niche !== '通用商业技术'
+        ? (site.siteLanguage === 'zh-CN' ? `${site.niche} 核心技术落地与选型指南` : `${site.niche} Architecture Best Practices`)
+        : (site.siteLanguage === 'zh-CN' ? 'DeepSeek 企业级私有化微调' : 'Kubernetes FinOps Best Practices'));
       const res = await api.scanOpportunities(site.id, defaultKeyword);
       if (res.opportunity) {
         opps.push(res.opportunity);

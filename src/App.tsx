@@ -15,22 +15,33 @@ import { ProTenantManagementTab } from './components/ProTenantManagementTab';
 import { ProSystemPaymentTab } from './components/ProSystemPaymentTab';
 import { ProSystemBillingTab } from './components/ProSystemBillingTab';
 import { ProSystemServicesTab } from './components/ProSystemServicesTab';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { 
   Globe, 
   ChevronRight, 
-  Menu
+  Menu,
+  Coins
 } from 'lucide-react';
 import { useTenantData } from './hooks/useTenantData';
+
+const getDefaultLanguage = (): Language => {
+  if (typeof navigator !== 'undefined' && navigator.language) {
+    const lang = navigator.language.toLowerCase();
+    if (lang.startsWith('zh')) return 'zh-CN';
+    if (lang.startsWith('en')) return 'en-US';
+  }
+  return 'zh-CN';
+};
 
 export default function App() {
   const [activeTenantId, setActiveTenantId] = useState<string>('tenant-a');
   const [activeNav, setActiveNav] = useState<NavItem>('DASHBOARD');
-  const [globalLanguage, setGlobalLanguage] = useState<Language>('zh-CN');
+  const [globalLanguage, setGlobalLanguage] = useState<Language>(getDefaultLanguage());
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Modals
-    const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isRechargeOpen, setIsRechargeOpen] = useState(false);
 
   const {
@@ -86,22 +97,22 @@ export default function App() {
       case 'SYSTEM_SERVICES_CONFIG':
         return {
           title: '服务集成',
-          desc: ''
+          desc: '配置 AI 大模型、SERP 搜索引擎与第三方服务集成'
         };
       case 'TENANT_MANAGEMENT':
         return {
           title: '租户管理',
-          desc: ''
+          desc: '多租户账号、角色权限与积分配额全局调配'
         };
       case 'SYSTEM_PAYMENT_MANAGEMENT':
         return {
           title: '付费管理',
-          desc: ''
+          desc: 'USDT 充值订单与链上交易哈希核销对账'
         };
       case 'SYSTEM_BILLING_MANAGEMENT':
         return {
           title: '消耗管理',
-          desc: ''
+          desc: '全平台各项 AI 操作扣费与流水明细审计'
         };
       default: 
         return { 
@@ -125,7 +136,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/70 text-slate-900 font-sans antialiased flex flex-col md:flex-row">
+    <div className="min-h-[100dvh] bg-slate-50/70 text-slate-900 font-sans antialiased flex flex-col md:flex-row">
       
       {/* SIDEBAR (Desktop sticky + Mobile slide-over) */}
       <Sidebar
@@ -141,42 +152,43 @@ export default function App() {
       />
 
       {/* RIGHT WORKSPACE AREA */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 min-h-[100dvh]">
         
         {/* Workspace Top Header Bar */}
-        <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-8 py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-sm transition-all">
+        <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-2xs transition-all">
           <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
             
             {/* Mobile Hamburger Toggle Button */}
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen(true)}
-              className="md:hidden p-2 -ml-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition shrink-0"
+              className="md:hidden p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center active:scale-95"
               aria-label="打开导航菜单"
             >
               <Menu className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center space-x-3 text-sm truncate">
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg text-slate-600 font-medium border border-slate-200/70 shadow-sm">
+            <div className="flex items-center space-x-2 sm:space-x-3 text-sm truncate">
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg text-slate-700 font-medium border border-slate-200/80 shadow-xs">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"></span>
                 <span className="truncate max-w-[150px]">{account?.username || '演示租户'}</span>
               </div>
-              <ChevronRight className="w-4 h-4 text-slate-300 hidden sm:inline" />
-              <span className="text-slate-900 font-bold text-base sm:text-lg tracking-tight truncate">{pageInfo.title}</span>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-300 hidden sm:inline" />
+              <span className="text-slate-950 font-bold text-sm sm:text-base lg:text-lg tracking-tight truncate">{pageInfo.title}</span>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3 sm:space-x-4 shrink-0">
+          <div className="flex items-center space-x-1.5 sm:space-x-3 shrink-0">
             {/* Quick Credit Balance Pill */}
             {account && (
-              <div className="flex items-center gap-2 bg-amber-50/90 text-amber-900 border border-amber-200/80 px-3 py-1.5 rounded-xl text-sm font-medium shadow-sm transition-all hover:shadow-md">
-                <span className="text-amber-600 font-bold">⚡ 积分:</span>
-                <span className="font-mono font-bold text-amber-900">{account.credits ?? 0}</span>
+              <div className="flex items-center gap-1 sm:gap-2 bg-slate-100/90 text-slate-800 border border-slate-200/90 px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl text-xs sm:text-sm font-medium shadow-2xs transition-all">
+                <Coins className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                <span className="font-mono font-bold text-slate-950 text-xs sm:text-sm">{account.credits ?? 0}</span>
+                <span className="text-[10px] text-slate-400 font-medium hidden sm:inline">积分</span>
                 <button
                   type="button"
                   onClick={() => setIsRechargeOpen(true)}
-                  className="ml-2 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition cursor-pointer"
+                  className="ml-0.5 sm:ml-1 px-2 sm:px-2.5 py-1 sm:py-0.5 bg-slate-950 hover:bg-slate-800 text-white text-[11px] font-bold rounded-lg transition cursor-pointer whitespace-nowrap active:scale-95 shadow-2xs min-h-[28px] flex items-center"
                 >
                   充值
                 </button>
@@ -184,22 +196,22 @@ export default function App() {
             )}
 
             {/* Global Language Selector */}
-            <div className="flex items-center space-x-2 bg-slate-100/90 px-3 py-1.5 rounded-xl text-sm border border-slate-200 shadow-sm transition hover:bg-slate-200/80">
-              <Globe className="w-4 h-4 text-slate-500 shrink-0" />
+            <div className="flex items-center space-x-1 bg-slate-100/90 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs sm:text-sm border border-slate-200 shadow-2xs transition hover:bg-slate-200/70 min-h-[32px]">
+              <Globe className="w-3.5 h-3.5 text-slate-500 shrink-0" />
               <select
                 value={globalLanguage}
                 onChange={(e) => setGlobalLanguage(e.target.value as Language)}
-                className="bg-transparent text-slate-700 focus:outline-none cursor-pointer font-medium text-sm"
+                className="bg-transparent text-slate-800 focus:outline-none cursor-pointer font-semibold text-xs sm:text-sm"
               >
-                <option value="zh-CN">简体中文</option>
-                <option value="en-US">English</option>
+                <option value="zh-CN">CH</option>
+                <option value="en-US">En</option>
               </select>
             </div>
           </div>
         </header>
 
         {/* Main Workspace Content Views */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-10 w-full max-w-7xl mx-auto">
+        <main className="flex-1 p-3 sm:p-5 lg:p-8 pb-24 md:pb-10 w-full max-w-7xl mx-auto">
           {activeNav === 'DASHBOARD' && (
             <MainDashboard
               sites={sites}
@@ -208,7 +220,7 @@ export default function App() {
               onRollback={actions.handleRollback}
               onRunCruise={actions.handleRunCruise}
               onAnalyzeCompetitor={actions.handleAnalyzeCompetitorAttack}
-              onNavigateToNav={(nav) => setActiveNav(nav)}
+              onOpenOnboarding={() => setIsOnboardingOpen(true)}
             />
           )}
 
@@ -268,7 +280,6 @@ export default function App() {
               account={account}
               transactions={transactions}
               tenantId={activeTenantId}
-              onOpenRecharge={() => setIsRechargeOpen(true)}
             />
           )}
 
@@ -312,6 +323,16 @@ export default function App() {
         </main>
       </div>
 
+      {/* Mobile Bottom Navigation Bar (Visible on mobile screens) */}
+      <MobileBottomNav
+        activeNav={activeNav}
+        onSelectNav={setActiveNav}
+        onOpenMobileDrawer={() => setIsMobileMenuOpen(true)}
+        sites={sites}
+        tasks={tasks}
+        account={account}
+      />
+
       {/* Onboarding Bind Modal */}
       {isOnboardingOpen && (
         <OnboardingModal
@@ -323,8 +344,6 @@ export default function App() {
           }}
         />
       )}
-
-      
 
       {/* Auth Modal */}
       {(isAuthOpen || !account) && (

@@ -37,8 +37,8 @@ import {
 
 export const apiRouter = Router();
 
-const authRateLimiter = createRateLimiter(60000, 15); // 15 requests per min for login/register
-const aiGenRateLimiter = createRateLimiter(60000, 30); // 30 requests per min for heavy AI jobs
+const authRateLimiter = createRateLimiter(60000, 180); // Relaxed to 180 requests per min for login/register to prevent false positives
+const aiGenRateLimiter = createRateLimiter(60000, 180); // Relaxed to 180 requests per min for heavy AI jobs
 
 // Auth & Tenant Management Routes
 apiRouter.post("/auth/login", authRateLimiter, asyncHandler(authController.login));
