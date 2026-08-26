@@ -10,6 +10,7 @@ import {
   Language,
   KnowledgeSource,
   CompetitorAttackAnalysis,
+  ArticleGenerationAutomation,
   UsageLedgerItem,
   TenantAccount,
   CreditTransaction,
@@ -327,7 +328,11 @@ export class ApiService {
   }
 
   public generateArticle(oppId: string) {
-    return this.request<{ draft: ArticleDraft; opportunity: Opportunity }>(`/api/opportunities/${oppId}/generate-article`, {
+    return this.request<{
+      draft: ArticleDraft;
+      opportunity: Opportunity;
+      automation: ArticleGenerationAutomation;
+    }>(`/api/opportunities/${oppId}/generate-article`, {
       method: 'POST'
     });
   }

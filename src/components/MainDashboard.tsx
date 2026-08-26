@@ -2,7 +2,9 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { 
   WordPressSite, 
   ArticleDraft,
-  CompetitorAttackAnalysis
+  CompetitorAttackAnalysis,
+  PipelineStepStates,
+  PipelineStepStatus
 } from '../types/seo';
 import { PipelineVisualizer } from './dashboard/PipelineVisualizer';
 import { DraftPreviewModal } from './dashboard/DraftPreviewModal';
@@ -31,12 +33,23 @@ interface MainDashboardProps {
   onRunCruise?: (
     siteIds: string[], 
     addLog: (msg: string) => void,
-    setActiveStep: (step: number) => void,
+    setPipelineStep: (step: number, status: PipelineStepStatus) => void,
     keyword?: string
   ) => Promise<ArticleDraft | undefined>;
   onAnalyzeCompetitor?: (siteId: string, competitor: string) => Promise<CompetitorAttackAnalysis>;
   onOpenOnboarding?: () => void;
 }
+
+const initialPipelineStepStates = (): PipelineStepStates => ({
+  1: 'PENDING',
+  2: 'PENDING',
+  3: 'PENDING',
+  4: 'PENDING',
+  5: 'PENDING',
+  6: 'PENDING',
+  7: 'PENDING',
+  8: 'PENDING'
+});
 
 export const MainDashboard: React.FC<MainDashboardProps> = ({
   sites = [],
@@ -72,6 +85,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   // 执行状态
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [activePipelineStep, setActivePipelineStep] = useState<number | null>(null);
+  const [pipelineStepStates, setPipelineStepStates] = useState<PipelineStepStates>(initialPipelineStepStates);
   const [executionLogs, setExecutionLogs] = useState<string[]>([]);
   
   // 最新生成成功的文章卡片高亮展示（直达结果）
@@ -89,6 +103,14 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   const activeSite = useMemo(() => {
     return safeSites.find(s => s.id === selectedSiteId) || safeSites[0];
   }, [safeSites, selectedSiteId]);
+
+  const setPipelineStep = useCallback((step: number, status: PipelineStepStatus) => {
+    setPipelineStepStates((previous) => ({ ...previous, [step]: status }));
+    setActivePipelineStep((previous) => {
+      if (status === 'RUNNING') return step;
+      return previous === step ? null : previous;
+    });
+  }, []);
 
   // 最近生成的文章列表
   const recentArticles = useMemo(() => {
@@ -158,6 +180,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     
     setIsRunning(true);
     setExecutionLogs([]);
+    setPipelineStepStates(initialPipelineStepStates());
     setLatestPublishedDraft(null);
 
     const addLog = (msg: string) => {
@@ -166,7 +189,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
     try {
       if (onRunCruise) {
-        const publishedDraft = await onRunCruise(targetSiteIds, addLog, setActivePipelineStep, keywordToUse || undefined);
+        const publishedDraft = await onRunCruise(targetSiteIds, addLog, setPipelineStep, keywordToUse || undefined);
         if (publishedDraft?.status === 'PUBLISHED') {
           setLatestPublishedDraft(publishedDraft);
         }
@@ -176,16 +199,25 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             ? '文章已生成，但质量门禁阻止了自动发布'
             : '执行未返回可发布文章，请查看任务日志');
       } else {
-        setActivePipelineStep(1);
+        setPipelineStep(1, 'RUNNING');
         addLog(`[意图挖掘] 分析长尾关键词: ${keywordToUse || activeSite?.niche || '行业热词'}`);
         await onTriggerScan(keywordToUse || undefined, targetSiteId);
-        await new Promise(r => setTimeout(r, 500));
 
         addLog('[流程中止] 当前工作区未连接真实执行处理器，未生成、发布或推送任何内容。');
+        setPipelineStep(1, 'FAILED');
         showToast('执行处理器未连接，未执行发布操作');
       }
     } catch (e: any) {
       addLog(`[执行异常] ${e instanceof Error ? e.message : String(e)}`);
+      setPipelineStepStates((previous) => {
+        const failedStates = { ...previous };
+        for (const step of Object.keys(failedStates)) {
+          if (failedStates[Number(step)] === 'RUNNING') {
+            failedStates[Number(step)] = 'FAILED';
+          }
+        }
+        return failedStates;
+      });
       showToast('发布遇到异常，请检查站点连接');
     } finally {
       setIsRunning(false);
@@ -464,13 +496,14 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               </svg>
             </div>
             <span className="text-xs font-bold text-slate-500 tracking-wider uppercase bg-white px-4 z-10 text-center">
-              <span className="hidden sm:inline">一键触发 · 真实生成、质检与自动发布流水线</span>
-              <span className="inline sm:hidden">自动巡航发布流水线</span>
+              <span className="hidden sm:inline">一键触发 · 8 阶段全自动生成、质检、发布与推送</span>
+              <span className="inline sm:hidden">8 阶段自动巡航</span>
             </span>
           </div>
 
           <PipelineVisualizer
             activePipelineStep={activePipelineStep}
+            stepStates={pipelineStepStates}
             executionLogs={executionLogs}
           />
         </div>

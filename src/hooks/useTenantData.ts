@@ -10,7 +10,9 @@ import {
   Language,
   TenantAccount,
   CreditTransaction,
-  UsdtNetwork
+  UsdtNetwork,
+  ArticleGenerationAutomation,
+  PipelineStepStatus
 } from '../types/seo';
 
 export function useTenantData(activeTenantId: string, globalLanguage: Language, onTenantChange?: (newTenantId: string) => void) {
@@ -204,7 +206,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
   const handleRunCruise = async (
     targetSiteIds: string[], 
     addLog: (msg: string) => void, 
-    setActiveStep: (step: number) => void,
+    setPipelineStep: (step: number, status: PipelineStepStatus) => void,
     keyword?: string
   ) => {
     const targetSites = sites.filter(s => targetSiteIds.includes(s.id));
@@ -224,11 +226,13 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
       modeTitle = '手动指定关键词';
     }
 
-    addLog(`[准备启动] 模式：【${modeTitle}】· 正在为 ${targetSites.length} 个站点启动自动生成、质检与发布流程。`);
-    setActiveStep(1);
+    addLog(`[准备启动] 模式：【${modeTitle}】· 正在为 ${targetSites.length} 个站点启动 8 阶段全自动生成、质检、发布与推送流程。`);
+    setPipelineStep(1, 'RUNNING');
 
-    // Step 1: real model-backed intent discovery (no timer-based progress simulation).
-    addLog(`[步骤 1/5 · 意图挖掘] (${modeTitle}) 正在请求 AI 分析目标关键词…`);
+    // These requests intentionally run in sequence: all drafts debit the same
+    // tenant credit balance, and the legacy repository does not yet provide a
+    // transactional concurrent ledger.
+    addLog(`[步骤 1/8 · 意图挖掘] (${modeTitle}) 正在请求 AI 分析目标关键词…`);
     const opps: Opportunity[] = [];
     for (const site of targetSites) {
       const defaultKeyword = keyword || (site.niche && site.niche !== '通用行业' && site.niche !== '通用商业技术'
@@ -240,32 +244,78 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
       }
     }
     if (!opps.length) throw new Error('没有生成可继续处理的内容机会');
+    setPipelineStep(1, 'COMPLETED');
 
-    // Step 2: content brief.
-    setActiveStep(2);
-    addLog(`[步骤 2/5 · 内容大纲] (${modeTitle}) 正在结合站点知识库生成结构化大纲…`);
+    // Step 2: the brief endpoint first retrieves the customer knowledge sources.
+    setPipelineStep(2, 'RUNNING');
+    addLog(`[步骤 2/8 · 知识检索] 正在检索站点关联的客户知识库与原创资料…`);
+    const briefs: unknown[] = [];
     for (const opp of opps) {
-      await api.generateBrief(opp.id);
+      const briefRes = await api.generateBrief(opp.id);
+      briefs.push(briefRes.brief);
     }
+    setPipelineStep(2, 'COMPLETED');
 
-    // Step 3: article generation. The server runs the actual quality gate and
-    // only then attempts WordPress publishing.
-    setActiveStep(3);
-    addLog(`[步骤 3/5 · 生成与质检] (${modeTitle}) 正在生成文章并执行质量门禁…`);
+    // Step 3 uses the real Content Brief returned in the previous operation.
+    setPipelineStep(3, 'RUNNING');
+    const briefCount = briefs.filter(Boolean).length;
+    addLog(`[步骤 3/8 · 大纲策划] 已返回 ${briefCount}/${opps.length} 份结构化 Content Brief。`);
+    setPipelineStep(3, briefCount === opps.length ? 'COMPLETED' : 'PARTIAL');
+
+    // The server performs generation, factual quality gating, internal linking,
+    // WordPress publication, and indexing in that order for each article.
+    setPipelineStep(4, 'RUNNING');
+    addLog(`[步骤 4/8 · 长文智造] (${modeTitle}) 正在生成文章；不合格内容不会进入发布步骤…`);
     const draftsList: ArticleDraft[] = [];
+    const automationResults: ArticleGenerationAutomation[] = [];
     for (const opp of opps) {
       const draftRes = await api.generateDraft(opp.id);
       if (draftRes.draft) {
         draftsList.push(draftRes.draft);
       }
+      automationResults.push(draftRes.automation);
     }
+    setPipelineStep(4, draftsList.length === opps.length ? 'COMPLETED' : 'PARTIAL');
+
+    const qualityPassed = draftsList.filter((draft) => draft.qualityGate.passed).length;
+    const qualityFailed = draftsList.length - qualityPassed;
+    setPipelineStep(5, 'RUNNING');
+    addLog(`[步骤 5/8 · 质量核验] 真实质量门禁：通过 ${qualityPassed} 篇，阻止 ${qualityFailed} 篇。`);
+    setPipelineStep(5, qualityFailed === 0 ? 'COMPLETED' : qualityPassed === 0 ? 'FAILED' : 'PARTIAL');
+
+    const insertedInternalLinks = automationResults.filter((result) => result.internalLinking.status === 'INSERTED').length;
+    const skippedInternalLinks = automationResults.length - insertedInternalLinks;
+    setPipelineStep(6, 'RUNNING');
+    addLog(`[步骤 6/8 · 智能内链] 已插入 ${insertedInternalLinks} 篇；无可用目标或已存在链接而跳过 ${skippedInternalLinks} 篇。`);
+    setPipelineStep(6, insertedInternalLinks === 0 ? 'SKIPPED' : skippedInternalLinks === 0 ? 'COMPLETED' : 'PARTIAL');
+
     const publishedDrafts = draftsList.filter((draft) => draft.status === 'PUBLISHED' && draft.publishedUrl);
     const blockedDrafts = draftsList.filter((draft) => draft.status !== 'PUBLISHED');
-    setActiveStep(4);
-    addLog(`[步骤 4/5 · 自动发布] 已发布 ${publishedDrafts.length} 篇；质量门禁阻止 ${blockedDrafts.length} 篇。`);
-    setActiveStep(5);
-    addLog(`[步骤 5/5 · 收录推送] 发布后的搜索引擎推送由服务端按已配置渠道执行；未配置渠道会被明确跳过。`);
+    setPipelineStep(7, 'RUNNING');
+    addLog(`[步骤 7/8 · 站点发布] WordPress 自动发布 ${publishedDrafts.length} 篇；质量门禁阻止 ${blockedDrafts.length} 篇。`);
+    setPipelineStep(7, publishedDrafts.length === 0 ? 'SKIPPED' : blockedDrafts.length === 0 ? 'COMPLETED' : 'PARTIAL');
+
+    const indexingResults = automationResults.flatMap((result) => result.indexing.results);
+    const submittedIndexing = indexingResults.filter((result) => result.status === 'SUBMITTED').length;
+    const failedIndexing = indexingResults.filter((result) => result.status === 'FAILED').length;
+    const skippedIndexing = indexingResults.filter((result) => result.status === 'SKIPPED').length;
+    setPipelineStep(8, 'RUNNING');
+    if (indexingResults.length === 0) {
+      addLog('[步骤 8/8 · 引擎推送] 没有已发布文章，未调用搜索引擎推送。');
+    } else {
+      addLog(`[步骤 8/8 · 引擎推送] 已提交 ${submittedIndexing} 个渠道；跳过 ${skippedIndexing} 个；失败 ${failedIndexing} 个。`);
+    }
     await loadTenantData();
+    setPipelineStep(
+      8,
+      indexingResults.length === 0
+        ? 'SKIPPED'
+        : failedIndexing > 0
+          ? submittedIndexing > 0 || skippedIndexing > 0 ? 'PARTIAL' : 'FAILED'
+          : submittedIndexing > 0
+            ? skippedIndexing > 0 ? 'PARTIAL' : 'COMPLETED'
+            : 'SKIPPED'
+    );
     return publishedDrafts[0] || draftsList[0];
   };
 

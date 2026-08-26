@@ -1,4 +1,5 @@
 import React from 'react';
+import { PipelineStepStates, PipelineStepStatus } from '../../types/seo';
 import { 
   Check, 
   Terminal as TerminalIcon, 
@@ -19,11 +20,13 @@ interface PipelineStep {
 
 interface PipelineVisualizerProps {
   activePipelineStep: number | null;
+  stepStates: PipelineStepStates;
   executionLogs: string[];
 }
 
 export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
   activePipelineStep,
+  stepStates,
   executionLogs
 }) => {
   const [showLogs, setShowLogs] = React.useState<boolean>(true);
@@ -41,10 +44,27 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
   return (
     <div className="space-y-4 pt-1">
       
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 sm:gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 sm:gap-3">
         {pipelineSteps.map((s) => {
-          const isActive = activePipelineStep === s.num;
-          const isCompleted = activePipelineStep !== null && activePipelineStep > s.num;
+          const status: PipelineStepStatus = stepStates[s.num]
+            || (activePipelineStep === s.num ? 'RUNNING' : 'PENDING');
+          const isActive = status === 'RUNNING';
+          const isCompleted = status === 'COMPLETED';
+          const isPartial = status === 'PARTIAL';
+          const isSkipped = status === 'SKIPPED';
+          const isFailed = status === 'FAILED';
+
+          const statusLabel = isCompleted
+            ? '已完成'
+            : isPartial
+              ? '部分完成'
+              : isSkipped
+                ? '已跳过'
+                : isFailed
+                  ? '已阻止'
+                  : isActive
+                    ? '执行中'
+                    : `步骤 ${s.num}`;
 
           return (
             <div
@@ -54,6 +74,12 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
                   ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-emerald-500/30'
                   : isCompleted
                   ? 'bg-emerald-50/90 text-emerald-950 border-emerald-200 shadow-sm'
+                  : isPartial
+                  ? 'bg-amber-50/90 text-amber-950 border-amber-200 shadow-sm'
+                  : isSkipped
+                  ? 'bg-slate-100/90 text-slate-600 border-slate-200 shadow-sm'
+                  : isFailed
+                  ? 'bg-rose-50/90 text-rose-950 border-rose-200 shadow-sm'
                   : 'bg-slate-50/80 text-slate-600 border-slate-200/80'
               }`}
             >
@@ -62,6 +88,12 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
                   ? 'bg-slate-800 text-emerald-400' 
                   : isCompleted 
                   ? 'bg-emerald-100 text-emerald-700' 
+                  : isPartial
+                  ? 'bg-amber-100 text-amber-700'
+                  : isSkipped
+                  ? 'bg-slate-200 text-slate-500'
+                  : isFailed
+                  ? 'bg-rose-100 text-rose-700'
                   : 'bg-white text-slate-400 border border-slate-200/80'
               }`}>
                 {isCompleted ? (
@@ -78,14 +110,32 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
 
               <div className="space-y-0.5">
                 <div className={`font-semibold text-xs sm:text-sm ${
-                  isActive ? 'text-white' : isCompleted ? 'text-emerald-900' : 'text-slate-700'
+                  isActive
+                    ? 'text-white'
+                    : isCompleted
+                      ? 'text-emerald-900'
+                      : isPartial
+                        ? 'text-amber-900'
+                        : isFailed
+                          ? 'text-rose-900'
+                          : 'text-slate-700'
                 }`}>
                   {s.title}
                 </div>
                 <div className={`text-[11px] font-mono ${
-                  isActive ? 'text-emerald-400 font-bold' : isCompleted ? 'text-emerald-600' : 'text-slate-400'
+                  isActive
+                    ? 'text-emerald-400 font-bold'
+                    : isCompleted
+                      ? 'text-emerald-600'
+                      : isPartial
+                        ? 'text-amber-600'
+                        : isSkipped
+                          ? 'text-slate-500'
+                          : isFailed
+                            ? 'text-rose-600 font-semibold'
+                            : 'text-slate-400'
                 }`}>
-                  {isCompleted ? '已完成' : isActive ? '执行中' : `步骤 ${s.num}`}
+                  {statusLabel}
                 </div>
               </div>
             </div>

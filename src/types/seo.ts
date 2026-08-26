@@ -277,6 +277,38 @@ export interface QualityGateResult {
   passedChecks: string[];
 }
 
+/**
+ * A customer-visible state for one stage in the automated publishing pipeline.
+ * `SKIPPED` is an intentional, explicitly reported outcome (for example, a
+ * missing indexing credential); it must never be displayed as a completion.
+ */
+export type PipelineStepStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'PARTIAL' | 'SKIPPED' | 'FAILED';
+
+export type PipelineStepStates = Record<number, PipelineStepStatus>;
+
+export type AutomationIndexingStatus = 'SUBMITTED' | 'SKIPPED' | 'FAILED';
+
+export interface ArticleGenerationAutomation {
+  internalLinking: {
+    status: 'INSERTED' | 'SKIPPED';
+    message: string;
+    targetUrl?: string;
+  };
+  publishing: {
+    status: 'PUBLISHED' | 'BLOCKED';
+    message: string;
+    publishedUrl?: string;
+  };
+  indexing: {
+    status: AutomationIndexingStatus;
+    results: Array<{
+      provider: 'BAIDU' | 'GOOGLE';
+      status: AutomationIndexingStatus;
+      message: string;
+    }>;
+  };
+}
+
 export interface ArticleDraft {
   id: string;
   opportunityId: string;

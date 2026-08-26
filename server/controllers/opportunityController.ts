@@ -153,14 +153,35 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
     const brief = await geminiAdapter.generateContentBrief(opp.id, opp.targetKeyword, opp.language, kbSnippets);
     const result = await geminiAdapter.generateArticleAndQualityCheck(opp.targetKeyword, opp.language, brief, kbSnippets);
 
-    // Weave internal link
+    // Weave an internal link only when there is a real, already-published target.
+    // The result is returned to the client so the pipeline never claims a link
+    // insertion that did not happen.
     let finalContentHtml = sanitizeArticleHtml(result.contentHtml);
+    let internalLinking: {
+      status: 'INSERTED' | 'SKIPPED';
+      message: string;
+      targetUrl?: string;
+    } = {
+      status: 'SKIPPED',
+      message: '没有可用的已发布站内文章，已跳过智能内链。'
+    };
     const otherPublished = tenantData.drafts.filter(d => d.siteId === site.id && d.status === 'PUBLISHED' && d.publishedUrl);
     if (otherPublished.length > 0) {
       const samplePrev = otherPublished[0];
       const linkTag = `<p class="mt-4 p-3 bg-slate-900/60 rounded-lg text-xs text-slate-300 border border-slate-800">💡 <strong>延伸阅读</strong>：查看我们关于 <a href="${samplePrev.publishedUrl}" class="text-emerald-400 underline font-semibold hover:text-emerald-300" target="_blank">${samplePrev.title}</a> 的深度分析。</p>`;
       if (!finalContentHtml.includes(samplePrev.title)) {
         finalContentHtml = finalContentHtml + linkTag;
+        internalLinking = {
+          status: 'INSERTED',
+          message: `已插入指向《${samplePrev.title}》的站内链接。`,
+          targetUrl: samplePrev.publishedUrl
+        };
+      } else {
+        internalLinking = {
+          status: 'SKIPPED',
+          message: `正文已包含《${samplePrev.title}》链接，未重复插入。`,
+          targetUrl: samplePrev.publishedUrl
+        };
       }
     }
 
@@ -168,7 +189,11 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
 
     let publishedUrl: string | undefined;
     let wpPostId: number | undefined;
-    const indexingMessages: string[] = [];
+    const indexingResults: Array<{
+      provider: 'BAIDU' | 'GOOGLE';
+      status: 'SUBMITTED' | 'SKIPPED' | 'FAILED';
+      message: string;
+    }> = [];
 
     if (isAutoEligible) {
       const wpRes = await wordPressAdapter.publishPost(site, {
@@ -209,9 +234,19 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
       site.pagesCount = (site.pagesCount || 0) + 1;
       await fileTenantRepository.saveSite(req.tenantId, site);
 
-      if (opp.language === 'zh-CN') {
-        const baiduRes = await searchEngineAdapter.pushToBaidu(site.domain, site.baiduToken, [publishedUrl]);
-        indexingMessages.push(`百度：${baiduRes.message}`);
+      const [baiduRes, googleRes] = await Promise.all([
+        opp.language === 'zh-CN'
+          ? searchEngineAdapter.pushToBaidu(site.domain, site.baiduToken, [publishedUrl])
+          : Promise.resolve(undefined),
+        searchEngineAdapter.pushToGoogle(site.domain, site.googleServiceAccountJson, [publishedUrl])
+      ]);
+
+      if (baiduRes) {
+        indexingResults.push({
+          provider: 'BAIDU',
+          status: !baiduRes.success ? 'FAILED' : baiduRes.skipped ? 'SKIPPED' : 'SUBMITTED',
+          message: baiduRes.message
+        });
         if (baiduRes.success && !baiduRes.skipped) {
           await fileTenantRepository.appendBaiduLog(req.tenantId, {
             id: `baidu-${Date.now()}`,
@@ -224,11 +259,21 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
         }
       }
 
-      const googleRes = await searchEngineAdapter.pushToGoogle(site.domain, site.googleServiceAccountJson, [publishedUrl]);
-      indexingMessages.push(`Google：${googleRes.message}`);
+      indexingResults.push({
+        provider: 'GOOGLE',
+        status: !googleRes.success ? 'FAILED' : googleRes.skipped ? 'SKIPPED' : 'SUBMITTED',
+        message: googleRes.message
+      });
     } else {
       opp.status = 'REJECTED';
     }
+
+    const indexingStatus = indexingResults.some((result) => result.status === 'FAILED')
+      ? 'FAILED'
+      : indexingResults.some((result) => result.status === 'SUBMITTED')
+        ? 'SUBMITTED'
+        : 'SKIPPED';
+    const indexingMessages = indexingResults.map((result) => `${result.provider === 'BAIDU' ? '百度' : 'Google'}：${result.message}`);
 
     opp.updatedAt = new Date().toISOString();
     await fileTenantRepository.saveDraft(req.tenantId, newDraft);
@@ -247,7 +292,27 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
         : `质量门禁未通过（得分 ${result.qualityGate.overallScore}），已阻止自动发布。`
     });
 
-    res.json({ draft: newDraft, opportunity: opp });
+    res.json({
+      draft: newDraft,
+      opportunity: opp,
+      automation: {
+        internalLinking,
+        publishing: isAutoEligible && publishedUrl
+          ? {
+              status: 'PUBLISHED',
+              message: `已通过 WordPress 自动发布。`,
+              publishedUrl
+            }
+          : {
+              status: 'BLOCKED',
+              message: `质量门禁未通过（得分 ${result.qualityGate.overallScore}），未调用 WordPress 发布。`
+            },
+        indexing: {
+          status: indexingStatus,
+          results: indexingResults
+        }
+      }
+    });
   } catch (err: any) {
     // 自动补偿退还积分
     await fileTenantRepository.refundCredits(
