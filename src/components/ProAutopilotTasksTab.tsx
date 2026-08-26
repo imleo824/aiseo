@@ -81,7 +81,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
         siteName,
         scheduleType,
         scheduleTime,
-        targetKeywordTopic: targetKeywordTopic.trim() || '通用行业热门词',
+        targetKeywordTopic: targetKeywordTopic.trim() || '按站点主题自动选题',
         articleCountPerRun,
         status: 'ACTIVE'
       });
@@ -225,7 +225,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                         </span>
                         <span className="flex items-center gap-1">
                           <Tag className="w-3.5 h-3.5 text-slate-400" />
-                          <span>主题: {task.targetKeywordTopic || '行业热词'}</span>
+                          <span>主题: {task.targetKeywordTopic || '按站点主题自动选题'}</span>
                         </span>
                         <span className="flex items-center gap-1">
                           <Zap className="w-3.5 h-3.5 text-amber-500" />
@@ -316,7 +316,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                   type="text"
                   value={taskName}
                   onChange={(e) => setTaskName(e.target.value)}
-                  placeholder="例如：每日早间行业热词推送"
+                  placeholder="例如：每日站点主题内容巡航"
                   required
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
                 />
@@ -368,7 +368,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                   type="text"
                   value={targetKeywordTopic}
                   onChange={(e) => setTargetKeywordTopic(e.target.value)}
-                  placeholder="留空则自动分析行业挖掘热词"
+                  placeholder="留空则按站点主题选题；流量机会需由 GSC / DataForSEO 验证"
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
                 />
               </div>

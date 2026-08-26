@@ -66,7 +66,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     }
   }, [safeSites, selectedSiteId]);
   
-  // 第 2 步：发文主题 3 大模式 (自定义关键词 / 内容二次创作 / 对标竞品对手)
+  // 三种真实执行入口：自定义关键词、客户授权旧文更新、竞品差异化研究。
   const [mode, setMode] = useState<'KEYWORD' | 'REWRITE' | 'COMPETITOR'>('KEYWORD');
   const [keywordInput, setKeywordInput] = useState<string>('');
   const [rewriteInput, setRewriteInput] = useState<string>('');
@@ -158,7 +158,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
         keywordToUse = keywordInput.trim() || undefined;
       } else if (mode === 'REWRITE') {
         if (!rewriteInput.trim()) {
-          showToast('请输入参考文章 URL 或改写素材');
+          showToast('请输入您拥有使用授权的旧文章 URL 或素材');
           return;
         }
         keywordToUse = `[二次创作/改写] ${rewriteInput.trim()}`;
@@ -194,7 +194,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             : '执行未返回可发布文章，请查看任务日志');
       } else {
         setPipelineStep(1, 'RUNNING');
-        addLog(`[意图挖掘] 分析长尾关键词: ${keywordToUse || activeSite?.niche || '行业热词'}`);
+        addLog(`[意图挖掘] 分析长尾关键词: ${keywordToUse || activeSite?.niche || '站点主题'}`);
         await onTriggerScan(keywordToUse || undefined, targetSiteId);
 
         addLog('[流程中止] 当前工作区未连接真实执行处理器，未生成、发布或推送任何内容。');
@@ -341,8 +341,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 }`}
               >
                 <Repeat className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                <span className="hidden sm:inline">二次创作</span>
-                <span className="inline sm:hidden">改写/二创</span>
+                <span className="hidden sm:inline">内容更新</span>
+                <span className="inline sm:hidden">内容更新</span>
               </button>
 
               <button
@@ -366,7 +366,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 <div className="flex items-center justify-between text-xs text-slate-500">
                   <span className="font-semibold text-slate-700 flex items-center gap-1.5">
                     <Search className="w-3.5 h-3.5 text-slate-500" />
-                    输入核心词或主题（留空则自动挖掘行业热门词）：
+                    输入核心词或主题（留空则按站点主题生成；连接 GSC / DataForSEO 后才能验证流量机会）：
                   </span>
                 </div>
                 <div className="relative">
@@ -390,13 +390,13 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               </div>
             )}
 
-            {/* 模式 2：内容二次创作 */}
+            {/* 模式 2：客户授权旧文的差异化更新 */}
             {mode === 'REWRITE' && (
               <div className="space-y-2.5 animate-in fade-in duration-150 bg-slate-50/70 p-3.5 sm:p-4 rounded-xl border border-slate-200/60">
                 <div className="flex items-center justify-between text-xs text-slate-500">
                   <span className="font-semibold text-slate-700 flex items-center gap-1.5">
                     <Link2 className="w-3.5 h-3.5 text-slate-500" />
-                    输入参考文章 URL
+                    输入已授权的旧文章 URL 或素材
                   </span>
                 </div>
                 <div className="relative">
@@ -404,7 +404,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                     type="text"
                     value={rewriteInput}
                     onChange={(e) => setRewriteInput(e.target.value)}
-                    placeholder="粘贴目标文章链接 (如 https://example.com/blog/...) "
+                    placeholder="仅限您拥有使用授权的文章链接 (如 https://example.com/blog/...)"
                     className="w-full px-3.5 py-2.5 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs"
                   />
                   {rewriteInput && (
@@ -462,8 +462,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 <>
                   <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
                   <span className="truncate">
-                    {mode === 'KEYWORD' && (keywordInput ? `针对「${keywordInput.slice(0, 16)}${keywordInput.length > 16 ? '...' : ''}」生成并发布` : '自动挖掘热词生成并发布到官网')}
-                    {mode === 'REWRITE' && (rewriteInput ? `二次创作并发布上线` : '二次创作并发布上线')}
+                    {mode === 'KEYWORD' && (keywordInput ? `针对「${keywordInput.slice(0, 16)}${keywordInput.length > 16 ? '...' : ''}」生成并发布` : '按站点主题生成并发布（需数据源验证流量机会）')}
+                    {mode === 'REWRITE' && (rewriteInput ? `差异化更新并发布上线` : '差异化更新并发布上线')}
                     {mode === 'COMPETITOR' && (competitorInput ? `针对竞品「${competitorInput.slice(0, 16)}」对标发布` : '对标竞品并发布上线')}
                   </span>
                   <ArrowRight className="w-4 h-4 shrink-0" />
@@ -490,7 +490,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               </svg>
             </div>
             <span className="text-xs font-bold text-slate-500 tracking-wider uppercase bg-white px-4 z-10 text-center">
-              <span className="hidden sm:inline">一键触发 · 8 阶段全自动生成、质检、发布与推送</span>
+              <span className="hidden sm:inline">一键触发 · 8 阶段全自动生成、质检、发布与收录监测</span>
               <span className="inline sm:hidden">8 阶段自动巡航</span>
             </span>
           </div>
@@ -589,8 +589,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 <div key={draft.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm">
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        {draft.qualityGate?.overallScore || 96} 分
+                      <span className={`px-2 py-0.5 rounded-md text-xs font-semibold border ${draft.qualityGate ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                        {draft.qualityGate ? `${draft.qualityGate.overallScore} 分` : '未质检'}
                       </span>
                       {draftSite && (
                         <span className="text-xs text-slate-500 flex items-center gap-1">

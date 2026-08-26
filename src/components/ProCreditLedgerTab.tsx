@@ -39,7 +39,7 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
   // 动态计费标准与业务价格
   const [systemRate, setSystemRate] = useState<string>('1 USDT = 100 基础积分');
   const [actionPricing, setActionPricing] = useState<ActionPricingItem[]>([
-    { action: 'CRUISE_PIPELINE', name: '文章生成与发布 (按篇计费)', credits: 100, desc: '单篇标准定价 ($1.00/篇)：选题、3000+字长文、Schema、配图排版、站点发布与多搜索引擎推送全包', enabled: true },
+    { action: 'CRUISE_PIPELINE', name: '文章生成与发布 (按篇计费)', credits: 100, desc: '单篇标准定价 ($1.00/篇)：选题、长文、质量门禁、内链、站点发布与收录监测；普通文章不伪称 Google 实时收录', enabled: true },
     { action: 'COMPETITOR_ANALYSIS', name: '我的词库 智能挖掘与拓词分析 (按次计费)', credits: 50, desc: '单次标准定价 ($0.50/次)：母词裂变拓词、高意图长尾挖掘、竞品词库逆向穿透与搜索意图聚类', enabled: true }
   ]);
 

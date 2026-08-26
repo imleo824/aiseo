@@ -37,15 +37,53 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
 
   const api = useMemo(() => createApiService(activeTenantId), [activeTenantId]);
 
+  const loadAllTenants = useCallback(async (role?: TenantAccount['role']) => {
+    if (role !== 'ADMIN') {
+      setAllTenants([]);
+      return;
+    }
+    try {
+      const res = await api.listTenants();
+      setAllTenants(res.tenants || []);
+    } catch (error) {
+      console.error('Failed to load tenants list for an authenticated administrator:', error);
+      setAllTenants([]);
+    }
+  }, [api]);
+
   // Load All Tenant Data & Account/Credits
   const loadTenantData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. 获取当前租户与积分账户及草稿
-      const [sitesData, tasksData, meData, txData, draftData] = await Promise.all([
+      // Resolve the session first. An anonymous visitor is an expected product
+      // state, not a failed dashboard request that should fan out into 401s.
+      const meData = await api.getMe().catch((error: any) => {
+        if (error?.status === 401) return null;
+        throw error;
+      });
+      if (!meData?.account) {
+        setAccount(null);
+        setSites([]);
+        setTasks([]);
+        setOpportunities([]);
+        setDrafts([]);
+        setTransactions([]);
+        setAllTenants([]);
+        setMetrics({
+          monthlyOrganicVisits: 0,
+          monthlyVisitsGrowthPct: 0,
+          top10KeywordsCount: 0,
+          newTop10KeywordsThisMonth: 0,
+          newlyIndexedPagesCount: 0,
+          activeAutopilotTasksCount: 0,
+          pausedTasksCount: 0
+        });
+        return;
+      }
+
+      const [sitesData, tasksData, txData, draftData] = await Promise.all([
         api.getSites().catch(() => ({ sites: [] })),
         api.getTasks().catch(() => ({ tasks: [] })),
-        api.getMe().catch(() => ({ account: null })),
         api.getCreditTransactions().catch(() => ({ transactions: [] })),
         api.getDrafts().catch(() => ({ drafts: [] }))
       ]);
@@ -54,12 +92,9 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
       setSites(loadedSites);
       setTasks(tasksData.tasks || []);
       setDrafts(draftData.drafts || []);
-      if (meData?.account) {
-        setAccount(meData.account);
-      } else {
-        setAccount(null);
-      }
+      setAccount(meData.account);
       setTransactions(txData.transactions || []);
+      await loadAllTenants(meData.account.role);
 
       if (loadedSites.length > 0) {
         const sid = loadedSites[0].id;
@@ -95,23 +130,11 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     } finally {
       setLoading(false);
     }
-  }, [api]);
-
-  const loadAllTenants = useCallback(async () => {
-    try {
-      const res = await api.listTenants();
-      if (res.tenants) {
-        setAllTenants(res.tenants);
-      }
-    } catch (e) {
-      console.error("Failed to load tenants list:", e);
-    }
-  }, [api]);
+  }, [api, loadAllTenants]);
 
   useEffect(() => {
     loadTenantData();
-    loadAllTenants();
-  }, [loadTenantData, loadAllTenants, activeTenantId]);
+  }, [loadTenantData, activeTenantId]);
 
   // Auth Actions
   const handleLogin = async (usernameOrEmail: string, password?: string) => {
@@ -151,6 +174,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     setOpportunities([]);
     setDrafts([]);
     setTransactions([]);
+    setAllTenants([]);
   }, [api]);
 
   // Payment / Recharge
@@ -217,22 +241,22 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
       throw new Error(`当前积分余额 (${account.credits} 积分) 不足 20 积分，请先充值 USDT 兑换积分。`);
     }
 
-    let modeTitle = '雷达自动选题';
+    let modeTitle = '按站点主题自动选题';
     if (keyword?.includes('[二次创作/改写]')) {
-      modeTitle = '内容二次创作 / 洗稿降重';
+      modeTitle = '客户授权旧文的差异化更新';
     } else if (keyword?.includes('[竞品对标截流]')) {
       modeTitle = '对标竞品截流';
     } else if (keyword && keyword.trim()) {
       modeTitle = '手动指定关键词';
     }
 
-    addLog(`[准备启动] 模式：【${modeTitle}】· 正在为 ${targetSites.length} 个站点启动 8 阶段全自动生成、质检、发布与推送流程。`);
+    addLog(`[准备启动] 模式：【${modeTitle}】· 正在为 ${targetSites.length} 个站点启动 8 阶段全自动生成、质检、发布与收录监测流程。`);
     setPipelineStep(1, 'RUNNING');
 
     // These requests intentionally run in sequence: all drafts debit the same
     // tenant credit balance, and the legacy repository does not yet provide a
     // transactional concurrent ledger.
-    addLog(`[步骤 1/8 · 意图挖掘] (${modeTitle}) 正在请求 AI 分析目标关键词…`);
+    addLog(`[步骤 1/8 · 意图挖掘] (${modeTitle}) 正在分析目标关键词；未连接 GSC / DataForSEO 时不展示热度、排名或流量预估…`);
     const opps: Opportunity[] = [];
     for (const site of targetSites) {
       const defaultKeyword = keyword || (site.niche && site.niche !== '通用行业' && site.niche !== '通用商业技术'
@@ -301,9 +325,9 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     const skippedIndexing = indexingResults.filter((result) => result.status === 'SKIPPED').length;
     setPipelineStep(8, 'RUNNING');
     if (indexingResults.length === 0) {
-      addLog('[步骤 8/8 · 引擎推送] 没有已发布文章，未调用搜索引擎推送。');
+      addLog('[步骤 8/8 · 收录监测] 没有已发布文章，未创建站点地图与 GSC 监测记录。');
     } else {
-      addLog(`[步骤 8/8 · 引擎推送] 已提交 ${submittedIndexing} 个渠道；跳过 ${skippedIndexing} 个；失败 ${failedIndexing} 个。`);
+    addLog(`[步骤 8/8 · 收录监测] 已提交 ${submittedIndexing} 个允许主动推送的渠道；${skippedIndexing} 个改由站点地图与 GSC 监测；失败 ${failedIndexing} 个。`);
     }
     await loadTenantData();
     setPipelineStep(

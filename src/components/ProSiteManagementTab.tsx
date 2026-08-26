@@ -509,7 +509,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                      <span className="text-xs font-bold text-slate-800">Google Indexing API</span>
+                      <span className="text-xs font-bold text-slate-800">Google 收录监测（受限 API）</span>
                     </div>
                     <button
                       type="button"

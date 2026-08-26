@@ -8,6 +8,7 @@ import { searchEngineAdapter } from "../infrastructure/searchEngine/searchEngine
 import { serpService } from '../infrastructure/searchEngine/serpService';
 import { NotFoundError, ValidationError, ForbiddenError, InsufficientCreditsError } from "../domain/errors";
 import { sanitizeArticleHtml } from '../utils/contentSanitizer';
+import { applySiteContentQualityGate } from '../application/contentQualityGate';
 
 export const getSiteOpportunities = async (req: TenantRequest, res: Response) => {
   const tenantData = fileTenantRepository.getTenantData(req.tenantId);
@@ -152,6 +153,11 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
 
     const brief = await geminiAdapter.generateContentBrief(opp.id, opp.targetKeyword, opp.language, kbSnippets);
     const result = await geminiAdapter.generateArticleAndQualityCheck(opp.targetKeyword, opp.language, brief, kbSnippets);
+    result.qualityGate = applySiteContentQualityGate(
+      result.qualityGate,
+      result.contentHtml,
+      tenantData.drafts.filter((draft) => draft.siteId === site.id && draft.status === 'PUBLISHED')
+    );
 
     // Weave an internal link only when there is a real, already-published target.
     // The result is returned to the client so the pipeline never claims a link
@@ -219,7 +225,7 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
       category: opp.category,
       summary: result.summary,
       contentHtml: finalContentHtml,
-      sourcesUsed: kbSnippets.length > 0 ? kbSnippets : ['客户知识库及权威来源'],
+      sourcesUsed: kbSnippets,
       qualityGate: result.qualityGate,
       status: isAutoEligible ? 'PUBLISHED' : 'QUALITY_FAILED',
       publishedUrl,
@@ -288,7 +294,7 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
       target: result.title,
       result: result.qualityGate.passed ? 'SUCCESS' : 'WARNING',
       details: isAutoEligible 
-        ? `质量门禁已通过并自动发布至目标站点，文章 URL: ${newDraft.publishedUrl}。${indexingMessages.join('；') || '未配置搜索引擎推送，等待自然抓取。'}`
+        ? `质量门禁已通过并自动发布至目标站点，文章 URL: ${newDraft.publishedUrl}。${indexingMessages.join('；') || '普通文章将由 canonical URL、站点地图与 GSC 监测自然发现状态。'}`
         : `质量门禁未通过（得分 ${result.qualityGate.overallScore}），已阻止自动发布。`
     });
 

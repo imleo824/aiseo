@@ -227,7 +227,7 @@ export class GeminiAdapter implements IContentIntelligenceEngine {
 
     let modeContext = 'Standard Keyword Demand Discovery';
     if (cleanKw.startsWith('[二次创作/改写]') || cleanKw.startsWith('http://') || cleanKw.startsWith('https://')) {
-      modeContext = 'Secondary Content Rewriting & E-E-A-T Restructuring Mode (洗稿重构/降重扩写)';
+      modeContext = 'Customer-authorized Content Refresh & Original E-E-A-T Restructuring Mode';
     } else if (cleanKw.startsWith('[竞品对标截流]')) {
       modeContext = 'Competitor Traffic Interception Mode (对标竞品截流)';
     }
@@ -280,7 +280,7 @@ Return JSON matching schema with fields: searchIntent, targetAudience, recommend
     if (cleanKw.startsWith('[二次创作/改写]')) {
       const displaykw = cleanKw.replace('[二次创作/改写]', '').trim();
       defaultTitle = language === 'zh-CN'
-        ? `【深度二创】${displaykw.slice(0, 30)}：2026 最新架构重构与 E-E-A-T 实践`
+        ? `【内容更新】${displaykw.slice(0, 30)}：基于客户资料的差异化实践指南`
         : `Restructured Guide: ${displaykw.slice(0, 30)} - E-E-A-T & Performance Insights`;
     } else if (cleanKw.startsWith('[竞品对标截流]')) {
       const displaykw = cleanKw.replace('[竞品对标截流]', '').trim();
@@ -582,7 +582,7 @@ Return JSON matching schema.`;
 
     let modeInstruction = "Standard Keyword SEO Article.";
     if (targetKeyword.startsWith('[二次创作/改写]') || targetKeyword.startsWith('http://') || targetKeyword.startsWith('https://')) {
-      modeInstruction = "Mode 2: Content Rewriting & Secondary Creation (洗稿降重/二次创作). You MUST extract core arguments, rephrase completely with 100% original language, elevate E-E-A-T with real benchmark data, and add a structured FAQ.";
+      modeInstruction = "Mode 2: Customer-authorized Content Refresh. Treat the supplied URL only as a gap-analysis input. Do not paraphrase, reproduce its outline, or imitate its wording. Create a genuinely new angle grounded in verified customer sources; omit unsupported benchmarks and add an FAQ only when the sources support its answers.";
     } else if (targetKeyword.startsWith('[竞品对标截流]')) {
       modeInstruction = "Mode 3: Competitor Displacement & Traffic Interception (对标竞品截流). You MUST compare against the competitor, highlight feature gaps/pricing advantages, and provide a clear comparison table and migration guide.";
     }
@@ -675,7 +675,7 @@ Return JSON strictly with fields: title, summary, contentHtml, factReliabilitySc
 
     if (targetKeyword.startsWith('[二次创作/改写]')) {
       title = isZh
-        ? `【二创重构】${displayKeyword.slice(0, 30)} 的 E-E-A-T 深度扩写与实战指南`
+        ? `【内容更新】${displayKeyword.slice(0, 30)} 的差异化实践指南`
         : `Deep Restructured Guide: ${displayKeyword.slice(0, 30)} - E-E-A-T & Performance Insights`;
     } else if (targetKeyword.startsWith('[竞品对标截流]')) {
       title = isZh

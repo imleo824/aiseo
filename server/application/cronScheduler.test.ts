@@ -86,7 +86,7 @@ describe('CronScheduler automated publication', () => {
         generateArticleAndQualityCheck: vi.fn(async () => ({
           title: '真实客户资料文章',
           summary: '摘要',
-          contentHtml: '<p>仅含客户事实</p>',
+          contentHtml: `<h2>客户事实</h2><p>${'仅含客户已确认的产品事实与实施细节。'.repeat(70)}</p><h2>实施步骤</h2><p>${'仅根据客户资料执行验证和持续优化。'.repeat(70)}</p>`,
           qualityGate: { passed: true, overallScore: 95, checks: [] }
         }))
       } as any

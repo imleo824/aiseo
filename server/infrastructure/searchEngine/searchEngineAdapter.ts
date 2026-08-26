@@ -11,7 +11,6 @@ type GoogleServiceAccount = {
 
 const GOOGLE_INDEXING_SCOPE = 'https://www.googleapis.com/auth/indexing';
 const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
-const GOOGLE_PUBLISH_ENDPOINT = 'https://indexing.googleapis.com/v3/urlNotifications:publish';
 
 const base64UrlJson = (value: unknown): string => Buffer.from(JSON.stringify(value)).toString('base64url');
 
@@ -177,7 +176,10 @@ export class SearchEngineAdapter implements ISearchEngineSubmitter {
   }
 
   /**
-   * Google Indexing API (严格依赖站点 GSC 所有权与 Service Account JSON 密钥)
+   * General editorial pages must not be submitted through Google Indexing API.
+   * Google limits that API to JobPosting and livestreaming BroadcastEvent pages.
+   * Standard WordPress articles are discovered through canonical URLs, sitemaps
+   * and Search Console monitoring instead.
    */
   public async pushToGoogle(
     siteDomain: string,
@@ -192,68 +194,13 @@ export class SearchEngineAdapter implements ISearchEngineSubmitter {
     if (urls.length === 0) {
       return { success: false, message: '无可提交的 URL 列表' };
     }
-
-    if (!serviceAccountJson || !serviceAccountJson.trim()) {
-      logger.info('SEARCH_ENGINE', `站点 ${siteDomain} 未配置 Google Service Account，跳过 Google Indexing 推送`);
-      return {
-        success: true,
-        skipped: true,
-        message: `站点 ${siteDomain} 未配置 Google Service Account 凭证，已跳过实时推送`,
-      };
-    }
-
-    const cleanDomain = siteDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const profiler = logger.profile('SEARCH_ENGINE', `pushToGoogle(${cleanDomain}, ${urls.length} URLs)`);
-
-    type GooglePushResult = {
-      success: boolean;
-      skipped?: boolean;
-      statusCode?: number;
-      message: string;
+    void serviceAccountJson;
+    logger.info('SEARCH_ENGINE', `站点 ${siteDomain} 的普通文章不调用 Google Indexing API；改由站点地图与 GSC 监测发现状态。`);
+    return {
+      success: true,
+      skipped: true,
+      message: '普通文章不适用 Google Indexing API；请确保 canonical URL 已进入站点地图，并通过 GSC 观察抓取和展示。'
     };
-
-    return indexingCircuitBreaker.execute<GooglePushResult>(
-      async (): Promise<GooglePushResult> => {
-        try {
-          const accessToken = await createGoogleAccessToken(serviceAccountJson.trim());
-          for (const url of urls) {
-            const response = await fetchWithTimeout(GOOGLE_PUBLISH_ENDPOINT, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${accessToken}`
-              },
-              body: JSON.stringify({ url, type: 'URL_UPDATED' })
-            });
-            if (!response.ok) {
-              const body = await response.json().catch(() => ({})) as { error?: { message?: string } };
-              return {
-                success: false,
-                statusCode: response.status,
-                message: `Google Indexing API 拒绝提交: ${body.error?.message || `HTTP ${response.status}`}`
-              };
-            }
-          }
-          profiler.done(`Google Indexing API submitted ${urls.length} URL(s) for ${cleanDomain}`);
-          return {
-            success: true,
-            statusCode: 200,
-            message: `Google Indexing API 已提交 ${urls.length} 个 URL 更新通知`
-          };
-        } catch (error: any) {
-          logger.warn('SEARCH_ENGINE', `Google Indexing API request failed for ${cleanDomain}: ${error?.message || error}`);
-          return { success: false, statusCode: 502, message: `Google Indexing API 请求失败: ${error?.message || '未知错误'}` };
-        };
-      },
-      (): GooglePushResult => {
-        profiler.done('Google circuit fallback');
-        return {
-          success: false,
-          statusCode: 503,
-          message: `Google Indexing API 熔断保护已生效，请求被拒绝`
-        };
-      }
-    );
   }
 
   public async testGoogleCredentials(serviceAccountJson?: string): Promise<{

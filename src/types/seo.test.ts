@@ -13,7 +13,7 @@ describe('automation pipeline contract', () => {
       '质量核验',
       '智能内链',
       '站点发布',
-      '引擎推送'
+      '收录监测'
     ]);
   });
 });

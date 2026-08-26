@@ -294,7 +294,7 @@ export const AUTOMATION_PIPELINE_STAGES = [
   { number: 5, title: '质量核验' },
   { number: 6, title: '智能内链' },
   { number: 7, title: '站点发布' },
-  { number: 8, title: '引擎推送' }
+  { number: 8, title: '收录监测' }
 ] as const;
 
 export const AUTOMATION_PIPELINE_STAGE_COUNT = AUTOMATION_PIPELINE_STAGES.length;

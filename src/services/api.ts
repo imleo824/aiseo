@@ -83,7 +83,9 @@ export class ApiService {
           await new Promise(r => setTimeout(r, backoffMs));
           continue;
         }
-        console.error(`[ApiService] Request to ${path} failed (attempt ${attempt + 1}):`, err);
+        if (err?.status !== 401) {
+          console.error(`[ApiService] Request to ${path} failed (attempt ${attempt + 1}):`, err);
+        }
         throw err;
       }
     }

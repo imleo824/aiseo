@@ -71,12 +71,11 @@ export const approveAndPublishDraft = async (req: TenantRequest, res: Response) 
       pushResults.push(`百度：${baiduRes.message}`);
     }
 
-    if (site.googleServiceAccountJson) {
-      const googleRes = await searchEngineAdapter.pushToGoogle(site.domain, site.googleServiceAccountJson, [draft.publishedUrl]);
-      pushResults.push(`Google：${googleRes.message}`);
-    }
+    // 普通编辑文章不适用 Google Indexing API；以 canonical URL、站点地图和
+    // Search Console 数据观察发现与收录，不能把服务账号配置误报为实时收录。
+    pushResults.push('Google：普通文章通过站点地图与 GSC 监测发现状态，不调用受限的 Indexing API');
   }
-  const pushDetail = pushResults.length ? pushResults.join('；') : '未配置可用的搜索引擎推送凭证，等待自然抓取';
+  const pushDetail = pushResults.length ? pushResults.join('；') : '未配置百度推送；普通文章将由站点地图与 GSC 监测自然发现状态';
 
   if (site) {
     site.pagesCount = (site.pagesCount || 0) + 1;

@@ -40,16 +40,14 @@ describe('SearchEngineAdapter Google Indexing API', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('https://oauth2.googleapis.com/token');
   });
 
-  it('only reports success after OAuth and the real Indexing API both accept the URL', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ access_token: 'token-1' }))
-      .mockResolvedValueOnce(jsonResponse({ urlNotificationMetadata: {} }));
+  it('does not submit ordinary editorial URLs even when a service account exists', async () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await new SearchEngineAdapter().pushToGoogle('example.com', serviceAccountJson(), ['https://example.com/jobs/42']);
 
-    expect(result).toMatchObject({ success: true, statusCode: 200 });
-    expect(fetchMock.mock.calls[1][0]).toBe('https://indexing.googleapis.com/v3/urlNotifications:publish');
-    expect(fetchMock.mock.calls[1][1]).toMatchObject({ headers: expect.objectContaining({ Authorization: 'Bearer token-1' }) });
+    expect(result).toMatchObject({ success: true, skipped: true });
+    expect(result.message).toContain('普通文章');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

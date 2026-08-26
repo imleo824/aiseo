@@ -51,7 +51,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
         showLocalToast('收录推送执行器未连接，未提交任何请求。');
         return;
       }
-      showLocalToast('已重新向搜索引擎推送收录请求');
+      showLocalToast('已创建收录监测请求；普通文章将通过站点地图与 GSC 跟踪发现状态');
     } catch {
       showLocalToast('收录推送失败，未确认提交成功。');
     } finally {
@@ -135,7 +135,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
         {filteredDrafts.map((draft) => {
           const siteName = getSiteName(draft.siteId);
           const isPublished = draft.status === 'PUBLISHED';
-          const score = draft.qualityGate?.overallScore || 96;
+          const score = draft.qualityGate?.overallScore;
           const isPushing = pushingDraftId === draft.id;
 
           return (
@@ -166,8 +166,8 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
                     <Globe className="w-3 h-3 text-slate-400 shrink-0" />
                     <span className="truncate max-w-[120px]">{siteName}</span>
                   </span>
-                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 font-bold text-[10px]">
-                    {score}分
+                  <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full border font-bold text-[10px] ${score === undefined ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
+                    {score === undefined ? '未质检' : `${score}分`}
                   </span>
                   {isPublished ? (
                     <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-semibold">
@@ -238,7 +238,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
             {filteredDrafts.map((draft) => {
               const siteName = getSiteName(draft.siteId);
               const isPublished = draft.status === 'PUBLISHED';
-              const score = draft.qualityGate?.overallScore || 96;
+              const score = draft.qualityGate?.overallScore;
               const isPushing = pushingDraftId === draft.id;
 
               return (
@@ -271,8 +271,8 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
 
                   {/* Quality Score */}
                   <td className="px-4 py-4 text-center whitespace-nowrap">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs">
-                      {score} 分
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border font-bold text-xs ${score === undefined ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                      {score === undefined ? '未质检' : `${score} 分`}
                     </span>
                   </td>
 
@@ -347,7 +347,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
               <div className="min-w-0 pr-3">
                 <h3 className="font-bold text-slate-900 text-base truncate">{activeDraftModal.title}</h3>
-                <div className="text-xs text-slate-500 mt-0.5">质量评分: {activeDraftModal.qualityGate?.overallScore || 96} 分</div>
+                <div className="text-xs text-slate-500 mt-0.5">{activeDraftModal.qualityGate ? `质量评分: ${activeDraftModal.qualityGate.overallScore} 分` : '尚无可验证的质量报告'}</div>
               </div>
               <button
                 type="button"

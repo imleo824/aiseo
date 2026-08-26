@@ -10,6 +10,7 @@ import { logger } from '../utils/logger';
 import { NotFoundError } from '../domain/errors';
 import { generateSeoSlug } from '../utils/validator';
 import { sanitizeArticleHtml } from '../utils/contentSanitizer';
+import { applySiteContentQualityGate } from './contentQualityGate';
 
 export interface PipelineExecutionOptions {
   tenantId: string;
@@ -59,6 +60,14 @@ export class SEOPipelineOrchestrator {
         ? (site.siteLanguage === 'zh-CN' ? `${site.niche} 核心技术落地与选型指南` : `${site.niche} Architecture Best Practices`)
         : (site.siteLanguage === 'zh-CN' ? 'DeepSeek K8s 部署实践' : 'Kubernetes FinOps Guide 2026'));
 
+      // The automatic system may use a supplied topic without paid keyword data,
+      // but it may never manufacture traffic evidence or publish without a
+      // customer-approved knowledge source.
+      const kbSnippets = this.retrieveKnowledgeSnippets(tenantData, site.id);
+      if (!kbSnippets.length) {
+        throw new Error('自动发布要求至少一条客户知识库或原创研究资料');
+      }
+
       // 1. Credit Deduction
       creditDeductedAmount = await this.deductPipelineCredits(tenantId, site, finalKeyword);
       stagesCompleted.push('CREDIT_DEDUCTED');
@@ -68,7 +77,6 @@ export class SEOPipelineOrchestrator {
       stagesCompleted.push('INTENT_DISCOVERY');
 
       // 3. Stage 2: Enterprise Knowledge RAG Retrieval
-      const kbSnippets = this.retrieveKnowledgeSnippets(tenantData, site.id);
       stagesCompleted.push('KNOWLEDGE_RAG_RETRIEVAL');
 
       // 4. Stage 3: Strategic Brief & Content Architecture
@@ -81,6 +89,11 @@ export class SEOPipelineOrchestrator {
         opportunity.language, 
         brief, 
         kbSnippets
+      );
+      articleResult.qualityGate = applySiteContentQualityGate(
+        articleResult.qualityGate,
+        articleResult.contentHtml,
+        (tenantData.drafts || []).filter((draft) => draft.siteId === site.id && draft.status === 'PUBLISHED')
       );
       stagesCompleted.push('CONTENT_AEO_SYNTHESIS');
       stagesCompleted.push('QUALITY_GATE_EEAT');
@@ -230,29 +243,29 @@ export class SEOPipelineOrchestrator {
       targetKeyword: finalKeyword,
       category: site.whitelistedCategories[0] || '技术干货',
       riskLevel: 'LOW',
-      estimatedMonthlyVisitsGain: analysis.estimatedTrafficGain || 2800,
+      // An LLM may help interpret a topic but cannot measure traffic, ranking,
+      // difficulty or conversion potential. Those values remain unavailable
+      // until a GSC or SERP provider snapshot is connected.
+      estimatedMonthlyVisitsGain: 0,
       demandEvidence: {
-        sourceType: 'GSC_QUERY',
+        sourceType: 'USER_SEED',
         queryOrTopic: finalKeyword,
-        monthlyImpressions: 22000,
-        currentClicks: 190,
-        currentPosition: 16.5,
-        evidenceDescription: `SERP 意图识别与 GSC 增量搜索意图: ${analysis.searchIntent}`,
-        reliabilityConfidence: 0.98
+        evidenceDescription: `基于用户主题的 AI 意图分析：${analysis.searchIntent}。GSC / DataForSEO 未接入时，不展示搜索量、排名或流量预估。`,
+        reliabilityConfidence: 0
       },
       scoreBreakdown: {
-        businessValue: 19,
-        searchDemand: 19,
-        winProbability: 17,
-        currentRanking: 12,
-        engagementPotential: 9,
-        googleBaiduReuse: 9,
-        internalLinkValue: 5,
-        freshness: 5,
-        dataReliability: 5,
+        businessValue: 0,
+        searchDemand: 0,
+        winProbability: 0,
+        currentRanking: 0,
+        engagementPotential: 0,
+        googleBaiduReuse: 0,
+        internalLinkValue: 0,
+        freshness: 0,
+        dataReliability: 0,
         riskPenalty: 0,
-        costPenalty: 1,
-        totalScore: 98
+        costPenalty: 0,
+        totalScore: 0
       },
       status: 'APPROVED',
       createdAt: new Date().toISOString(),
@@ -372,7 +385,7 @@ export class SEOPipelineOrchestrator {
       category,
       summary: articleResult.summary,
       contentHtml: finalContentHtml,
-      sourcesUsed: kbSnippets.length > 0 ? kbSnippets : ['企业知识库及权威来源'],
+      sourcesUsed: kbSnippets,
       qualityGate: articleResult.qualityGate,
       status: isAutoEligible ? 'PUBLISHED' : 'QUALITY_PASSED',
       publishedUrl,
@@ -423,23 +436,14 @@ export class SEOPipelineOrchestrator {
       }
     }
 
-    // 3. Google Indexing API (当站点配置了 Google Service Account JSON 凭证时触发)
-    if (site.googleServiceAccountJson && site.googleServiceAccountJson.trim()) {
-      const googleRes = await this.searchEngineSubmitter.pushToGoogle(
-        site.domain, 
-        site.googleServiceAccountJson, 
-        [publishedUrl]
-      );
-      if (googleRes.success && !googleRes.skipped) {
-        stagesCompleted.push('GOOGLE_INDEXING_DISPATCH');
-        anyEnginePushed = true;
-      }
-    }
+    // 普通编辑文章不适用 Google Indexing API。第 8 阶段只记录由 canonical URL、
+    // 站点地图和 GSC 完成的后续发现/表现监测；不得伪造“已实时收录”。
+    stagesCompleted.push('GOOGLE_SITEMAP_GSC_MONITORING');
 
     if (anyEnginePushed) {
       stagesCompleted.push('SEARCH_ENGINE_PUSH');
     } else {
-      logger.info('PIPELINE', `站点 ${site.domain} 未完成搜索引擎推送，文章已发布上线，等待蜘蛛自然抓取或后续重试`);
+      logger.info('PIPELINE', `站点 ${site.domain} 已发布；普通文章等待站点地图与 GSC 的自然发现和后续监测`);
     }
 
     eventBus.publish({
@@ -469,7 +473,7 @@ export class SEOPipelineOrchestrator {
       target: articleResult.title,
       result: articleResult.qualityGate.passed ? 'SUCCESS' : 'WARNING',
       details: isAutoEligible
-        ? `自动化全流程完成：已成功发布文章到 https://${site.domain} 并触发搜索引擎实时推送。`
+        ? `自动化全流程完成：已成功发布文章到 https://${site.domain}。普通文章通过 canonical URL、站点地图与 GSC 监测发现状态；不会伪称已被 Google 实时收录。`
         : `自动化内容已生成并通过 E-E-A-T 质检（得分 ${articleResult.qualityGate.overallScore}）。已归入人工复核队列。`
     });
   }

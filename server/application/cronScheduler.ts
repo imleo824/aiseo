@@ -9,6 +9,7 @@ import { ArticleDraft, Opportunity } from '../../src/types/seo';
 import { sanitizeArticleHtml } from '../utils/contentSanitizer';
 import { randomUUID } from 'crypto';
 import { nextTaskRunAt } from '../utils/taskSchedule';
+import { applySiteContentQualityGate } from './contentQualityGate';
 
 export class CronScheduler {
   private timer: NodeJS.Timeout | null = null;
@@ -147,6 +148,11 @@ export class CronScheduler {
           undefined,
           knowledgeSources
         );
+        articleResult.qualityGate = applySiteContentQualityGate(
+          articleResult.qualityGate,
+          articleResult.contentHtml,
+          (tenantData.drafts || []).filter((draft) => draft.siteId === site.id && draft.status === 'PUBLISHED')
+        );
         if (!articleResult.qualityGate.passed) {
           throw new Error(`质量门禁未通过（得分 ${articleResult.qualityGate.overallScore}），自动发布已阻止`);
         }
@@ -163,7 +169,8 @@ export class CronScheduler {
           throw new Error(wpResult.error || 'WordPress 发布未返回有效文章 URL');
         }
 
-        // 3. Search Engine Push
+        // 3. 收录监测：普通文章不能调用受限的 Google Indexing API；仅保留
+        // 百度允许的主动推送，并由 canonical URL、站点地图和 GSC 后续监测 Google。
         let baiduResultMsg = '未配置百度主动推送';
         if (site.siteLanguage === 'zh-CN') {
           const bRes = await this.searchEngineSubmitter.pushToBaidu(site.domain, site.baiduToken, [wpResult.publishedUrl]);
@@ -181,7 +188,7 @@ export class CronScheduler {
           }
         }
 
-        const googleResult = await this.searchEngineSubmitter.pushToGoogle(site.domain, site.googleServiceAccountJson, [wpResult.publishedUrl]);
+        const googleMonitoringMessage = '普通文章不调用 Google Indexing API；通过 canonical URL、站点地图与 GSC 监测发现状态';
 
         // 4. Update Opportunity & Draft
         const executionId = randomUUID();
@@ -257,7 +264,7 @@ export class CronScheduler {
           action: 'CRON_AUTO_PUBLISH',
           target: `${site.name} - ${articleResult.title}`,
           result: 'SUCCESS',
-          details: `定时巡航已自动发布。百度：${baiduResultMsg}；Google：${googleResult.message}；URL: ${wpResult.publishedUrl}`
+          details: `定时巡航已自动发布。百度：${baiduResultMsg}；Google：${googleMonitoringMessage}；URL: ${wpResult.publishedUrl}`
         });
       } catch (siteErr: any) {
         logger.error('SCHEDULER', `任务执行失败 (站点: ${site.name}): ${siteErr?.message}`, { tenantId });

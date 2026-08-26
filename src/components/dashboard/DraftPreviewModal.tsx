@@ -21,9 +21,9 @@ export const DraftPreviewModal: React.FC<DraftPreviewModalProps> = ({
       <div className="bg-white border border-slate-200 rounded-xl max-w-2xl w-full max-h-[88vh] overflow-hidden flex flex-col shadow-xl animate-in zoom-in-95 duration-150">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
           <div className="min-w-0 pr-3">
-            <div className="text-xs text-emerald-700 font-bold flex items-center gap-1.5">
+            <div className={`text-xs font-bold flex items-center gap-1.5 ${draft.qualityGate ? 'text-emerald-700' : 'text-slate-600'}`}>
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>质量评分: {draft.qualityGate?.overallScore || 96} 分</span>
+              <span>{draft.qualityGate ? `质量评分: ${draft.qualityGate.overallScore} 分` : '尚无可验证的质量报告'}</span>
             </div>
             <h3 className="font-bold text-slate-900 text-base truncate mt-0.5">{draft.title}</h3>
           </div>
