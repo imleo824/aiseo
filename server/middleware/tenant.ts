@@ -24,6 +24,9 @@ export const tenantMiddleware = (req: Request, res: Response, next: NextFunction
   if (!req.path.startsWith('/api/')) {
     return next();
   }
+  if (req.path.startsWith('/api/v1')) {
+    return next();
+  }
 
   // 公开身份验证与配置等路由免强校验
   if (UNPROTECTED_PATHS.includes(req.path)) {

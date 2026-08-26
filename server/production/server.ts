@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import path from 'path';
 import { apiV1Router, productionErrorHandler } from './router';
-import { assertProductionConfiguration, isPreviewOnlyRuntime, productionConfigurationStatus, productionConfigurationWarnings } from './env';
+import { assertProductionConfiguration, isDatabaseBackedRuntimeUnavailable, productionConfigurationStatus, productionConfigurationWarnings } from './env';
 import { closeQueue } from './queue';
 import { disconnectDatabase } from './prisma';
 import { createRateLimiter } from '../middleware/rateLimiter';
@@ -18,13 +18,14 @@ const addSecurityHeaders = (_req: Request, res: Response, next: NextFunction): v
   next();
 };
 
-const startProductionServer = (): void => {
+const startProductionServer = async (): Promise<void> => {
   assertProductionConfiguration();
   for (const warning of productionConfigurationWarnings()) {
     logger.warn('CONFIGURATION', warning);
   }
   const app = express();
   const port = Number(process.env.PORT) || 3000;
+  const host = process.env.HOST || '0.0.0.0';
   const distPath = path.join(process.cwd(), 'dist');
   app.disable('x-powered-by');
   app.set('trust proxy', false);
@@ -43,7 +44,7 @@ const startProductionServer = (): void => {
   app.use(express.urlencoded({ extended: false, limit: '1mb' }));
   app.use('/api/v1', createRateLimiter(60_000, 120));
   app.use('/api/v1', (req: Request, res: Response, next: NextFunction) => {
-    if (!isPreviewOnlyRuntime()) {
+    if (!isDatabaseBackedRuntimeUnavailable()) {
       next();
       return;
     }
@@ -51,15 +52,25 @@ const startProductionServer = (): void => {
       success: false,
       error: {
         code: 'BACKEND_NOT_CONFIGURED',
-        message: '当前为前端预览模式，数据库、队列或加密密钥尚未接入，真实业务接口暂不可用。',
+        message: '数据库、队列或加密密钥尚未接入，/api/v1 真实业务接口暂不可用。',
         traceId: req.traceId
       }
     });
   });
   app.use('/api/v1', apiV1Router);
   app.use('/api/v1', productionErrorHandler);
+  if (process.env.ENABLE_LEGACY_API !== 'false') {
+    const [{ tenantMiddleware }, { apiRouter }] = await Promise.all([
+      import('../middleware/tenant'),
+      import('../routes')
+    ]);
+    app.use(tenantMiddleware);
+    app.use('/api', createRateLimiter(60_000, 300));
+    app.use('/api', apiRouter);
+    logger.warn('CONFIGURATION', 'Legacy /api runtime is enabled for product workflow finalization.');
+  }
   app.get('/api/health', (_req: Request, res: Response) => {
-    res.json({ status: isPreviewOnlyRuntime() ? 'DEGRADED' : 'UP', timestamp: new Date().toISOString(), uptimeSeconds: Math.floor(process.uptime()), mode: 'production', configuration: productionConfigurationStatus() });
+    res.json({ status: isDatabaseBackedRuntimeUnavailable() ? 'DEGRADED' : 'UP', timestamp: new Date().toISOString(), uptimeSeconds: Math.floor(process.uptime()), mode: 'production', configuration: productionConfigurationStatus() });
   });
   app.use('/api', (req: Request, res: Response) => {
     res.status(404).json({ error: { code: 'API_NOT_FOUND', message: `Endpoint ${req.method} ${req.originalUrl} not found.` } });
@@ -71,8 +82,8 @@ const startProductionServer = (): void => {
     res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: '服务器内部错误', traceId: req.traceId } });
   });
 
-  const server = app.listen(port, '0.0.0.0', () => {
-    logger.info('SERVER_BOOT', `Production API running on http://0.0.0.0:${port}`);
+  const server = app.listen(port, host, () => {
+    logger.info('SERVER_BOOT', `Production API running on http://${host}:${port}`);
   });
   let shuttingDown = false;
   const shutdown = (signal: string): void => {
@@ -89,4 +100,7 @@ const startProductionServer = (): void => {
   process.once('SIGINT', () => shutdown('SIGINT'));
 };
 
-startProductionServer();
+startProductionServer().catch((error) => {
+  logger.error('SERVER_BOOT', 'Failed to start production server', { data: error });
+  process.exit(1);
+});

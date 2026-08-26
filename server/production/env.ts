@@ -44,7 +44,7 @@ export const env = Object.freeze({
 });
 
 export const isValidEncryptionKey = (): boolean => Buffer.from(env.appEncryptionKey, 'base64').length === 32;
-export const isPreviewOnlyRuntime = (): boolean => env.runtime === 'production' && (!env.databaseUrl || !env.redisUrl || !isValidEncryptionKey());
+export const isDatabaseBackedRuntimeUnavailable = (): boolean => env.runtime === 'production' && (!env.databaseUrl || !env.redisUrl || !isValidEncryptionKey());
 
 export const productionConfigurationStatus = () => ({
   appBaseUrl: env.appBaseUrl,
@@ -52,7 +52,7 @@ export const productionConfigurationStatus = () => ({
     database: Boolean(env.databaseUrl),
     redis: Boolean(env.redisUrl),
     encryptionKey: isValidEncryptionKey(),
-    previewOnly: isPreviewOnlyRuntime()
+    databaseBackedApi: !isDatabaseBackedRuntimeUnavailable()
   },
   providers: {
     gsc: Boolean(env.gscClientId && env.gscClientSecret && env.gscStateSecret),
@@ -64,7 +64,7 @@ export const productionConfigurationStatus = () => ({
 export const productionConfigurationWarnings = (): string[] => {
   if (env.runtime !== 'production') return [];
   const warnings: string[] = [];
-  if (!env.databaseUrl) warnings.push('DATABASE_URL is not set; serving frontend preview only.');
+  if (!env.databaseUrl) warnings.push('DATABASE_URL is not set; database-backed /api/v1 is disabled.');
   if (!env.redisUrl) warnings.push('REDIS_URL is not set; asynchronous jobs are disabled.');
   if (!env.appEncryptionKey) warnings.push('APP_ENCRYPTION_KEY is not set; credential encryption is disabled.');
   if (!raw('APP_BASE_URL') && !raw('RAILWAY_PUBLIC_DOMAIN')) warnings.push('APP_BASE_URL is not set; OAuth callbacks will default to localhost.');

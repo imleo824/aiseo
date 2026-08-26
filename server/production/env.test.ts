@@ -33,8 +33,8 @@ describe('production configuration guard', () => {
     delete process.env.DATABASE_URL;
     const config = await import('./env');
     expect(() => config.assertProductionConfiguration()).not.toThrow();
-    expect(config.productionConfigurationStatus().runtime.previewOnly).toBe(true);
-    expect(config.productionConfigurationWarnings()).toContain('DATABASE_URL is not set; serving frontend preview only.');
+    expect(config.productionConfigurationStatus().runtime.databaseBackedApi).toBe(false);
+    expect(config.productionConfigurationWarnings()).toContain('DATABASE_URL is not set; database-backed /api/v1 is disabled.');
   });
 
   it('rejects malformed positive integer settings', async () => {
@@ -69,7 +69,7 @@ describe('production configuration guard', () => {
     expect(() => config.assertProductionConfiguration()).not.toThrow();
     expect(config.productionConfigurationStatus().providers).toEqual({ gsc: false, dataForSeo: false, trc20Payments: false });
     expect(config.productionConfigurationWarnings()).toHaveLength(3);
-    expect(config.productionConfigurationStatus().runtime.previewOnly).toBe(false);
+    expect(config.productionConfigurationStatus().runtime.databaseBackedApi).toBe(true);
   });
 
   it('uses Railway public domain as APP_BASE_URL when not set explicitly', async () => {

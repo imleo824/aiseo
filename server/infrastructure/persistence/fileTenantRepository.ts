@@ -36,8 +36,8 @@ const MAX_CREDIT_TXS = 300;
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 Hours Session TTL
 
 export class FileTenantRepository implements ITenantRepository {
-  private dbPath = path.join(process.cwd(), 'tenant_db.json');
-  private tmpDbPath = path.join(process.cwd(), 'tenant_db.json.tmp');
+  private dbPath = process.env.TENANT_DB_PATH || path.join(process.cwd(), 'tenant_db.json');
+  private tmpDbPath = `${this.dbPath}.tmp`;
   private datastore = new Map<string, TenantData>();
   private usernameIndex = new Map<string, string>(); // username (lowercase) -> tenantId
   private emailIndex = new Map<string, string>();    // email (lowercase) -> tenantId
