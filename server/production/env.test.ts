@@ -10,12 +10,15 @@ afterEach(() => {
   vi.resetModules();
 });
 
-const setProductionEnvironment = (encryptionKey = Buffer.alloc(32, 7).toString('base64')) => {
+const setCoreProductionEnvironment = (encryptionKey = Buffer.alloc(32, 7).toString('base64')) => {
   process.env.NODE_ENV = 'production';
   process.env.DATABASE_URL = 'postgresql://postgres:password@db.example.com:5432/postgres?sslmode=require';
   process.env.REDIS_URL = 'rediss://redis.example.com:6380';
   process.env.APP_ENCRYPTION_KEY = encryptionKey;
   process.env.APP_BASE_URL = 'https://app.example.com';
+};
+
+const setProviderEnvironment = () => {
   process.env.GSC_CLIENT_ID = 'client-id';
   process.env.GSC_CLIENT_SECRET = 'client-secret';
   process.env.DATAFORSEO_LOGIN = 'dataforseo-login';
@@ -37,16 +40,42 @@ describe('production configuration guard', () => {
     await expect(import('./env')).rejects.toThrow('SESSION_HOURS must be a positive integer');
   });
 
-  it('requires real production provider configuration and a 32-byte envelope key', async () => {
-    setProductionEnvironment('short-key');
+  it('requires core production configuration and a 32-byte envelope key', async () => {
+    setCoreProductionEnvironment('short-key');
     const invalid = await import('./env');
     expect(() => invalid.assertProductionConfiguration()).toThrow('32-byte');
 
     vi.resetModules();
-    setProductionEnvironment();
+    setCoreProductionEnvironment();
     const valid = await import('./env');
     expect(() => valid.assertProductionConfiguration()).not.toThrow();
     expect(valid.env.appBaseUrl).toBe('https://app.example.com');
     expect(valid.env.encryptionKeyFingerprint).toHaveLength(12);
+  });
+
+  it('allows missing optional providers during boot but reports them as disabled', async () => {
+    setCoreProductionEnvironment();
+    delete process.env.GSC_CLIENT_ID;
+    delete process.env.GSC_CLIENT_SECRET;
+    delete process.env.DATAFORSEO_LOGIN;
+    delete process.env.DATAFORSEO_PASSWORD;
+    delete process.env.TRONGRID_API_KEY;
+    delete process.env.TRC20_RECIPIENT_ADDRESS;
+
+    const config = await import('./env');
+    expect(() => config.assertProductionConfiguration()).not.toThrow();
+    expect(config.productionConfigurationStatus().providers).toEqual({ gsc: false, dataForSeo: false, trc20Payments: false });
+    expect(config.productionConfigurationWarnings()).toHaveLength(3);
+  });
+
+  it('uses Railway public domain as APP_BASE_URL when not set explicitly', async () => {
+    setCoreProductionEnvironment();
+    setProviderEnvironment();
+    delete process.env.APP_BASE_URL;
+    process.env.RAILWAY_PUBLIC_DOMAIN = 'aiseo.up.railway.app';
+
+    const config = await import('./env');
+    expect(config.env.appBaseUrl).toBe('https://aiseo.up.railway.app');
+    expect(config.productionConfigurationStatus().providers.gsc).toBe(true);
   });
 });

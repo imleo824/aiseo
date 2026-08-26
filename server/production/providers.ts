@@ -12,6 +12,14 @@ const responseJson = async (response: Response): Promise<any> => {
   return body;
 };
 
+const assertGscConfigured = (): void => {
+  if (!env.gscClientId || !env.gscClientSecret) throw new ValidationError('GSC OAuth 尚未配置');
+};
+
+const assertDataForSeoConfigured = (): void => {
+  if (!env.dataForSeoLogin || !env.dataForSeoPassword) throw new ValidationError('DataForSEO 凭证尚未配置');
+};
+
 export type GscCredentials = { refreshToken: string; siteUrl: string; scope: string };
 
 const stateSignature = (value: string) => createHmac('sha256', env.gscStateSecret).update(value).digest('base64url');
@@ -32,12 +40,13 @@ export const verifyGscState = (value: string): { organizationId: string; userId:
 
 export const gscProvider = {
   authorizationUrl(state: string): string {
-    if (!env.gscClientId || !env.gscClientSecret) throw new ValidationError('GSC OAuth 尚未配置');
+    assertGscConfigured();
     const params = new URLSearchParams({ client_id: env.gscClientId, redirect_uri: `${env.appBaseUrl}/api/v1/integrations/gsc/callback`, response_type: 'code', access_type: 'offline', prompt: 'consent', scope: 'https://www.googleapis.com/auth/webmasters.readonly', state });
     return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
   },
 
   async exchangeCode(code: string, siteUrl: string): Promise<GscCredentials> {
+    assertGscConfigured();
     const response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code, client_id: env.gscClientId, client_secret: env.gscClientSecret, redirect_uri: `${env.appBaseUrl}/api/v1/integrations/gsc/callback`, grant_type: 'authorization_code' }) });
     const token = await responseJson(response);
     if (!token.refresh_token) throw new ExternalServiceError('Google 未返回刷新令牌；请重新授权并允许离线访问');
@@ -49,6 +58,7 @@ export const gscProvider = {
   },
 
   async sync(connection: IntegrationConnection): Promise<{ rows: unknown[]; availableFrom: Date }> {
+    assertGscConfigured();
     const credentials = decryptSecret<GscCredentials>(Buffer.from(connection.encryptedCredentials));
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: env.gscClientId, client_secret: env.gscClientSecret, refresh_token: credentials.refreshToken, grant_type: 'refresh_token' }) });
     const token = await responseJson(tokenResponse);
@@ -63,7 +73,7 @@ export const gscProvider = {
 const dataForSeoAuth = () => `Basic ${Buffer.from(`${env.dataForSeoLogin}:${env.dataForSeoPassword}`).toString('base64')}`;
 export const dataForSeoProvider = {
   async createSerpTask(input: { keyword: string; locationCode: number; languageCode: string; tag: string }): Promise<string> {
-    if (!env.dataForSeoLogin || !env.dataForSeoPassword) throw new ValidationError('DataForSEO 凭证尚未配置');
+    assertDataForSeoConfigured();
     const response = await fetch('https://api.dataforseo.com/v3/serp/google/organic/task_post', { method: 'POST', headers: { authorization: dataForSeoAuth(), 'content-type': 'application/json' }, body: JSON.stringify([{ keyword: input.keyword, location_code: input.locationCode, language_code: input.languageCode, tag: input.tag, depth: 10 }]) });
     const result = await responseJson(response);
     const task = result.tasks?.[0]?.result?.[0];
@@ -71,6 +81,7 @@ export const dataForSeoProvider = {
     return task.id;
   },
   async getSerpTask(taskId: string): Promise<{ ready: boolean; payload?: unknown }> {
+    assertDataForSeoConfigured();
     const response = await fetch(`https://api.dataforseo.com/v3/serp/google/organic/task_get/advanced/${encodeURIComponent(taskId)}`, { headers: { authorization: dataForSeoAuth() } });
     const result = await responseJson(response);
     const task = result.tasks?.[0];

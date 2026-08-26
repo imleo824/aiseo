@@ -84,6 +84,17 @@ describe('provider security boundaries', () => {
     expect(String((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].headers.authorization)).toMatch(/^Basic /);
   });
 
+  it('fails closed without calling external providers when provider secrets are missing', async () => {
+    process.env.APP_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64');
+    process.env.APP_BASE_URL = 'https://app.example.com';
+    global.fetch = vi.fn();
+
+    const { dataForSeoProvider, gscProvider } = await import('./providers');
+    expect(() => gscProvider.authorizationUrl('signed-state')).toThrow('GSC OAuth 尚未配置');
+    await expect(dataForSeoProvider.getSerpTask('dfs-task-1')).rejects.toThrow('DataForSEO 凭证尚未配置');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it('accepts only a confirmed transfer matching hash, recipient, contract and micro amount', async () => {
     configureProviderSecrets();
     const { tronGridProvider } = await import('./providers');

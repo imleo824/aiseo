@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import path from 'path';
 import { apiV1Router, productionErrorHandler } from './router';
-import { assertProductionConfiguration } from './env';
+import { assertProductionConfiguration, productionConfigurationStatus, productionConfigurationWarnings } from './env';
 import { closeQueue } from './queue';
 import { disconnectDatabase } from './prisma';
 import { createRateLimiter } from '../middleware/rateLimiter';
@@ -20,6 +20,9 @@ const addSecurityHeaders = (_req: Request, res: Response, next: NextFunction): v
 
 const startProductionServer = (): void => {
   assertProductionConfiguration();
+  for (const warning of productionConfigurationWarnings()) {
+    logger.warn('CONFIGURATION', warning);
+  }
   const app = express();
   const port = Number(process.env.PORT) || 3000;
   const distPath = path.join(process.cwd(), 'dist');
@@ -42,7 +45,7 @@ const startProductionServer = (): void => {
   app.use('/api/v1', apiV1Router);
   app.use('/api/v1', productionErrorHandler);
   app.get('/api/health', (_req: Request, res: Response) => {
-    res.json({ status: 'UP', timestamp: new Date().toISOString(), uptimeSeconds: Math.floor(process.uptime()), mode: 'production' });
+    res.json({ status: 'UP', timestamp: new Date().toISOString(), uptimeSeconds: Math.floor(process.uptime()), mode: 'production', configuration: productionConfigurationStatus() });
   });
   app.use('/api', (req: Request, res: Response) => {
     res.status(404).json({ error: { code: 'API_NOT_FOUND', message: `Endpoint ${req.method} ${req.originalUrl} not found.` } });

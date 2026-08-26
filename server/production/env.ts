@@ -3,9 +3,10 @@ import { createHash } from 'crypto';
 type Runtime = 'development' | 'test' | 'production';
 
 const runtime = (process.env.NODE_ENV || 'development') as Runtime;
+const raw = (name: string): string => process.env[name]?.trim() || '';
 
 const requiredInProduction = (name: string): string => {
-  const value = process.env[name]?.trim();
+  const value = raw(name);
   if (!value && runtime === 'production') {
     throw new Error(`Missing required production environment variable: ${name}`);
   }
@@ -20,12 +21,22 @@ const asPositiveInt = (name: string, fallback: number): number => {
   return value;
 };
 
+const inferredAppBaseUrl = (): string => {
+  const explicit = raw('APP_BASE_URL');
+  if (explicit) return explicit;
+  const railwayDomain = raw('RAILWAY_PUBLIC_DOMAIN');
+  if (railwayDomain) return `https://${railwayDomain}`;
+  return 'http://localhost:3000';
+};
+
+const isValidTronBase58 = (value: string): boolean => /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(value);
+
 export const env = Object.freeze({
   runtime,
   databaseUrl: requiredInProduction('DATABASE_URL') || process.env.DATABASE_URL || '',
   redisUrl: requiredInProduction('REDIS_URL') || process.env.REDIS_URL || '',
   appEncryptionKey: requiredInProduction('APP_ENCRYPTION_KEY') || process.env.APP_ENCRYPTION_KEY || '',
-  appBaseUrl: requiredInProduction('APP_BASE_URL') || process.env.APP_BASE_URL || 'http://localhost:3000',
+  appBaseUrl: inferredAppBaseUrl(),
   gscClientId: process.env.GSC_CLIENT_ID || '',
   gscClientSecret: process.env.GSC_CLIENT_SECRET || '',
   dataForSeoLogin: process.env.DATAFORSEO_LOGIN || '',
@@ -40,26 +51,34 @@ export const env = Object.freeze({
   encryptionKeyFingerprint: createHash('sha256').update(process.env.APP_ENCRYPTION_KEY || '').digest('hex').slice(0, 12)
 });
 
+export const productionConfigurationStatus = () => ({
+  appBaseUrl: env.appBaseUrl,
+  providers: {
+    gsc: Boolean(env.gscClientId && env.gscClientSecret && env.gscStateSecret),
+    dataForSeo: Boolean(env.dataForSeoLogin && env.dataForSeoPassword),
+    trc20Payments: Boolean(env.tronGridApiKey && env.trc20RecipientAddress && isValidTronBase58(env.trc20RecipientAddress))
+  }
+});
+
+export const productionConfigurationWarnings = (): string[] => {
+  if (env.runtime !== 'production') return [];
+  const warnings: string[] = [];
+  if (!raw('APP_BASE_URL') && !raw('RAILWAY_PUBLIC_DOMAIN')) warnings.push('APP_BASE_URL is not set; OAuth callbacks will default to localhost.');
+  if (!env.gscClientId || !env.gscClientSecret) warnings.push('GSC OAuth is not configured; GSC connection endpoints will fail closed.');
+  if (!env.dataForSeoLogin || !env.dataForSeoPassword) warnings.push('DataForSEO is not configured; SERP jobs will fail closed.');
+  if (!env.tronGridApiKey || !env.trc20RecipientAddress) warnings.push('TRC20 payment verification is not configured; recharge endpoints will fail closed.');
+  return warnings;
+};
+
 export const assertProductionConfiguration = (): void => {
   if (env.runtime !== 'production') return;
-  const required = [
-    ['GSC_CLIENT_ID', env.gscClientId],
-    ['GSC_CLIENT_SECRET', env.gscClientSecret],
-    ['DATAFORSEO_LOGIN', env.dataForSeoLogin],
-    ['DATAFORSEO_PASSWORD', env.dataForSeoPassword],
-    ['TRONGRID_API_KEY', env.tronGridApiKey],
-    ['TRC20_RECIPIENT_ADDRESS', env.trc20RecipientAddress]
-  ] as const;
-  for (const [name, value] of required) {
-    if (!value) throw new Error(`Missing required production environment variable: ${name}`);
-  }
   if (Buffer.from(env.appEncryptionKey, 'base64').length !== 32) {
     throw new Error('APP_ENCRYPTION_KEY must be a base64-encoded 32-byte key');
   }
-  if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(env.trc20RecipientAddress)) {
+  if (env.trc20RecipientAddress && !isValidTronBase58(env.trc20RecipientAddress)) {
     throw new Error('TRC20_RECIPIENT_ADDRESS must be a valid base58 TRON address');
   }
-  if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(env.trc20UsdtContract)) {
+  if (env.trc20UsdtContract && !isValidTronBase58(env.trc20UsdtContract)) {
     throw new Error('TRC20_USDT_CONTRACT must be a valid base58 TRON contract address');
   }
 };

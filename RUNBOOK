@@ -12,6 +12,14 @@ service-role, GSC, DataForSEO, TronGrid, or WordPress credentials to browsers.
 To verify local Supabase migrations: npx supabase@2.81.3 start; npm run
 supabase:push; npx supabase@2.81.3 test db.
 
+Railway web service: push main before expecting GitHub autodeploy; a local
+commit alone is invisible to Railway. Configure NODE_ENV=production,
+DATABASE_URL from Supabase, REDIS_URL from Redis, and a generated
+APP_ENCRYPTION_KEY. APP_BASE_URL can be omitted on Railway when
+RAILWAY_PUBLIC_DOMAIN is present, but set it explicitly for custom domains.
+Configure the Railway Healthcheck Path as /api/health and verify the app logs
+"Production API running on http://0.0.0.0:$PORT".
+
 Before production: link the approved Supabase project, rotate historical
 credentials, verify restore from backup, smoke-test staging integrations and
 confirmed TRC20 transfers, then complete the relevant USDT legal review.
