@@ -3,6 +3,20 @@ import { fileTenantRepository } from '../infrastructure/persistence/fileTenantRe
 import { TenantAccount } from '../../src/types/seo';
 import { logger } from '../utils/logger';
 import { TenantRequest } from '../middleware/tenant';
+import { createSessionToken, hashPassword, isPasswordHash, verifyPassword } from '../utils/auth';
+import { randomUUID } from 'crypto';
+
+const INSECURE_DEMO_PASSWORDS = new Set(['admin123', 'password123']);
+
+const setSessionCookie = (res: Response, token: string) => {
+  res.cookie('seo_session', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 24 * 60 * 60 * 1000,
+    path: '/'
+  });
+};
 
 export const authController = {
   /**
@@ -22,27 +36,43 @@ export const authController = {
       return;
     }
 
-    // 严格密码校验
     if (!password) {
       res.status(401).json({ success: false, message: '请输入登录密码' });
       return;
     }
 
-    const expectedPassword = found.passwordHash || 'admin123';
-    if (password.trim() !== expectedPassword) {
+    const suppliedPassword = password.trim();
+    const storedCredential = found.passwordHash;
+    if (!storedCredential || INSECURE_DEMO_PASSWORDS.has(storedCredential)) {
+      res.status(403).json({
+        success: false,
+        message: '该账号仍使用已禁用的演示凭据。请通过管理员密码重置流程设置新密码。'
+      });
+      return;
+    }
+
+    const validPassword = isPasswordHash(storedCredential)
+      ? await verifyPassword(suppliedPassword, storedCredential)
+      : suppliedPassword === storedCredential;
+    if (!validPassword) {
       res.status(401).json({ success: false, message: '密码错误，请重新输入' });
       return;
     }
 
+    // Legacy plaintext values are upgraded only after successful verification.
+    if (!isPasswordHash(storedCredential)) {
+      await fileTenantRepository.updatePasswordHash(found.tenantId, await hashPassword(suppliedPassword));
+    }
+
     const account = fileTenantRepository.getAccount(found.tenantId);
-    const token = `token_${found.tenantId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const token = createSessionToken();
     fileTenantRepository.storeSessionToken(token, found.tenantId);
+    setSessionCookie(res, token);
 
     logger.info('AUTH', `User logged in successfully: ${account.username} (${found.tenantId}, Role: ${account.role})`);
 
     res.json({
       success: true,
-      token,
       tenantId: found.tenantId,
       account
     });
@@ -62,13 +92,17 @@ export const authController = {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
 
-    if (cleanUsername.length < 3) {
-      res.status(400).json({ success: false, message: '用户名长度不能少于 3 个字符' });
+    if (cleanUsername.length < 3 || cleanUsername.length > 64) {
+      res.status(400).json({ success: false, message: '用户名长度必须在 3 到 64 个字符之间' });
       return;
     }
 
     if (!cleanEmail.includes('@')) {
       res.status(400).json({ success: false, message: '请输入有效的电子邮箱地址' });
+      return;
+    }
+    if (cleanPassword.length < 12) {
+      res.status(400).json({ success: false, message: '密码长度不能少于 12 个字符' });
       return;
     }
 
@@ -79,8 +113,7 @@ export const authController = {
       return;
     }
 
-    const sanitizedIdStr = cleanUsername.toLowerCase().replace(/[^a-z0-9_-]/g, '');
-    const newTenantId = `tenant-${sanitizedIdStr || Date.now().toString(36)}`;
+    const newTenantId = `tenant-${randomUUID()}`;
 
     const newAccount: TenantAccount = {
       id: newTenantId,
@@ -94,15 +127,15 @@ export const authController = {
       createdAt: new Date().toISOString()
     };
 
-    await fileTenantRepository.createTenantAccount(newAccount, cleanPassword);
-    const token = `token_${newTenantId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    await fileTenantRepository.createTenantAccount(newAccount, await hashPassword(cleanPassword));
+    const token = createSessionToken();
     fileTenantRepository.storeSessionToken(token, newTenantId);
+    setSessionCookie(res, token);
 
     logger.info('AUTH', `New user registered: ${newAccount.username} (${newTenantId})`);
 
     res.json({
       success: true,
-      token,
       tenantId: newTenantId,
       account: newAccount
     });
@@ -123,6 +156,15 @@ export const authController = {
       tenantId: tenantReq.tenantId,
       account: tenantReq.account
     });
+  },
+
+  logout: async (req: Request, res: Response): Promise<void> => {
+    const authHeader = req.headers['authorization'] as string | undefined;
+    const cookieToken = req.headers.cookie?.match(/(?:^|;\s*)seo_session=([^;]+)/)?.[1];
+    const token = authHeader?.replace(/^Bearer\s+/i, '') || cookieToken;
+    fileTenantRepository.revokeSessionToken(token);
+    res.clearCookie('seo_session', { httpOnly: true, sameSite: 'lax', path: '/' });
+    res.status(204).send();
   },
 
   /**
@@ -146,4 +188,3 @@ export const authController = {
     });
   }
 };
-

@@ -1,0 +1,7 @@
+AISEO
+
+Production SEO SaaS: Supabase Postgres, Redis/BullMQ workers, GSC, DataForSEO,
+WordPress, and an immutable TRC20 USDT credit ledger.
+
+See RUNBOOK for local setup, Supabase migration verification, secret handling,
+staging checks, recovery expectations, and the real-USDT release checklist.

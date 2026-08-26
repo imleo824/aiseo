@@ -21,11 +21,9 @@ import {
 
 export class ApiService {
   private tenantId: string;
-  private authToken: string | null = null;
 
   constructor(tenantId: string = 'tenant-a') {
     this.tenantId = tenantId;
-    this.authToken = typeof localStorage !== 'undefined' ? localStorage.getItem('autopilot_auth_token') : null;
   }
 
   public setTenantId(tenantId: string) {
@@ -33,37 +31,31 @@ export class ApiService {
   }
 
   public setAuthToken(token: string | null) {
-    this.authToken = token;
-    if (token) {
-      localStorage.setItem('autopilot_auth_token', token);
-    } else {
-      localStorage.removeItem('autopilot_auth_token');
-    }
+    // Browser sessions are HttpOnly cookies. This method remains as a compatibility no-op.
+    void token;
   }
 
   public getAuthToken(): string | null {
-    return this.authToken;
+    return null;
   }
 
   private async request<T>(path: string, options: RequestInit = {}, retries = 2): Promise<T> {
+    const retryableMethod = !options.method || ['GET', 'HEAD', 'OPTIONS'].includes(options.method.toUpperCase());
+    const maxRetries = retryableMethod ? retries : 0;
     const headers = new Headers(options.headers);
-    if (this.authToken) {
-      headers.set('Authorization', `Bearer ${this.authToken}`);
-    }
-    headers.set('X-Tenant-Id', this.tenantId);
     if (!headers.has('Content-Type') && options.body && typeof options.body === 'string') {
       headers.set('Content-Type', 'application/json');
     }
 
     let attempt = 0;
-    while (attempt <= retries) {
+    while (attempt <= maxRetries) {
       try {
-        const response = await fetch(path, { ...options, headers });
+        const response = await fetch(path, { ...options, headers, credentials: 'same-origin' });
         const data = await response.json().catch(() => null);
 
         if (!response.ok) {
           const isTransient = [502, 503, 504].includes(response.status);
-          if (isTransient && attempt < retries) {
+          if (isTransient && attempt < maxRetries) {
             attempt++;
             const backoffMs = Math.pow(2, attempt) * 200;
             await new Promise(r => setTimeout(r, backoffMs));
@@ -80,7 +72,7 @@ export class ApiService {
 
         return data as T;
       } catch (err: any) {
-        const isNetworkErr = !err.status && attempt < retries;
+        const isNetworkErr = !err.status && attempt < maxRetries;
         if (isNetworkErr) {
           attempt++;
           const backoffMs = Math.pow(2, attempt) * 200;
@@ -96,14 +88,14 @@ export class ApiService {
 
   // Auth & Tenant
   public login(usernameOrEmail: string, password?: string) {
-    return this.request<{ success: boolean; token: string; tenantId: string; account: TenantAccount }>('/api/auth/login', {
+    return this.request<{ success: boolean; tenantId: string; account: TenantAccount }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ usernameOrEmail, password })
     });
   }
 
   public register(data: { username: string; email: string; password?: string; companyName?: string }) {
-    return this.request<{ success: boolean; token: string; tenantId: string; account: TenantAccount }>('/api/auth/register', {
+    return this.request<{ success: boolean; tenantId: string; account: TenantAccount }>('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify(data)
     });
@@ -111,6 +103,10 @@ export class ApiService {
 
   public getMe() {
     return this.request<{ success: boolean; tenantId: string; account: TenantAccount }>('/api/auth/me');
+  }
+
+  public logout() {
+    return this.request<void>('/api/auth/logout', { method: 'POST' }, 0);
   }
 
   public listTenants() {
@@ -180,7 +176,7 @@ export class ApiService {
   }
 
   public rechargeUsdt(data: { usdtAmount: number; txHash?: string; network?: UsdtNetwork; packageId?: string }) {
-    return this.request<{ success: boolean; message: string; credits: number; transaction: CreditTransaction }>('/api/credits/recharge', {
+    return this.request<{ success: boolean; message: string; transaction: CreditTransaction }>('/api/credits/recharge', {
       method: 'POST',
       body: JSON.stringify(data)
     });

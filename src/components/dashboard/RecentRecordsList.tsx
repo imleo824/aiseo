@@ -10,6 +10,7 @@ import {
   ExternalLink, 
   X
 } from 'lucide-react';
+import { SafeArticleContent } from '../SafeArticleContent';
 
 interface RecentRecordsListProps {
   drafts?: ArticleDraft[];
@@ -364,9 +365,9 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
 
               <div className="space-y-2">
                 <div className="text-sm font-bold text-slate-800">正文内容：</div>
-                <div 
+                <SafeArticleContent
                   className="prose prose-slate max-w-none bg-slate-50/50 p-5 rounded-2xl border border-slate-200/80 text-sm leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: activeDraftModal.contentHtml || activeDraftModal.summary || '<p>暂无内容</p>' }}
+                  html={activeDraftModal.contentHtml || activeDraftModal.summary}
                 />
               </div>
             </div>

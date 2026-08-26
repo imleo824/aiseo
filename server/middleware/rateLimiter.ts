@@ -26,8 +26,10 @@ setInterval(() => {
  */
 export function createRateLimiter(windowMs: number = 60000, maxMax: number = 300) {
   return (req: Request, res: Response, next: NextFunction) => {
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown-ip';
-    const tenantId = req.headers['x-tenant-id'] || 'default';
+    // Do not trust client-controlled forwarding or tenant headers. A reverse proxy
+    // must be configured explicitly with Express trust proxy before req.ip is used.
+    const ip = req.socket.remoteAddress || 'unknown-ip';
+    const tenantId = (req as any).tenantId || 'anonymous';
     const key = `${tenantId}:${ip}:${req.path.startsWith('/api/opportunities') ? 'ai' : 'general'}`;
 
     const now = Date.now();

@@ -6,6 +6,7 @@ import { searchEngineAdapter } from '../infrastructure/searchEngine/searchEngine
 import { geminiAdapter } from '../infrastructure/ai/geminiAdapter';
 import { logger } from '../utils/logger';
 import { ArticleDraft, Opportunity } from '../../src/types/seo';
+import { sanitizeArticleHtml } from '../utils/contentSanitizer';
 
 export class CronScheduler {
   private timer: NodeJS.Timeout | null = null;
@@ -138,16 +139,20 @@ export class CronScheduler {
         );
 
         // 2. Real WordPress Publishing
+        const sanitizedContentHtml = sanitizeArticleHtml(articleResult.contentHtml);
         const wpResult = await this.wpPublisher.publishPost(site, {
           title: articleResult.title,
-          contentHtml: articleResult.contentHtml,
+          contentHtml: sanitizedContentHtml,
           summary: articleResult.summary,
           status: 'publish'
         });
+        if (!wpResult.success || !wpResult.publishedUrl) {
+          throw new Error(wpResult.error || 'WordPress 发布未返回有效文章 URL');
+        }
 
         // 3. Search Engine Push
         let baiduResultMsg = '已分发';
-        if (site.siteLanguage === 'zh-CN' && wpResult.publishedUrl) {
+        if (site.siteLanguage === 'zh-CN') {
           const bRes = await this.searchEngineSubmitter.pushToBaidu(site.domain, site.baiduToken, [wpResult.publishedUrl]);
           baiduResultMsg = bRes.message;
 
@@ -161,9 +166,7 @@ export class CronScheduler {
           });
         }
 
-        if (wpResult.publishedUrl) {
-          await this.searchEngineSubmitter.pushToGoogle(site.domain, site.googleServiceAccountJson, [wpResult.publishedUrl]);
-        }
+        await this.searchEngineSubmitter.pushToGoogle(site.domain, site.googleServiceAccountJson, [wpResult.publishedUrl]);
 
         // 4. Update Opportunity & Draft
         const oppId = `opp-task-${Date.now()}`;
@@ -213,7 +216,7 @@ export class CronScheduler {
           language: site.siteLanguage || 'zh-CN',
           category: site.whitelistedCategories[0] || '默认分类',
           summary: articleResult.summary,
-          contentHtml: articleResult.contentHtml,
+          contentHtml: sanitizedContentHtml,
           sourcesUsed: ['企业知识库及权威来源'],
           qualityGate: articleResult.qualityGate,
           status: 'PUBLISHED',

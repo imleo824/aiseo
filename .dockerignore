@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.env
+tenant_db.json
+system_services_config.json
+coverage
+*.log
+supabase/.temp

@@ -119,6 +119,7 @@ export interface CreditTransaction {
   createdAt: string;
   txHash?: string;
   usdtAmount?: number;
+  requestedCredits?: number;
   network?: UsdtNetwork;
   status?: 'CONFIRMED' | 'PENDING' | 'REJECTED';
   confirmedAt?: string;

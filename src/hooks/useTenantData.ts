@@ -114,8 +114,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
   // Auth Actions
   const handleLogin = async (usernameOrEmail: string, password?: string) => {
     const res = await api.login(usernameOrEmail, password);
-    if (res.success && res.tenantId && res.token) {
-      api.setAuthToken(res.token);
+    if (res.success && res.tenantId) {
       api.setTenantId(res.tenantId);
       setAccount(res.account);
       if (onTenantChange) {
@@ -129,8 +128,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
 
   const handleRegister = async (data: { username: string; email: string; password?: string; companyName?: string }) => {
     const res = await api.register(data);
-    if (res.success && res.tenantId && res.token) {
-      api.setAuthToken(res.token);
+    if (res.success && res.tenantId) {
       api.setTenantId(res.tenantId);
       setAccount(res.account);
       if (onTenantChange) {
@@ -142,7 +140,8 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     throw new Error('注册失败');
   };
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
+    await api.logout().catch(() => undefined);
     api.setAuthToken(null);
     setAccount(null);
     setSites([]);

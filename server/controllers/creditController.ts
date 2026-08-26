@@ -8,9 +8,9 @@ const ensureTenantResolved = (req: Request): void => {
   const tenantReq = req as TenantRequest;
   if (!tenantReq.account) {
     const authHeader = req.headers['authorization'] as string;
-    const token = authHeader ? authHeader.replace(/^Bearer\s+/i, '') : (req.headers['x-auth-token'] as string);
-    const tenantIdHeader = req.headers['x-tenant-id'] as string;
-    const session = fileTenantRepository.resolveTenantFromTokenOrHeader(token, tenantIdHeader);
+    const cookieToken = req.headers.cookie?.match(/(?:^|;\s*)seo_session=([^;]+)/)?.[1];
+    const token = authHeader ? authHeader.replace(/^Bearer\s+/i, '') : cookieToken;
+    const session = fileTenantRepository.resolveTenantFromToken(token);
     if (session) {
       tenantReq.tenantId = session.tenantId;
       tenantReq.account = session.account;
@@ -105,7 +105,11 @@ export const creditController = {
   getBalance: async (req: Request, res: Response): Promise<void> => {
     ensureTenantResolved(req);
     const tenantReq = req as TenantRequest;
-    const tenantId = tenantReq.tenantId || 'tenant-a';
+    const tenantId = tenantReq.tenantId;
+    if (!tenantId) {
+      res.status(401).json({ success: false, message: '未登录或身份凭证已失效' });
+      return;
+    }
     const account = fileTenantRepository.getAccount(tenantId);
     res.json({
       success: true,
@@ -122,7 +126,11 @@ export const creditController = {
   getTransactions: async (req: Request, res: Response): Promise<void> => {
     ensureTenantResolved(req);
     const tenantReq = req as TenantRequest;
-    const tenantId = tenantReq.tenantId || 'tenant-a';
+    const tenantId = tenantReq.tenantId;
+    if (!tenantId) {
+      res.status(401).json({ success: false, message: '未登录或身份凭证已失效' });
+      return;
+    }
     const txs = fileTenantRepository.getCreditTransactions(tenantId);
     res.json({
       success: true,
@@ -136,42 +144,41 @@ export const creditController = {
   recharge: async (req: Request, res: Response): Promise<void> => {
     ensureTenantResolved(req);
     const tenantReq = req as TenantRequest;
-    const tenantId = tenantReq.tenantId || 'tenant-a';
+    const tenantId = tenantReq.tenantId;
+    if (!tenantId) {
+      res.status(401).json({ success: false, message: '未登录或身份凭证已失效' });
+      return;
+    }
     const { usdtAmount, txHash, network = 'TRC20', packageId } = req.body;
 
     const parsedUsdt = Number(usdtAmount);
-    if (!parsedUsdt || parsedUsdt <= 0) {
-      res.status(400).json({ success: false, message: '请输入有效的充值 USDT 金额' });
+    if (!Number.isFinite(parsedUsdt) || parsedUsdt <= 0 || parsedUsdt > 100000) {
+      res.status(400).json({ success: false, message: '请输入有效且处于允许范围内的充值 USDT 金额' });
+      return;
+    }
+    if (!txHash || typeof txHash !== 'string' || txHash.trim().length < 16) {
+      res.status(400).json({ success: false, message: '必须提供有效交易哈希；充值将在链上核验后到账' });
       return;
     }
 
     const config = fileTenantRepository.getPricingConfig();
-    const currentPackages = config.packages || DEFAULT_PRICING_CONFIG.packages;
-
-    // 计算兑换积分：如果匹配预设套餐则享受对应积分与加赠，否则按 1:100 换算
-    let creditsToCredit = parsedUsdt * 100;
-    const pkg = currentPackages.find(p => p.id === packageId || p.usdtAmount === parsedUsdt);
-    if (pkg) {
-      creditsToCredit = pkg.credits;
-    }
-
-    const cleanTxHash = txHash ? String(txHash).trim() : `0x${Math.random().toString(16).substring(2)}${Date.now().toString(16)}`;
-
-    const result = await fileTenantRepository.rechargeUsdt(
+    const packages = config.packages || DEFAULT_PRICING_CONFIG.packages;
+    const selectedPackage = packages.find(pkg => pkg.id === packageId && pkg.usdtAmount === parsedUsdt);
+    const requestedCredits = selectedPackage ? selectedPackage.credits : Math.floor(parsedUsdt * 100);
+    const transaction = await fileTenantRepository.createPendingRecharge(
       tenantId,
       parsedUsdt,
-      creditsToCredit,
-      cleanTxHash,
+      requestedCredits,
+      txHash.trim(),
       network as UsdtNetwork
     );
 
-    logger.info('PAYMENT', `Recharge success for ${tenantId}: ${parsedUsdt} USDT -> ${creditsToCredit} credits. New balance: ${result.balance}`);
-
-    res.json({
+    // A submitted hash is not proof of payment. Crediting is intentionally limited to
+    // the verified settlement flow until a chain-indexer is connected.
+    res.status(202).json({
       success: true,
-      message: `🎉 充值成功！已成功到账 ${creditsToCredit} 积分`,
-      credits: result.balance,
-      transaction: result.tx
+      message: '充值申请已提交，等待链上交易核验后入账。',
+      transaction
     });
   },
 

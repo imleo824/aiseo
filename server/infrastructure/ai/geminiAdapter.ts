@@ -376,6 +376,11 @@ Return JSON matching schema.`;
       }
     }
 
+    if (process.env.NODE_ENV === 'production' || process.env.ALLOW_SYNTHETIC_CONTENT !== 'true') {
+      throw new Error('AI_GENERATION_UNAVAILABLE: no verified model response was produced; synthetic content is disabled.');
+    }
+
+    // Explicitly opt-in developer fixture only. It must never be presented as verified content.
     const isZh = language === 'zh-CN';
     const fallback: CompetitorAttackAnalysis = {
       competitor: cleanComp,
@@ -567,26 +572,19 @@ Return JSON matching schema.`;
       modeInstruction = "Mode 3: Competitor Displacement & Traffic Interception (对标竞品截流). You MUST compare against the competitor, highlight feature gaps/pricing advantages, and provide a clear comparison table and migration guide.";
     }
 
-    const systemPrompt = `You are an elite, world-class Tech Journalist and Senior Technical Author writing for top-tier enterprise blogs (using OpenAI GPT-4o / Gemini 2.5 Pro flagship models).
+    const systemPrompt = `You are a senior SEO editor producing a customer draft, not a source of facts.
 Target Keyword: "${targetKeyword}". Language: "${language}".
 Generation Mode Strategy: ${modeInstruction}
 Structure Brief: ${brief ? JSON.stringify(brief.articleStructure) : "Standard 4-part deep dive"}
-Knowledge Sources: ${sources.join(", ")}.
+Verified customer/search inputs: ${sources.join(", ")}.
 
-CRITICAL QUALITY & E-E-A-T REQUIREMENTS (GOOGLE & BAIDU SEARCH BEST PRACTICES):
-1. WORD COUNT & DEPTH: Produce a comprehensive 2500+ word, deep technical article with rich examples, clear subheadings (H2, H3), code snippets or configuration checklists.
-2. CONTEXTUAL IMAGES & FIGURES: Include at least 1-2 relevant Unsplash images formatted inside semantic <figure> tags with descriptive alt text and captions:
-   <figure class="my-6">
-     <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=1200&auto=format&fit=crop" alt="[Descriptive SEO Alt Text]" class="w-full rounded-2xl border border-slate-800 shadow-lg object-cover max-h-96" />
-     <figcaption class="text-center text-xs text-slate-400 mt-2 font-mono">[Figure 1: Architectural diagram / data visualization for ${targetKeyword}]</figcaption>
-   </figure>
-3. E-E-A-T AUTHORITATIVENESS & REAL DATA: 
-   - Embed a detailed benchmark comparison table (e.g. QPS, P99 Latency, TCO Cost, Conversion Rate) with realistic quantitative metrics.
-   - Quote industry best practices or whitepapers with authoritative citation callout blocks (<blockquote class="border-l-4 border-emerald-500 bg-slate-900/60 p-4 rounded-r-xl my-4 text-slate-300 font-sans">).
-4. AEO / GOOGLE AI OVERVIEWS FEATURED ANSWER BLOCK: Include a top answers block (<div class="aeo-snippet bg-emerald-950/40 border border-emerald-500/40 rounded-2xl p-4 my-2 shadow-inner">) containing a concise 50-word authoritative answer to capture Google AI Overviews / Baidu AI search answers.
-5. FAQ & SCHEMA.ORG EMBEDDING: Include an interactive FAQ section using <details class="bg-slate-900 p-3.5 rounded-xl border border-slate-800 my-2"><summary class="font-bold cursor-pointer">...</summary><p class="mt-2 text-slate-300">...</p></details> and embed valid JSON-LD script for Article and FAQPage in the HTML.
+NON-NEGOTIABLE REQUIREMENTS:
+1. Use only facts and quantitative claims supported by the verified inputs or by a specific, publicly accessible citation URL. Never invent benchmarks, traffic figures, customer results, quotes, authors, publication dates, images, or search-engine indexing outcomes.
+2. If a claim cannot be supported, omit it or explicitly label it as an editorial recommendation. Do not fabricate schema, testimonials, or authority signals.
+3. Produce clean semantic HTML with headings, paragraphs, lists, optional tables only when cited, and optional valid JSON-LD only when its values are supported. Do not include scripts other than JSON-LD.
+4. Return a citations array. Each citation must contain a URL and the factual claim it supports. A human reviewer will decide whether the draft may be published.
 
-Return JSON strictly with fields: title, summary, contentHtml, factReliabilityScore, overallScore, hallucinationFree, issues, passedChecks.`;
+Return JSON strictly with fields: title, summary, contentHtml, factReliabilityScore, overallScore, hallucinationFree, citations, issues, passedChecks.`;
 
     const schema = {
       type: Type.OBJECT,
@@ -597,6 +595,14 @@ Return JSON strictly with fields: title, summary, contentHtml, factReliabilitySc
         factReliabilityScore: { type: Type.NUMBER },
         overallScore: { type: Type.NUMBER },
         hallucinationFree: { type: Type.BOOLEAN },
+        citations: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: { url: { type: Type.STRING }, claim: { type: Type.STRING } },
+            required: ['url', 'claim']
+          }
+        },
         issues: {
           type: Type.ARRAY,
           items: { type: Type.STRING }
@@ -615,30 +621,38 @@ Return JSON strictly with fields: title, summary, contentHtml, factReliabilitySc
       const parsed = this.cleanAndParseJSON<any>(textResult);
       if (parsed && parsed.title && parsed.contentHtml) {
         profiler.done('Article generated and scored via Flagship LLM');
+        const citations = Array.isArray(parsed.citations)
+          ? parsed.citations.filter((citation: any) => /^https:\/\//.test(citation?.url) && typeof citation?.claim === 'string')
+          : [];
+        const sourceCheckPassed = citations.length > 0;
+        const passed = (parsed.overallScore ?? 0) >= 85
+          && (parsed.factReliabilityScore ?? 0) >= 90
+          && parsed.hallucinationFree === true
+          && sourceCheckPassed;
         return {
           title: parsed.title,
           summary: parsed.summary || `${parsed.title} - SEO 深度架构与落地实践`,
           contentHtml: parsed.contentHtml,
           qualityGate: {
-            passed: (parsed.overallScore ?? 90) >= 85 && (parsed.factReliabilityScore ?? 95) >= 90,
-            overallScore: parsed.overallScore || 96,
-            factReliabilityScore: parsed.factReliabilityScore || 98,
-            hallucinationFree: parsed.hallucinationFree ?? true,
+            passed,
+            overallScore: Number.isFinite(parsed.overallScore) ? parsed.overallScore : 0,
+            factReliabilityScore: Number.isFinite(parsed.factReliabilityScore) ? parsed.factReliabilityScore : 0,
+            hallucinationFree: parsed.hallucinationFree === true,
             languageMatch: true,
-            sourceCheckPassed: true,
+            sourceCheckPassed,
             duplicateContentCheck: true,
-            issues: parsed.issues || [],
-            passedChecks: parsed.passedChecks || [
-              `E-E-A-T 旗舰级质量门禁：由 GPT-4o / Gemini 2.5 Pro 深度完成权威论证与案例对齐`,
-              `AEO AI 概览采纳校验：已插入适合 Google AI Overviews 提取的特异性回答块`,
-              `Schema.org 标记校验：成功附带 Article 与 FAQPage JSON-LD 结构化数据`,
-              `搜索引擎零等待：已同步触发 Google Indexing API / 百度 REST API 主动推送接口`
-            ]
+            issues: [...(parsed.issues || []), ...(sourceCheckPassed ? [] : ['No verifiable HTTPS citations were supplied; publishing remains blocked.'])],
+            passedChecks: parsed.passedChecks || []
           }
         };
       }
     }
 
+    if (process.env.NODE_ENV === 'production' || process.env.ALLOW_SYNTHETIC_CONTENT !== 'true') {
+      throw new Error('AI_GENERATION_UNAVAILABLE: no verified model response was produced; synthetic content is disabled.');
+    }
+
+    // Explicitly opt-in developer fixture only. It must never be presented as verified content.
     const isZh = language === 'zh-CN';
     const displayKeyword = targetKeyword.replace(/\[.*?\]/g, '').trim();
 
@@ -778,19 +792,16 @@ Return JSON strictly with fields: title, summary, contentHtml, factReliabilitySc
       summary,
       contentHtml,
       qualityGate: {
-        passed: true,
-        overallScore: 95,
-        factReliabilityScore: 98,
-        hallucinationFree: true,
+        passed: false,
+        overallScore: 0,
+        factReliabilityScore: 0,
+        hallucinationFree: false,
         languageMatch: true,
-        sourceCheckPassed: true,
-        duplicateContentCheck: true,
-        issues: [],
+        sourceCheckPassed: false,
+        duplicateContentCheck: false,
+        issues: ['Synthetic fallback content is enabled for development only and has not passed factual verification.'],
         passedChecks: [
-          isZh ? 'E-E-A-T 评估：98/100 (已完成专家级论证与案例对齐)' : 'E-E-A-T Rating: 98/100 (Expert evaluation completed)',
-          isZh ? 'AEO 结构提取：已生成适合 AI Overviews 直接采纳的直击回答块' : 'AEO Block: Direct answer box generated for AI Overviews',
-          isZh ? 'Schema.org 微数据：已内置 Article & FAQ Page JSON-LD 代码' : 'Schema Microdata: Built-in Article & FAQ JSON-LD script',
-          isZh ? '主动推送准备：实时挂载 Google Indexing API 与百度 Search Console 推送协议' : 'Push Engine: Real-time Google Indexing & Baidu API ready'
+          isZh ? '开发环境合成内容：未执行事实核验，禁止发布。' : 'Development synthetic content: factual verification was not run; publishing is blocked.'
         ]
       }
     };

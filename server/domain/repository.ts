@@ -55,7 +55,7 @@ export interface ITenantRepository {
   appendCreditTransaction(tenantId: string, tx: CreditTransaction): Promise<CreditTransaction>;
   consumeCredits(tenantId: string, amount: number, action: CreditActionType, description: string, metadata?: any): Promise<{ success: boolean; balance: number; tx?: CreditTransaction; message?: string }>;
   refundCredits(tenantId: string, amount: number, action: CreditActionType, reason: string, metadata?: any): Promise<{ success: boolean; balance: number; tx?: CreditTransaction }>;
-  rechargeUsdt(tenantId: string, usdtAmount: number, credits: number, txHash: string, network: UsdtNetwork): Promise<{ success: boolean; balance: number; tx: CreditTransaction }>;
+  createPendingRecharge(tenantId: string, usdtAmount: number, credits: number, txHash: string, network: UsdtNetwork): Promise<CreditTransaction>;
   findTenantByEmailOrUsername(identifier: string): { tenantId: string; account: TenantAccount; passwordHash?: string } | undefined;
   createTenantAccount(account: TenantAccount, passwordHash: string): Promise<TenantAccount>;
   getSite(tenantId: string, siteId: string): WordPressSite | undefined;

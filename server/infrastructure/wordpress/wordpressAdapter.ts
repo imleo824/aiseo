@@ -2,6 +2,7 @@ import { WordPressSite } from '../../../src/types/seo';
 import { IWordPressPublisher } from '../../domain/ports';
 import { logger } from '../../utils/logger';
 import { generateSeoSlug } from '../../utils/validator';
+import { sanitizeArticleHtml } from '../../utils/contentSanitizer';
 
 export class WordPressAdapter implements IWordPressPublisher {
   private getBaseEndpoint(site: WordPressSite): string {
@@ -128,7 +129,7 @@ export class WordPressAdapter implements IWordPressPublisher {
     const headers = this.getAuthHeaders(site);
     const postStatus = draft.status || 'publish';
 
-    if (process.env.NODE_ENV === 'test' || !headers['Authorization']) {
+    if (process.env.NODE_ENV === 'test') {
       logger.info('WP_ADAPTER', `[MOCK/TEST] Simulating successful WordPress publication for ${site.domain}`);
       const slug = draft.slug || generateSeoSlug(draft.title);
       return {
@@ -140,6 +141,13 @@ export class WordPressAdapter implements IWordPressPublisher {
       };
     }
 
+    if (!headers['Authorization']) {
+      return {
+        success: false,
+        error: 'Missing WordPress publishing credentials. Configure an Application Password before publishing.'
+      };
+    }
+
     if (headers['Authorization']) {
       try {
         const controller = new AbortController();
@@ -148,7 +156,7 @@ export class WordPressAdapter implements IWordPressPublisher {
         const targetSlug = draft.slug || generateSeoSlug(draft.title);
         const payload: any = {
           title: draft.title,
-          content: draft.contentHtml,
+          content: sanitizeArticleHtml(draft.contentHtml),
           excerpt: draft.summary || '',
           slug: targetSlug,
           status: postStatus
@@ -200,11 +208,15 @@ export class WordPressAdapter implements IWordPressPublisher {
     const baseEndpoint = this.getBaseEndpoint(site);
     const headers = this.getAuthHeaders(site);
 
-    if (process.env.NODE_ENV === 'test' || !headers['Authorization']) {
+    if (process.env.NODE_ENV === 'test') {
       return {
         success: true,
         message: `[MOCK/TEST] WordPress 生产站已成功删除文章 ID: ${wpPostId}`
       };
+    }
+
+    if (!headers['Authorization']) {
+      return { success: false, message: '无法删除：缺失 WordPress 发布凭据' };
     }
 
     if (headers['Authorization'] && wpPostId) {

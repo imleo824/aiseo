@@ -1,0 +1,329 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PlatformRole {
+  USER
+  PLATFORM_ADMIN
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum JobType {
+  GSC_SYNC
+  DATAFORSEO_SERP
+  CONTENT_GENERATION
+  WORDPRESS_PUBLISH
+  PAYMENT_VERIFY
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  DEAD_LETTER
+  CANCELLED
+}
+
+enum DataSource {
+  GSC
+  DATAFORSEO
+}
+
+enum DataStatus {
+  LIVE
+  PENDING
+  UNAVAILABLE
+  STALE
+}
+
+enum PaymentStatus {
+  CREATED
+  AWAITING_CONFIRMATION
+  VERIFIED
+  CREDITED
+  REJECTED
+  EXPIRED
+}
+
+enum LedgerEntryType {
+  CREDIT
+  RESERVATION
+  CONSUMPTION
+  REFUND
+  ADJUSTMENT
+}
+
+enum CreditHoldStatus {
+  HELD
+  SETTLED
+  RELEASED
+}
+
+enum DraftStatus {
+  GENERATING
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  PUBLISHED
+  PUBLISH_FAILED
+}
+
+model User {
+  id             String         @id @default(uuid()) @db.Uuid
+  email          String         @unique
+  username       String         @unique
+  passwordHash   String
+  platformRole   PlatformRole   @default(USER)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  memberships    OrganizationMember[]
+  sessions       Session[]
+  approvals      PublishApproval[]
+  auditEvents    AuditEvent[]   @relation("AuditActor")
+  idempotencyKeys IdempotencyKey[]
+}
+
+model Organization {
+  id              String                @id @default(uuid()) @db.Uuid
+  name            String
+  creditBalance   Int                   @default(0)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  members         OrganizationMember[]
+  sites           Site[]
+  integrations    IntegrationConnection[]
+  snapshots       DataSnapshot[]
+  jobs            JobRun[]
+  payments        PaymentIntent[]
+  ledgerEntries   LedgerEntry[]
+  creditHolds     CreditHold[]
+  drafts          ContentDraft[]
+  auditEvents     AuditEvent[]
+  idempotencyKeys IdempotencyKey[]
+}
+
+model OrganizationMember {
+  organizationId String           @db.Uuid
+  userId         String           @db.Uuid
+  role           OrganizationRole
+  createdAt      DateTime         @default(now())
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, userId])
+  @@index([userId, organizationId])
+}
+
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  tokenHash String   @unique
+  userId    String   @db.Uuid
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model Site {
+  id                   String   @id @default(uuid()) @db.Uuid
+  organizationId       String   @db.Uuid
+  domain               String
+  name                 String
+  language             String   @default("zh-CN")
+  wordpressCredentials Bytes?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  drafts               ContentDraft[]
+  snapshots            DataSnapshot[]
+
+  @@unique([organizationId, domain])
+  @@index([organizationId, createdAt])
+}
+
+model IntegrationConnection {
+  id                   String   @id @default(uuid()) @db.Uuid
+  organizationId       String   @db.Uuid
+  provider             DataSource
+  encryptedCredentials Bytes
+  keyVersion           Int
+  status               DataStatus @default(PENDING)
+  lastSyncedAt         DateTime?
+  lastError            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, provider])
+}
+
+model DataSnapshot {
+  id             String     @id @default(uuid()) @db.Uuid
+  organizationId String     @db.Uuid
+  siteId         String?    @db.Uuid
+  source         DataSource
+  status         DataStatus
+  providerTaskId String?
+  fetchedAt      DateTime   @default(now())
+  availableFrom  DateTime?
+  payload        Json
+  createdAt      DateTime   @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site           Site?      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, source, fetchedAt])
+  @@index([siteId, source, fetchedAt])
+  @@index([providerTaskId])
+}
+
+model JobRun {
+  id             String     @id @default(uuid()) @db.Uuid
+  organizationId String     @db.Uuid
+  type           JobType
+  status         JobStatus  @default(QUEUED)
+  idempotencyKey String?
+  queueJobId     String?    @unique
+  attempts       Int        @default(0)
+  payload        Json
+  result         Json?
+  errorCode      String?
+  errorMessage   String?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime   @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, type, idempotencyKey])
+  @@index([organizationId, status, createdAt])
+}
+
+model PaymentIntent {
+  id                String        @id @default(uuid()) @db.Uuid
+  organizationId    String        @db.Uuid
+  network           String        @default("TRC20")
+  recipientAddress  String
+  expectedAmountMicros BigInt
+  credits           Int
+  txHash            String?       @unique
+  status            PaymentStatus @default(CREATED)
+  verification      Json?
+  expiresAt         DateTime
+  verifiedAt        DateTime?
+  creditedAt        DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ledgerEntries     LedgerEntry[]
+
+  @@index([organizationId, status, createdAt])
+}
+
+model LedgerEntry {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  type           LedgerEntryType
+  amount         Int
+  balanceAfter   Int
+  reason         String
+  idempotencyKey String?         @unique
+  paymentIntentId String?        @db.Uuid
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  paymentIntent  PaymentIntent?  @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+}
+
+model CreditHold {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  jobRunId       String?          @unique @db.Uuid
+  amount         Int
+  status         CreditHoldStatus @default(HELD)
+  reason         String
+  createdAt      DateTime         @default(now())
+  settledAt      DateTime?
+  releasedAt     DateTime?
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+}
+
+model ContentDraft {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @db.Uuid
+  siteId         String      @db.Uuid
+  status         DraftStatus @default(GENERATING)
+  title          String
+  html           String
+  qualityReport  Json
+  dataProvenance Json
+  publishedUrl   String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site           Site        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  approvals      PublishApproval[]
+
+  @@index([organizationId, siteId, status, createdAt])
+}
+
+model PublishApproval {
+  id         String   @id @default(uuid()) @db.Uuid
+  draftId    String   @db.Uuid
+  approvedBy String   @db.Uuid
+  comment    String?
+  createdAt  DateTime @default(now())
+  draft      ContentDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  approver   User     @relation(fields: [approvedBy], references: [id], onDelete: Restrict)
+
+  @@unique([draftId])
+}
+
+model IdempotencyKey {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @db.Uuid
+  userId         String?  @db.Uuid
+  key            String
+  requestHash    String
+  response       Json?
+  statusCode     Int?
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+  @@index([expiresAt])
+}
+
+model AuditEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @db.Uuid
+  actorId        String?  @db.Uuid
+  action         String
+  targetType     String
+  targetId       String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor          User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([actorId, createdAt])
+}

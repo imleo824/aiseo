@@ -43,6 +43,7 @@ const aiGenRateLimiter = createRateLimiter(60000, 180); // Relaxed to 180 reques
 // Auth & Tenant Management Routes
 apiRouter.post("/auth/login", authRateLimiter, asyncHandler(authController.login));
 apiRouter.post("/auth/register", authRateLimiter, asyncHandler(authController.register));
+apiRouter.post("/auth/logout", asyncHandler(authController.logout));
 apiRouter.get("/auth/me", asyncHandler(authController.getMe));
 apiRouter.get("/auth/tenants", asyncHandler(authController.listTenants));
 
@@ -105,4 +106,3 @@ apiRouter.get("/sites/:id/audit-logs", asyncHandler(getSiteAuditLogs));
 apiRouter.get("/usage-ledger", asyncHandler(getUsageLedger));
 apiRouter.get("/baidu-logs", asyncHandler(getBaiduLogs));
 apiRouter.get("/sites/:id/growth-metrics", asyncHandler(getGrowthMetrics));
-

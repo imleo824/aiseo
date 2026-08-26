@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+tenant_db.json
+system_services_config.json
+*.tmp
+supabase/.temp/
+supabase/.branches/
+prisma/dev.db

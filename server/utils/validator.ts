@@ -10,8 +10,11 @@ export function validateDomain(domain: string): { isValid: boolean; sanitized: s
   let sanitized = domain.trim().toLowerCase();
   sanitized = sanitized.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
   const domainRegex = /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  const blockedHosts = ['localhost', 'localhost.localdomain'];
+  const isIpLiteral = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(sanitized) || sanitized.includes(':');
+  const isInternalName = sanitized.endsWith('.local') || sanitized.endsWith('.internal');
   return {
-    isValid: domainRegex.test(sanitized),
+    isValid: domainRegex.test(sanitized) && !blockedHosts.includes(sanitized) && !isIpLiteral && !isInternalName,
     sanitized
   };
 }
@@ -136,7 +139,19 @@ export function isValidHttpUrl(urlStr: string): boolean {
   if (!urlStr || typeof urlStr !== 'string') return false;
   try {
     const parsed = new URL(urlStr.trim());
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    const host = parsed.hostname.toLowerCase();
+    const blocked = host === 'localhost'
+      || host.endsWith('.local')
+      || host.endsWith('.internal')
+      || /^127\./.test(host)
+      || /^10\./.test(host)
+      || /^192\.168\./.test(host)
+      || /^169\.254\./.test(host)
+      || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+      || host === '::1'
+      || /^f[cd][0-9a-f:]+$/i.test(host)
+      || /^fe80:/i.test(host);
+    return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && !blocked;
   } catch {
     return false;
   }

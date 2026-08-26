@@ -1,29 +1,46 @@
 import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { tenantMiddleware } from "./server/middleware/tenant";
 import { traceMiddleware } from "./server/middleware/traceMiddleware";
 import { createRateLimiter } from "./server/middleware/rateLimiter";
-import { apiRouter } from "./server/routes";
-import { fileTenantRepository } from "./server/infrastructure/persistence/fileTenantRepository";
-import { geminiCircuitBreaker, indexingCircuitBreaker } from "./server/infrastructure/resilience/circuitBreaker";
-import { serpAnalysisCache } from "./server/utils/lruCache";
-import { cronScheduler } from "./server/application/cronScheduler";
 import { logger } from "./server/utils/logger";
+import { apiV1Router, productionErrorHandler } from './server/production/router';
+import { assertProductionConfiguration } from './server/production/env';
+import { closeQueue } from './server/production/queue';
+import { disconnectDatabase } from './server/production/prisma';
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
+  const isProduction = process.env.NODE_ENV === 'production';
+  let legacyRepository: any;
+  let legacyScheduler: any;
 
-  // Start background cron scheduler
-  cronScheduler.start();
+  if (isProduction) {
+    assertProductionConfiguration();
+  } else {
+    const [{ fileTenantRepository }, { cronScheduler }] = await Promise.all([
+      import('./server/infrastructure/persistence/fileTenantRepository'),
+      import('./server/application/cronScheduler')
+    ]);
+    legacyRepository = fileTenantRepository;
+    legacyScheduler = cronScheduler;
+    legacyScheduler.start();
+  }
 
   // Security Headers Middleware
   app.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    if (isProduction) {
+      res.setHeader(
+        'Content-Security-Policy',
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'"
+      );
+    }
     next();
   });
 
@@ -49,36 +66,31 @@ async function startServer() {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-  // Attach Tenant Isolation Middleware
-  app.use(tenantMiddleware);
-
-  // Rate Limiter for API endpoints
-  app.use('/api', createRateLimiter(60000, 300));
+  // Production APIs use database-backed sessions and explicit organization paths;
+  // they must never pass through the legacy tenant-header middleware.
+  app.use('/api/v1', createRateLimiter(60000, 120));
+  app.use('/api/v1', apiV1Router);
+  app.use('/api/v1', productionErrorHandler);
 
   // Health & Telemetry Check Endpoint
   app.get("/api/health", (_req: Request, res: Response) => {
-    const tenantIds = fileTenantRepository.getAllTenantIds();
     res.json({
       status: "UP",
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.floor(process.uptime()),
-      memoryUsage: process.memoryUsage(),
-      environment: process.env.NODE_ENV || "development",
-      hasGeminiApiKey: Boolean(process.env.GEMINI_API_KEY),
-      storeStats: {
-        totalTenants: tenantIds.length,
-        tenants: tenantIds
-      },
-      telemetry: {
-        geminiCircuit: geminiCircuitBreaker.getMetrics(),
-        indexingCircuit: indexingCircuitBreaker.getMetrics(),
-        serpCacheSize: serpAnalysisCache.size()
-      }
+      mode: isProduction ? 'production' : 'development'
     });
   });
 
-  // Mount Primary API Router
-  app.use("/api", apiRouter);
+  if (!isProduction) {
+    const [{ tenantMiddleware }, { apiRouter }] = await Promise.all([
+      import('./server/middleware/tenant'),
+      import('./server/routes')
+    ]);
+    app.use(tenantMiddleware);
+    app.use('/api', createRateLimiter(60000, 300));
+    app.use('/api', apiRouter);
+  }
 
   // API 404 Fallback Handler
   app.use("/api/*", (req: Request, res: Response) => {
@@ -130,7 +142,7 @@ async function startServer() {
   });
 
   // Serve static files in production or delegate to Vite in dev
-  if (process.env.NODE_ENV === "production") {
+  if (isProduction) {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req: Request, res: Response) => {
@@ -149,12 +161,20 @@ async function startServer() {
   });
 
   // Graceful shutdown
-  const shutdown = (signal: string) => {
+  const shutdown = async (signal: string) => {
     logger.info('SERVER_SHUTDOWN', `Received ${signal}. Shutting down gracefully...`);
-    cronScheduler.stop();
+    legacyScheduler?.stop();
     server.close(() => {
-      logger.info('SERVER_SHUTDOWN', `Closed all active connections.`);
-      process.exit(0);
+      Promise.all([
+        legacyRepository?.forceFlush?.(),
+        closeQueue(),
+        disconnectDatabase()
+      ])
+        .catch((error) => logger.error('SERVER_SHUTDOWN', `Final data flush failed: ${error?.message}`))
+        .finally(() => {
+          logger.info('SERVER_SHUTDOWN', `Closed all active connections.`);
+          process.exit(0);
+        });
     });
   };
 

@@ -7,9 +7,29 @@ import { wordPressAdapter } from "../infrastructure/wordpress/wordpressAdapter";
 import { searchEngineAdapter } from "../infrastructure/searchEngine/searchEngineAdapter";
 import { NotFoundError, ValidationError, ConflictError, ForbiddenError, InsufficientCreditsError } from "../domain/errors";
 
+type PublicWordPressSite = Omit<WordPressSite, 'wpAppPassword' | 'baiduToken' | 'googleServiceAccountJson'> & {
+  credentialStatus: {
+    wordpressConfigured: boolean;
+    baiduConfigured: boolean;
+    googleConfigured: boolean;
+  };
+};
+
+const toPublicSite = (site: WordPressSite): PublicWordPressSite => {
+  const { wpAppPassword, baiduToken, googleServiceAccountJson, ...publicSite } = site;
+  return {
+    ...publicSite,
+    credentialStatus: {
+      wordpressConfigured: Boolean(wpAppPassword),
+      baiduConfigured: Boolean(baiduToken),
+      googleConfigured: Boolean(googleServiceAccountJson)
+    }
+  };
+};
+
 export const getSites = async (req: TenantRequest, res: Response) => {
   const data = fileTenantRepository.getTenantData(req.tenantId);
-  res.json({ sites: data.sites || [] });
+  res.json({ sites: (data.sites || []).map(toPublicSite) });
 };
 
 export const getSiteById = async (req: TenantRequest, res: Response) => {
@@ -17,7 +37,7 @@ export const getSiteById = async (req: TenantRequest, res: Response) => {
   if (!site) {
     throw new NotFoundError(`WordPress Site with ID "${req.params.id}" was not found.`);
   }
-  res.json({ site });
+  res.json({ site: toPublicSite(site) });
 };
 
 export const testSiteConnection = async (req: TenantRequest, res: Response) => {
@@ -30,7 +50,7 @@ export const testSiteConnection = async (req: TenantRequest, res: Response) => {
   site.connectorStatus = result.connected ? 'CONNECTED' : 'ERROR';
   await fileTenantRepository.saveSite(req.tenantId, site);
 
-  res.json({ result, site });
+  res.json({ result, site: toPublicSite(site) });
 };
 
 export const testSiteSearchEngine = async (req: TenantRequest, res: Response) => {
@@ -189,7 +209,7 @@ export const createSite = async (req: TenantRequest, res: Response) => {
       details: `已接入 WordPress 独立站: ${newSite.domain}，初始化 14 天校准期模式。`
     });
 
-    res.status(201).json({ site: newSite });
+    res.status(201).json({ site: toPublicSite(newSite) });
   } catch (err: any) {
     await fileTenantRepository.refundCredits(
       req.tenantId,
@@ -223,7 +243,11 @@ export const updateSite = async (req: TenantRequest, res: Response) => {
 
   if (name !== undefined) site.name = String(name).trim();
   if (domain !== undefined && String(domain).trim()) {
-    site.domain = String(domain).trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const { isValid, sanitized } = validateDomain(String(domain));
+    if (!isValid) {
+      throw new ValidationError('域名格式不正确或不允许访问内网地址');
+    }
+    site.domain = sanitized;
   }
   if (niche !== undefined) site.niche = String(niche).trim();
   if (siteType !== undefined) site.siteType = siteType;
@@ -255,7 +279,7 @@ export const updateSite = async (req: TenantRequest, res: Response) => {
     details: '已更新站点配置与收录凭证参数。'
   });
 
-  res.json({ site });
+  res.json({ site: toPublicSite(site) });
 };
 
 export const deleteSite = async (req: TenantRequest, res: Response) => {
@@ -300,5 +324,5 @@ export const toggleAutopilot = async (req: TenantRequest, res: Response) => {
     details: `更新自动发文策略状态为: ${site.autopilotEnabled ? '启用' : '禁用'}`
   });
 
-  res.json({ success: true, site });
+  res.json({ success: true, site: toPublicSite(site) });
 };

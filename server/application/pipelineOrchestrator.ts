@@ -9,6 +9,7 @@ import { fileTenantRepository } from '../infrastructure/persistence/fileTenantRe
 import { logger } from '../utils/logger';
 import { NotFoundError } from '../domain/errors';
 import { generateSeoSlug } from '../utils/validator';
+import { sanitizeArticleHtml } from '../utils/contentSanitizer';
 
 export interface PipelineExecutionOptions {
   tenantId: string;
@@ -85,7 +86,7 @@ export class SEOPipelineOrchestrator {
       stagesCompleted.push('QUALITY_GATE_EEAT');
 
       // 6. Stage 5: Semantic Internal Link Weaving
-      const finalContentHtml = this.weaveInternalLinks(articleResult.contentHtml, tenantData, site.id);
+      const finalContentHtml = sanitizeArticleHtml(this.weaveInternalLinks(articleResult.contentHtml, tenantData, site.id));
       stagesCompleted.push('INTERNAL_LINK_WEAVING');
 
       // 7. Stage 6: Determine Autopilot Eligibility & Deploy to WordPress
@@ -497,4 +498,3 @@ export class SEOPipelineOrchestrator {
 }
 
 export const pipelineOrchestrator = new SEOPipelineOrchestrator();
-

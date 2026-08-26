@@ -7,6 +7,7 @@ import { wordPressAdapter } from "../infrastructure/wordpress/wordpressAdapter";
 import { searchEngineAdapter } from "../infrastructure/searchEngine/searchEngineAdapter";
 import { serpService } from '../infrastructure/searchEngine/serpService';
 import { NotFoundError, ValidationError, ForbiddenError, InsufficientCreditsError } from "../domain/errors";
+import { sanitizeArticleHtml } from '../utils/contentSanitizer';
 
 export const getSiteOpportunities = async (req: TenantRequest, res: Response) => {
   const tenantData = fileTenantRepository.getTenantData(req.tenantId);
@@ -149,7 +150,7 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
     const result = await geminiAdapter.generateArticleAndQualityCheck(opp.targetKeyword, opp.language, brief, kbSnippets);
 
     // Weave internal link
-    let finalContentHtml = result.contentHtml;
+    let finalContentHtml = sanitizeArticleHtml(result.contentHtml);
     const otherPublished = tenantData.drafts.filter(d => d.siteId === site.id && d.status === 'PUBLISHED' && d.publishedUrl);
     if (otherPublished.length > 0) {
       const samplePrev = otherPublished[0];

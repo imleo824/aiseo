@@ -1,0 +1,17 @@
+AISEO production runbook
+
+Production runtime uses Supabase Postgres, Redis/BullMQ workers, GSC, DataForSEO,
+WordPress, and an immutable TRC20 USDT credit ledger.
+
+Before deployment run: npm ci; npm run prisma:generate; npm run lint;
+npm run test:coverage; npm run build.
+
+Copy .env.example into the deployment secret manager. Never expose Supabase
+service-role, GSC, DataForSEO, TronGrid, or WordPress credentials to browsers.
+
+To verify local Supabase migrations: npx supabase@2.81.3 start; npm run
+supabase:push; npx supabase@2.81.3 test db.
+
+Before production: link the approved Supabase project, rotate historical
+credentials, verify restore from backup, smoke-test staging integrations and
+confirmed TRC20 transfers, then complete the relevant USDT legal review.

@@ -10,6 +10,9 @@ export interface TenantRequest extends Request {
   account: TenantAccount;
 }
 
+const getSessionCookie = (cookieHeader?: string): string | undefined =>
+  cookieHeader?.match(/(?:^|;\s*)seo_session=([^;]+)/)?.[1];
+
 // 开放无需强登录鉴权的公开 API 路径
 const UNPROTECTED_PATHS = [
   '/api/health',
@@ -28,30 +31,11 @@ export const tenantMiddleware = (req: Request, res: Response, next: NextFunction
   }
 
   const authHeader = req.headers['authorization'];
-  const token = authHeader ? authHeader.replace(/^Bearer\s+/i, '') : (req.headers['x-auth-token'] as string);
-  const tenantIdHeader = req.headers['x-tenant-id'] as string;
-
-  const session = fileTenantRepository.resolveTenantFromTokenOrHeader(token, tenantIdHeader);
+  const token = authHeader ? authHeader.replace(/^Bearer\s+/i, '') : getSessionCookie(req.headers.cookie);
+  const session = fileTenantRepository.resolveTenantFromToken(token);
 
   // 公开查看套餐等 GET 接口可缺省降级，其它涉及数据的业务接口进行强身份校验
   if (!session) {
-    if (req.path === '/api/credits/config' && req.method === 'GET') {
-      const defaultData = fileTenantRepository.getTenantData('tenant-a');
-      const tenantRequest = req as TenantRequest;
-      tenantRequest.tenantId = 'tenant-a';
-      tenantRequest.account = defaultData.account!;
-      tenantRequest.tenantData = defaultData;
-
-      return TenantContext.run(
-        {
-          tenantId: 'tenant-a',
-          account: defaultData.account!,
-          role: defaultData.account?.role || 'ADMIN'
-        },
-        () => next()
-      );
-    }
-
     res.status(401).json({
       success: false,
       message: '身份凭证失效或未登录，请先登录账号',
@@ -74,5 +58,3 @@ export const tenantMiddleware = (req: Request, res: Response, next: NextFunction
     () => next()
   );
 };
-
-

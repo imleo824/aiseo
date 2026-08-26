@@ -57,11 +57,21 @@ export class SystemServiceConfigRepository {
   private isLoaded = false;
 
   constructor() {
-    this.loadFromFile();
+    // The file-backed configuration is a development compatibility layer.
+    // Production configuration must come from managed secrets, never a local
+    // JSON file that can silently diverge from the deployed environment.
+    if (process.env.NODE_ENV !== 'production') {
+      this.loadFromFile();
+    }
   }
 
   private loadFromFile(): void {
     if (this.isLoaded) return;
+    if (process.env.NODE_ENV === 'production') {
+      this.config = JSON.parse(JSON.stringify(DEFAULT_SYSTEM_SERVICES_CONFIG));
+      this.isLoaded = true;
+      return;
+    }
     try {
       if (fs.existsSync(this.configPath)) {
         const raw = fs.readFileSync(this.configPath, 'utf-8');
@@ -157,6 +167,9 @@ export class SystemServiceConfigRepository {
   }
 
   public async saveServicesConfig(incoming: Partial<SystemServicesConfig>): Promise<SystemServicesConfig> {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('File-backed service configuration is disabled in production. Use managed environment secrets.');
+    }
     this.loadFromFile();
 
     const unmasked = this.restoreMaskedSecrets(incoming, this.config);
@@ -194,6 +207,9 @@ export class SystemServiceConfigRepository {
   }
 
   public async resetServicesConfig(): Promise<SystemServicesConfig> {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('File-backed service configuration is disabled in production. Use managed environment secrets.');
+    }
     this.config = JSON.parse(JSON.stringify(DEFAULT_SYSTEM_SERVICES_CONFIG));
     this.persistToDisk();
     logger.info('SERVICE_CONFIG', `Reset system services config to factory defaults`);

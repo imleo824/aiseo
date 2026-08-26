@@ -142,46 +142,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
           {tab === 'LOGIN' && (
             <form onSubmit={handleLoginSubmit} className="space-y-4">
-              {/* Quick Login Credentials for Testing */}
-              <div className="p-3 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-2">
-                <div className="text-xs font-bold text-slate-700">
-                  预置测试账号凭证（点击快速填充）：
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUsernameOrEmail('admin');
-                      setPassword('admin123');
-                      setError(null);
-                    }}
-                    className="p-2.5 rounded-2xl bg-white hover:bg-amber-50/60 border border-slate-200 hover:border-amber-300 text-left transition cursor-pointer shadow-sm"
-                  >
-                    <div className="text-xs font-bold text-amber-700 flex items-center gap-1">
-                      <span>👑 管理员账号</span>
-                    </div>
-                    <div className="text-[11px] text-slate-500 font-mono mt-0.5">admin / admin123</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">配置系统价格与套餐</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUsernameOrEmail('matrix_seo');
-                      setPassword('password123');
-                      setError(null);
-                    }}
-                    className="p-2.5 rounded-2xl bg-white hover:bg-emerald-50/60 border border-slate-200 hover:border-emerald-300 text-left transition cursor-pointer shadow-sm"
-                  >
-                    <div className="text-xs font-bold text-emerald-700 flex items-center gap-1">
-                      <span>🏢 租户账号</span>
-                    </div>
-                    <div className="text-[11px] text-slate-500 font-mono mt-0.5">matrix_seo</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">普通发文与日常消费</div>
-                  </button>
-                </div>
-              </div>
-
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-700">用户名 或 邮箱</label>
                 <div className="relative">
@@ -273,7 +233,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     type="password"
                     value={regPassword}
                     onChange={(e) => setRegPassword(e.target.value)}
-                    placeholder="设置安全密码"
+                    placeholder="设置至少 12 位安全密码"
                     className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 text-xs font-medium focus:bg-white focus:outline-none focus:border-slate-400 transition"
                   />
                 </div>
@@ -300,4 +260,3 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     </div>
   );
 };
-

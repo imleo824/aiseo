@@ -33,7 +33,7 @@ export class TenantContext {
 
   public static isAdmin(): boolean {
     const store = tenantStorage.getStore();
-    return store?.account?.role === 'ADMIN' || store?.role === 'ADMIN' || store?.tenantId === 'tenant-a';
+    return store?.account?.role === 'ADMIN' || store?.role === 'ADMIN';
   }
 
   public static assertAccess(targetTenantId: string): void {

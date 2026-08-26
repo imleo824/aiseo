@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArticleDraft } from '../../types/seo';
 import { CheckCircle2, X, RotateCcw } from 'lucide-react';
+import { SafeArticleContent } from '../SafeArticleContent';
 
 interface DraftPreviewModalProps {
   draft: ArticleDraft | null;
@@ -43,9 +44,9 @@ export const DraftPreviewModal: React.FC<DraftPreviewModalProps> = ({
 
           <div className="space-y-2">
             <div className="text-sm font-bold text-slate-800">正文内容：</div>
-            <div 
+            <SafeArticleContent
               className="prose prose-slate max-w-none bg-slate-50/50 p-5 rounded-2xl border border-slate-200/80 text-sm leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: draft.contentHtml || draft.summary || '<p>暂无内容</p>' }}
+              html={draft.contentHtml || draft.summary}
             />
           </div>
         </div>

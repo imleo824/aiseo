@@ -64,6 +64,10 @@ export class FileTenantRepository implements ITenantRepository {
   }
 
   private ensureDefaultTenants(): void {
+    if (process.env.DEMO_MODE !== 'true') {
+      this.rebuildIndexes();
+      return;
+    }
     if (!this.datastore.has('tenant-a')) {
       this.getTenantData('tenant-a');
     } else {
@@ -232,6 +236,9 @@ export class FileTenantRepository implements ITenantRepository {
   public getTenantData(tenantId: string): TenantData {
     this.loadFromFile();
     if (!this.datastore.has(tenantId)) {
+      if (process.env.DEMO_MODE !== 'true') {
+        throw new Error(`Tenant ${tenantId} was not found`);
+      }
       if (tenantId === 'tenant-a') {
         const initialAccount: TenantAccount = {
           id: 'tenant-a',
@@ -388,14 +395,12 @@ export class FileTenantRepository implements ITenantRepository {
 
   public getAllTenantIds(): string[] {
     this.loadFromFile();
-    // 确保包含默认管理员及演示租户
-    if (!this.datastore.has('tenant-a')) {
-      this.getTenantData('tenant-a');
-    }
-    if (!this.datastore.has('tenant-b')) {
-      this.getTenantData('tenant-b');
-    }
     return Array.from(this.datastore.keys());
+  }
+
+  public hasAccounts(): boolean {
+    this.loadFromFile();
+    return Array.from(this.datastore.values()).some(data => Boolean(data.account));
   }
 
   public getAccount(tenantId: string): TenantAccount {
@@ -539,7 +544,7 @@ export class FileTenantRepository implements ITenantRepository {
     });
   }
 
-  public async rechargeUsdt(
+  private async rechargeUsdt(
     tenantId: string, 
     usdtAmount: number, 
     credits: number, 
@@ -579,6 +584,44 @@ export class FileTenantRepository implements ITenantRepository {
       balance: account.credits,
       tx
     };
+  }
+
+  public async createPendingRecharge(
+    tenantId: string,
+    usdtAmount: number,
+    credits: number,
+    txHash: string,
+    network: UsdtNetwork
+  ): Promise<CreditTransaction> {
+    const normalizedHash = txHash.trim().toLowerCase();
+    return this.withTenantLock(tenantId, async () => {
+      for (const data of this.datastore.values()) {
+        if ((data.creditTransactions || []).some(tx => tx.txHash?.toLowerCase() === normalizedHash)) {
+          throw new Error('该交易哈希已被提交，不能重复创建充值申请');
+        }
+      }
+
+      const data = this.getTenantData(tenantId);
+      const account = this.getAccount(tenantId);
+      const tx: CreditTransaction = {
+        id: `pay-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+        tenantId,
+        type: 'RECHARGE',
+        action: 'USDT_TOPUP',
+        amount: 0,
+        balance: account.credits,
+        description: `待链上核验的 USDT 充值 (${usdtAmount} USDT / ${network})`,
+        createdAt: new Date().toISOString(),
+        txHash: normalizedHash,
+        usdtAmount,
+        requestedCredits: credits,
+        network,
+        status: 'PENDING'
+      };
+      data.creditTransactions = [tx, ...(data.creditTransactions || [])];
+      await this.saveTenantData(tenantId, data);
+      return tx;
+    });
   }
 
   public async adjustTenantCredits(
@@ -653,15 +696,31 @@ export class FileTenantRepository implements ITenantRepository {
     }
 
     for (const tid of tenantIdsToSearch) {
-      const data = this.getTenantData(tid);
-      const tx = (data.creditTransactions || []).find(t => t.id === txId);
-      if (tx) {
+      const result = await this.withTenantLock(tid, async () => {
+        const data = this.getTenantData(tid);
+        const tx = (data.creditTransactions || []).find(t => t.id === txId);
+        if (!tx) return null;
+        if (tx.status === 'CONFIRMED') return tx;
+
         tx.status = status;
         tx.confirmedAt = new Date().toISOString();
         tx.confirmedBy = confirmedBy;
+
+        if (status === 'CONFIRMED' && tx.type === 'RECHARGE' && tx.requestedCredits) {
+          const account = this.getAccount(tid);
+          account.credits += tx.requestedCredits;
+          account.totalRechargedUsdt = (account.totalRechargedUsdt || 0) + (tx.usdtAmount || 0);
+          tx.amount = tx.requestedCredits;
+          tx.balance = account.credits;
+          data.account = account;
+        }
+
         await this.saveTenantData(tid, data);
+        return tx;
+      });
+      if (result) {
         logger.info('ADMIN_PAYMENT_CONFIRM', `Admin ${confirmedBy} updated payment ${txId} for tenant ${tid} status to ${status}`);
-        return { success: true, tx };
+        return { success: true, tx: result };
       }
     }
 
@@ -672,11 +731,9 @@ export class FileTenantRepository implements ITenantRepository {
 
   private pruneExpiredSessions(): void {
     const now = Date.now();
-    if (this.activeSessions.size > 500) {
-      for (const [token, session] of this.activeSessions.entries()) {
-        if (now - session.createdAt > SESSION_TTL_MS) {
-          this.activeSessions.delete(token);
-        }
+    for (const [token, session] of this.activeSessions.entries()) {
+      if (now - session.createdAt > SESSION_TTL_MS) {
+        this.activeSessions.delete(token);
       }
     }
   }
@@ -686,13 +743,16 @@ export class FileTenantRepository implements ITenantRepository {
     this.activeSessions.set(token, { tenantId, createdAt: Date.now() });
   }
 
-  public resolveTenantFromTokenOrHeader(
-    token?: string, 
-    tenantIdHeader?: string
+  public revokeSessionToken(token?: string): void {
+    if (token) this.activeSessions.delete(token.trim());
+  }
+
+  public resolveTenantFromToken(
+    token?: string
   ): { tenantId: string; account: TenantAccount; tenantData: TenantData } | null {
     this.loadFromFile();
+    this.pruneExpiredSessions();
 
-    // 1. Check active token session map or token pattern match
     if (token && token.trim().length > 0) {
       const cleanToken = token.trim();
       const session = this.activeSessions.get(cleanToken);
@@ -702,37 +762,6 @@ export class FileTenantRepository implements ITenantRepository {
           tenantId,
           account: this.getAccount(tenantId),
           tenantData: this.getTenantData(tenantId)
-        };
-      }
-
-      // Standard token pattern match: token_<tenantId>_<timestamp>
-      const match = cleanToken.match(/^token_([a-zA-Z0-9_-]+)_/);
-      if (match) {
-        const extractedTenantId = match[1];
-        if (this.datastore.has(extractedTenantId)) {
-          return {
-            tenantId: extractedTenantId,
-            account: this.getAccount(extractedTenantId),
-            tenantData: this.getTenantData(extractedTenantId)
-          };
-        }
-      }
-    }
-
-    // 2. Explicit tenant header fallback (for tests or development)
-    if (tenantIdHeader && tenantIdHeader.trim().length > 0) {
-      const cleanHeaderId = tenantIdHeader.trim();
-      if (this.datastore.has(cleanHeaderId)) {
-        return {
-          tenantId: cleanHeaderId,
-          account: this.getAccount(cleanHeaderId),
-          tenantData: this.getTenantData(cleanHeaderId)
-        };
-      } else if (cleanHeaderId === 'tenant-test' || cleanHeaderId === 'tenant-a') {
-        return {
-          tenantId: cleanHeaderId,
-          account: this.getAccount(cleanHeaderId),
-          tenantData: this.getTenantData(cleanHeaderId)
         };
       }
     }
@@ -761,7 +790,7 @@ export class FileTenantRepository implements ITenantRepository {
       return {
         tenantId: matchedTenantId,
         account: this.getAccount(matchedTenantId),
-        passwordHash: data.passwordHash || 'admin123'
+        passwordHash: data.passwordHash
       };
     }
 
@@ -776,7 +805,7 @@ export class FileTenantRepository implements ITenantRepository {
         return {
           tenantId,
           account,
-          passwordHash: data.passwordHash || 'admin123'
+          passwordHash: data.passwordHash
         };
       }
     }
@@ -785,6 +814,9 @@ export class FileTenantRepository implements ITenantRepository {
 
   public async createTenantAccount(account: TenantAccount, passwordHash: string): Promise<TenantAccount> {
     const tenantId = account.id;
+    if (this.datastore.has(tenantId)) {
+      throw new Error(`Tenant ${tenantId} already exists`);
+    }
     const registerTx: CreditTransaction = {
       id: `tx-reg-${Date.now()}`,
       tenantId,
@@ -812,6 +844,12 @@ export class FileTenantRepository implements ITenantRepository {
 
     await this.saveTenantData(tenantId, newTenantData);
     return account;
+  }
+
+  public async updatePasswordHash(tenantId: string, passwordHash: string): Promise<void> {
+    const data = this.getTenantData(tenantId);
+    data.passwordHash = passwordHash;
+    await this.saveTenantData(tenantId, data);
   }
 
   public checkAndResetWeeklyPublishCap(site: WordPressSite): boolean {
@@ -941,4 +979,3 @@ export class FileTenantRepository implements ITenantRepository {
 
 export const fileTenantRepository = new FileTenantRepository();
 export const tenantStore = fileTenantRepository;
-
