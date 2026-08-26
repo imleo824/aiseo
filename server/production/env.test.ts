@@ -28,10 +28,13 @@ const setProviderEnvironment = () => {
 };
 
 describe('production configuration guard', () => {
-  it('fails during boot when required database configuration is absent', async () => {
+  it('enters preview-only mode when production database configuration is absent', async () => {
     process.env.NODE_ENV = 'production';
     delete process.env.DATABASE_URL;
-    await expect(import('./env')).rejects.toThrow('DATABASE_URL');
+    const config = await import('./env');
+    expect(() => config.assertProductionConfiguration()).not.toThrow();
+    expect(config.productionConfigurationStatus().runtime.previewOnly).toBe(true);
+    expect(config.productionConfigurationWarnings()).toContain('DATABASE_URL is not set; serving frontend preview only.');
   });
 
   it('rejects malformed positive integer settings', async () => {
@@ -66,6 +69,7 @@ describe('production configuration guard', () => {
     expect(() => config.assertProductionConfiguration()).not.toThrow();
     expect(config.productionConfigurationStatus().providers).toEqual({ gsc: false, dataForSeo: false, trc20Payments: false });
     expect(config.productionConfigurationWarnings()).toHaveLength(3);
+    expect(config.productionConfigurationStatus().runtime.previewOnly).toBe(false);
   });
 
   it('uses Railway public domain as APP_BASE_URL when not set explicitly', async () => {

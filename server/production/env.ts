@@ -5,14 +5,6 @@ type Runtime = 'development' | 'test' | 'production';
 const runtime = (process.env.NODE_ENV || 'development') as Runtime;
 const raw = (name: string): string => process.env[name]?.trim() || '';
 
-const requiredInProduction = (name: string): string => {
-  const value = raw(name);
-  if (!value && runtime === 'production') {
-    throw new Error(`Missing required production environment variable: ${name}`);
-  }
-  return value || '';
-};
-
 const asPositiveInt = (name: string, fallback: number): number => {
   const raw = process.env[name];
   if (!raw) return fallback;
@@ -33,9 +25,9 @@ const isValidTronBase58 = (value: string): boolean => /^T[1-9A-HJ-NP-Za-km-z]{33
 
 export const env = Object.freeze({
   runtime,
-  databaseUrl: requiredInProduction('DATABASE_URL') || process.env.DATABASE_URL || '',
-  redisUrl: requiredInProduction('REDIS_URL') || process.env.REDIS_URL || '',
-  appEncryptionKey: requiredInProduction('APP_ENCRYPTION_KEY') || process.env.APP_ENCRYPTION_KEY || '',
+  databaseUrl: raw('DATABASE_URL'),
+  redisUrl: raw('REDIS_URL'),
+  appEncryptionKey: raw('APP_ENCRYPTION_KEY'),
   appBaseUrl: inferredAppBaseUrl(),
   gscClientId: process.env.GSC_CLIENT_ID || '',
   gscClientSecret: process.env.GSC_CLIENT_SECRET || '',
@@ -51,8 +43,17 @@ export const env = Object.freeze({
   encryptionKeyFingerprint: createHash('sha256').update(process.env.APP_ENCRYPTION_KEY || '').digest('hex').slice(0, 12)
 });
 
+export const isValidEncryptionKey = (): boolean => Buffer.from(env.appEncryptionKey, 'base64').length === 32;
+export const isPreviewOnlyRuntime = (): boolean => env.runtime === 'production' && (!env.databaseUrl || !env.redisUrl || !isValidEncryptionKey());
+
 export const productionConfigurationStatus = () => ({
   appBaseUrl: env.appBaseUrl,
+  runtime: {
+    database: Boolean(env.databaseUrl),
+    redis: Boolean(env.redisUrl),
+    encryptionKey: isValidEncryptionKey(),
+    previewOnly: isPreviewOnlyRuntime()
+  },
   providers: {
     gsc: Boolean(env.gscClientId && env.gscClientSecret && env.gscStateSecret),
     dataForSeo: Boolean(env.dataForSeoLogin && env.dataForSeoPassword),
@@ -63,6 +64,9 @@ export const productionConfigurationStatus = () => ({
 export const productionConfigurationWarnings = (): string[] => {
   if (env.runtime !== 'production') return [];
   const warnings: string[] = [];
+  if (!env.databaseUrl) warnings.push('DATABASE_URL is not set; serving frontend preview only.');
+  if (!env.redisUrl) warnings.push('REDIS_URL is not set; asynchronous jobs are disabled.');
+  if (!env.appEncryptionKey) warnings.push('APP_ENCRYPTION_KEY is not set; credential encryption is disabled.');
   if (!raw('APP_BASE_URL') && !raw('RAILWAY_PUBLIC_DOMAIN')) warnings.push('APP_BASE_URL is not set; OAuth callbacks will default to localhost.');
   if (!env.gscClientId || !env.gscClientSecret) warnings.push('GSC OAuth is not configured; GSC connection endpoints will fail closed.');
   if (!env.dataForSeoLogin || !env.dataForSeoPassword) warnings.push('DataForSEO is not configured; SERP jobs will fail closed.');
@@ -72,7 +76,7 @@ export const productionConfigurationWarnings = (): string[] => {
 
 export const assertProductionConfiguration = (): void => {
   if (env.runtime !== 'production') return;
-  if (Buffer.from(env.appEncryptionKey, 'base64').length !== 32) {
+  if (env.appEncryptionKey && !isValidEncryptionKey()) {
     throw new Error('APP_ENCRYPTION_KEY must be a base64-encoded 32-byte key');
   }
   if (env.trc20RecipientAddress && !isValidTronBase58(env.trc20RecipientAddress)) {

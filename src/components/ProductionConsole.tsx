@@ -4,6 +4,7 @@ import { Activity, CreditCard, Database, ExternalLink, FileText, LogOut, Plus, R
 type Organization = { id: string; name: string; role: 'OWNER' | 'ADMIN' | 'EDITOR' | 'VIEWER' };
 type User = { id: string; email: string; username: string; organizations: Organization[] };
 type ApiError = { error?: { message?: string } };
+type Health = { configuration?: { runtime?: { previewOnly?: boolean } } };
 
 const api = async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
   const headers = new Headers(init.headers);
@@ -17,10 +18,26 @@ const api = async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
 };
 
 const Panel = ({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) => <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4 flex items-center gap-2 font-semibold text-slate-900">{icon}{title}</div>{children}</section>;
+const PreviewAction = ({ children }: { children: React.ReactNode }) => <button disabled className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-500">{children}</button>;
+
+const PreviewConsole = () => {
+  const previewSites = [
+    { name: 'Brand Blog', domain: 'example.com', status: 'GSC 待授权' },
+    { name: 'Commerce SEO', domain: 'shop.example.com', status: 'WordPress 待配置' }
+  ];
+  const previewSnapshots = [
+    { source: 'GSC', status: 'LIVE', fetchedAt: '2026-08-23 09:00', note: '查询、页面、国家、设备维度' },
+    { source: 'DATAFORSEO', status: 'PENDING', fetchedAt: '待队列执行', note: 'SERP / 竞品 / 关键词成本台账' }
+  ];
+  const workflow = ['真实数据', '内容生成', '安全清洗', '质量报告', '人工审核', 'WordPress 发布'];
+
+  return <main className="min-h-screen bg-slate-50 text-slate-900"><header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4"><div><h1 className="font-bold">AISEO · 产品预览工作台</h1><p className="text-xs text-slate-500">页面与功能流定稿中 · 后端数据库稍后接入</p></div><span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">预览模式</span></div></header><div className="mx-auto max-w-6xl space-y-5 px-5 py-6"><div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">当前 Railway 未配置数据库、Redis 或加密密钥，已切换为前端预览。这里展示最终产品结构，真实登录、充值、发布和数据同步会在后端接入后启用。</div><div className="grid gap-5 md:grid-cols-3"><Panel title="可用积分" icon={<CreditCard className="h-5 w-5 text-emerald-600"/>}><p className="text-3xl font-bold">12,500</p><p className="mt-1 text-sm text-slate-500">余额投影 · 预授权 · 不可变总账</p></Panel><Panel title="数据来源" icon={<Database className="h-5 w-5 text-indigo-600"/>}><p className="text-3xl font-bold">2</p><p className="mt-1 text-sm text-slate-500">GSC 与 DataForSEO 均需显示溯源</p></Panel><Panel title="发布门禁" icon={<ShieldCheck className="h-5 w-5 text-sky-600"/>}><p className="font-semibold">人工审核必需</p><p className="mt-1 text-sm text-slate-500">未通过质量报告不会发布</p></Panel></div><div className="grid gap-5 lg:grid-cols-2"><Panel title="站点管理" icon={<Plus className="h-5 w-5 text-emerald-600"/>}><div className="mb-4 flex flex-wrap gap-2"><PreviewAction>添加站点</PreviewAction><PreviewAction>配置 WordPress</PreviewAction><PreviewAction>邀请成员</PreviewAction></div><div className="space-y-2">{previewSites.map((site) => <div key={site.domain} className="flex justify-between rounded-lg bg-slate-50 p-3 text-sm"><span>{site.name} · {site.domain}</span><span className="text-amber-700">{site.status}</span></div>)}</div></Panel><Panel title="SEO 数据" icon={<Search className="h-5 w-5 text-indigo-600"/>}><div className="mb-4 flex flex-wrap gap-2"><PreviewAction>连接 GSC</PreviewAction><PreviewAction>创建 SERP 任务</PreviewAction><PreviewAction>刷新快照</PreviewAction></div><div className="space-y-2">{previewSnapshots.map((snapshot) => <div key={snapshot.source} className="rounded-lg bg-slate-50 p-3 text-xs"><div className="font-semibold">{snapshot.source} · {snapshot.status} · {snapshot.fetchedAt}</div><p className="mt-1 text-slate-500">{snapshot.note}</p></div>)}</div></Panel></div><Panel title="内容生产流程" icon={<Activity className="h-5 w-5 text-slate-700"/>}><div className="grid gap-2 md:grid-cols-6">{workflow.map((step, index) => <div key={step} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm"><span className="mb-2 block text-xs text-slate-400">0{index + 1}</span><span className="font-medium">{step}</span></div>)}</div></Panel><Panel title="积分总账" icon={<FileText className="h-5 w-5 text-slate-700"/>}><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-slate-500"><tr><th className="p-2">类型</th><th className="p-2">变动</th><th className="p-2">状态</th><th className="p-2">说明</th></tr></thead><tbody><tr className="border-t"><td className="p-2">RECHARGE</td><td className="p-2">+10000</td><td className="p-2">待真实链上核验</td><td className="p-2">TRC20 USDT 充值意图</td></tr><tr className="border-t"><td className="p-2">HOLD</td><td className="p-2">-5</td><td className="p-2">待队列执行</td><td className="p-2">DataForSEO SERP 成本预授权</td></tr></tbody></table></div></Panel></div></main>;
+};
 
 export function ProductionConsole() {
   const [user, setUser] = useState<User>();
   const [organizationId, setOrganizationId] = useState<string>();
+  const [previewOnly, setPreviewOnly] = useState(false);
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [message, setMessage] = useState<string>();
   const [ledger, setLedger] = useState<{ balance: number; held: number; available: number; entries: any[] }>();
@@ -43,6 +60,10 @@ export function ProductionConsole() {
   }, []);
 
   useEffect(() => {
+    fetch('/api/health')
+      .then((response) => response.json())
+      .then((health: Health) => setPreviewOnly(Boolean(health.configuration?.runtime?.previewOnly)))
+      .catch(() => undefined);
     api<{ user: User }>('/auth/me').then(({ user }) => { setUser(user); setOrganizationId(user.organizations[0]?.id); }).catch(() => undefined);
   }, []);
   useEffect(() => { if (organizationId) void loadWorkspace(organizationId); }, [organizationId, loadWorkspace]);
@@ -88,6 +109,8 @@ export function ProductionConsole() {
       window.location.assign(response.authorizationUrl);
     } catch (error) { setMessage(error instanceof Error ? error.message : '无法发起 GSC 授权'); }
   };
+
+  if (previewOnly) return <PreviewConsole />;
 
   if (!user) return <main className="min-h-screen bg-slate-950 px-4 py-12 text-slate-100"><div className="mx-auto max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-7 shadow-2xl"><div className="mb-6 flex items-center gap-3"><ShieldCheck className="h-8 w-8 text-emerald-400"/><div><h1 className="text-xl font-bold">AISEO 生产工作区</h1><p className="text-sm text-slate-400">真实数据 · 可审计积分 · 人工发布</p></div></div>{message && <p className="mb-4 rounded-lg bg-rose-950/50 p-3 text-sm text-rose-200">{message}</p>}<form onSubmit={authenticate} className="space-y-3">{mode === 'login' ? <><input name="identifier" required placeholder="邮箱或用户名" className="w-full rounded-lg border border-slate-700 bg-slate-800 p-3"/></> : <><input name="email" type="email" required placeholder="邮箱" className="w-full rounded-lg border border-slate-700 bg-slate-800 p-3"/><input name="username" required minLength={3} placeholder="用户名" className="w-full rounded-lg border border-slate-700 bg-slate-800 p-3"/><input name="organizationName" required placeholder="组织名称" className="w-full rounded-lg border border-slate-700 bg-slate-800 p-3"/></>}<input name="password" type="password" required minLength={12} placeholder="至少 12 位密码" className="w-full rounded-lg border border-slate-700 bg-slate-800 p-3"/><button disabled={loading} className="w-full rounded-lg bg-emerald-500 p-3 font-bold text-slate-950 disabled:opacity-50">{loading ? '处理中…' : mode === 'login' ? '安全登录' : '创建组织工作区'}</button></form><button className="mt-4 w-full text-sm text-emerald-300" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>{mode === 'login' ? '没有账号？创建组织' : '已有账号？登录'}</button></div></main>;
 

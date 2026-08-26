@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import path from 'path';
 import { apiV1Router, productionErrorHandler } from './router';
-import { assertProductionConfiguration, productionConfigurationStatus, productionConfigurationWarnings } from './env';
+import { assertProductionConfiguration, isPreviewOnlyRuntime, productionConfigurationStatus, productionConfigurationWarnings } from './env';
 import { closeQueue } from './queue';
 import { disconnectDatabase } from './prisma';
 import { createRateLimiter } from '../middleware/rateLimiter';
@@ -42,10 +42,24 @@ const startProductionServer = (): void => {
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: false, limit: '1mb' }));
   app.use('/api/v1', createRateLimiter(60_000, 120));
+  app.use('/api/v1', (req: Request, res: Response, next: NextFunction) => {
+    if (!isPreviewOnlyRuntime()) {
+      next();
+      return;
+    }
+    res.status(503).json({
+      success: false,
+      error: {
+        code: 'BACKEND_NOT_CONFIGURED',
+        message: '当前为前端预览模式，数据库、队列或加密密钥尚未接入，真实业务接口暂不可用。',
+        traceId: req.traceId
+      }
+    });
+  });
   app.use('/api/v1', apiV1Router);
   app.use('/api/v1', productionErrorHandler);
   app.get('/api/health', (_req: Request, res: Response) => {
-    res.json({ status: 'UP', timestamp: new Date().toISOString(), uptimeSeconds: Math.floor(process.uptime()), mode: 'production', configuration: productionConfigurationStatus() });
+    res.json({ status: isPreviewOnlyRuntime() ? 'DEGRADED' : 'UP', timestamp: new Date().toISOString(), uptimeSeconds: Math.floor(process.uptime()), mode: 'production', configuration: productionConfigurationStatus() });
   });
   app.use('/api', (req: Request, res: Response) => {
     res.status(404).json({ error: { code: 'API_NOT_FOUND', message: `Endpoint ${req.method} ${req.originalUrl} not found.` } });
