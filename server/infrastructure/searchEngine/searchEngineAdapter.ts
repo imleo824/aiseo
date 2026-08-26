@@ -1,6 +1,76 @@
 import { ISearchEngineSubmitter } from '../../domain/ports';
 import { logger } from '../../utils/logger';
 import { indexingCircuitBreaker } from '../resilience/circuitBreaker';
+import { createSign } from 'crypto';
+
+type GoogleServiceAccount = {
+  client_email?: string;
+  private_key?: string;
+  token_uri?: string;
+};
+
+const GOOGLE_INDEXING_SCOPE = 'https://www.googleapis.com/auth/indexing';
+const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+const GOOGLE_PUBLISH_ENDPOINT = 'https://indexing.googleapis.com/v3/urlNotifications:publish';
+
+const base64UrlJson = (value: unknown): string => Buffer.from(JSON.stringify(value)).toString('base64url');
+
+const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs = 10_000): Promise<Response> => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const parseServiceAccount = (value: string): GoogleServiceAccount => {
+  let account: GoogleServiceAccount;
+  try {
+    account = JSON.parse(value) as GoogleServiceAccount;
+  } catch {
+    throw new Error('Google Service Account JSON 格式不合法');
+  }
+  if (!account.client_email || !account.private_key) {
+    throw new Error('Google Service Account 缺失 client_email 或 private_key');
+  }
+  if (account.token_uri && account.token_uri !== GOOGLE_TOKEN_ENDPOINT) {
+    throw new Error('Google Service Account token_uri 不受支持');
+  }
+  return account;
+};
+
+const createGoogleAccessToken = async (serviceAccountJson: string): Promise<string> => {
+  const account = parseServiceAccount(serviceAccountJson);
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const encodedHeader = base64UrlJson({ alg: 'RS256', typ: 'JWT' });
+  const encodedClaim = base64UrlJson({
+    iss: account.client_email,
+    scope: GOOGLE_INDEXING_SCOPE,
+    aud: GOOGLE_TOKEN_ENDPOINT,
+    iat: issuedAt,
+    exp: issuedAt + 3600
+  });
+  const signingInput = `${encodedHeader}.${encodedClaim}`;
+  const signer = createSign('RSA-SHA256');
+  signer.update(signingInput);
+  signer.end();
+  const assertion = `${signingInput}.${signer.sign(account.private_key, 'base64url')}`;
+  const response = await fetchWithTimeout(GOOGLE_TOKEN_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion
+    }).toString()
+  });
+  const body = await response.json().catch(() => ({})) as { access_token?: string; error_description?: string; error?: string };
+  if (!response.ok || !body.access_token) {
+    throw new Error(`Google OAuth 换取访问令牌失败: ${body.error_description || body.error || `HTTP ${response.status}`}`);
+  }
+  return body.access_token;
+};
 
 export class SearchEngineAdapter implements ISearchEngineSubmitter {
   /**
@@ -144,22 +214,35 @@ export class SearchEngineAdapter implements ISearchEngineSubmitter {
 
     return indexingCircuitBreaker.execute<GooglePushResult>(
       async (): Promise<GooglePushResult> => {
-        let parsedAccount: any;
         try {
-          parsedAccount = JSON.parse(serviceAccountJson.trim());
-          if (parsedAccount && (!parsedAccount.client_email || !parsedAccount.private_key) && !serviceAccountJson.includes('test')) {
-            return { success: false, statusCode: 400, message: 'Google Service Account 缺失 client_email 或 private_key 必填字段' };
+          const accessToken = await createGoogleAccessToken(serviceAccountJson.trim());
+          for (const url of urls) {
+            const response = await fetchWithTimeout(GOOGLE_PUBLISH_ENDPOINT, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${accessToken}`
+              },
+              body: JSON.stringify({ url, type: 'URL_UPDATED' })
+            });
+            if (!response.ok) {
+              const body = await response.json().catch(() => ({})) as { error?: { message?: string } };
+              return {
+                success: false,
+                statusCode: response.status,
+                message: `Google Indexing API 拒绝提交: ${body.error?.message || `HTTP ${response.status}`}`
+              };
+            }
           }
-        } catch {
-          logger.warn('SEARCH_ENGINE', `Invalid Google Service Account JSON for ${cleanDomain}`);
-          return { success: false, statusCode: 400, message: 'Google Service Account JSON 格式不合法' };
-        }
-
-        profiler.done(`Google Indexing API submission verified for ${cleanDomain}`);
-        return {
-          success: true,
-          statusCode: 200,
-          message: `Google Indexing API 提交成功！已向 Google Search Console 提交 ${urls.length} 个 URL`
+          profiler.done(`Google Indexing API submitted ${urls.length} URL(s) for ${cleanDomain}`);
+          return {
+            success: true,
+            statusCode: 200,
+            message: `Google Indexing API 已提交 ${urls.length} 个 URL 更新通知`
+          };
+        } catch (error: any) {
+          logger.warn('SEARCH_ENGINE', `Google Indexing API request failed for ${cleanDomain}: ${error?.message || error}`);
+          return { success: false, statusCode: 502, message: `Google Indexing API 请求失败: ${error?.message || '未知错误'}` };
         };
       },
       (): GooglePushResult => {
@@ -172,8 +255,24 @@ export class SearchEngineAdapter implements ISearchEngineSubmitter {
       }
     );
   }
+
+  public async testGoogleCredentials(serviceAccountJson?: string): Promise<{
+    success: boolean;
+    skipped?: boolean;
+    statusCode?: number;
+    message: string;
+  }> {
+    if (!serviceAccountJson?.trim()) {
+      return { success: false, skipped: true, message: '未配置 Google Service Account 凭证，无法执行连通性测试' };
+    }
+    try {
+      await createGoogleAccessToken(serviceAccountJson.trim());
+      return { success: true, statusCode: 200, message: 'Google OAuth 服务账号鉴权成功；真实发布时会由 Indexing API 返回逐 URL 结果' };
+    } catch (error: any) {
+      return { success: false, statusCode: 502, message: `Google OAuth 鉴权失败: ${error?.message || '未知错误'}` };
+    }
+  }
 }
 
 export const searchEngineAdapter = new SearchEngineAdapter();
 export const SearchEnginePushService = searchEngineAdapter;
-

@@ -27,25 +27,16 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
 }) => {
   const [selectedPkgId, setSelectedPkgId] = useState<string>('pkg-50');
   const [customUsdt, setCustomUsdt] = useState<string>('');
+  const [txHash, setTxHash] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  const [packages, setPackages] = useState<UsdtPackage[]>([
-    { id: 'pkg-10', name: '基础体验包', badge: '入门推荐', usdtAmount: 10, credits: 1000, bonusCredits: 0 },
-    { id: 'pkg-50', name: '专业进阶包', badge: '最受欢迎 (+10%)', usdtAmount: 50, credits: 5500, bonusCredits: 500, popular: true },
-    { id: 'pkg-100', name: '企业旗舰包', badge: '超值特惠 (+20%)', usdtAmount: 100, credits: 12000, bonusCredits: 2000 },
-    { id: 'pkg-300', name: '霸屏尊享包', badge: '大宗特惠 (+33%)', usdtAmount: 300, credits: 40000, bonusCredits: 10000 }
-  ]);
-
-  const [wallets, setWallets] = useState<Record<string, { network: string; address: string; qrCodePlaceholder: string }>>({
-    TRC20: {
-      network: 'USDT',
-      address: 'TLv5R4q9k8YJ3Z2QxP8wK1M7n6VbC9XyZ1',
-      qrCodePlaceholder: 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=TLv5R4q9k8YJ3Z2QxP8wK1M7n6VbC9XyZ1'
-    }
-  });
+  const [packages, setPackages] = useState<UsdtPackage[]>([]);
+  const [wallets, setWallets] = useState<Record<string, { network: string; address: string; qrCodePlaceholder: string }>>({});
+  const [paymentAvailable, setPaymentAvailable] = useState(false);
+  const [paymentNotice, setPaymentNotice] = useState('正在读取支付服务状态…');
 
   useEffect(() => {
     if (isOpen) {
@@ -55,7 +46,12 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
       api.getCreditConfig().then(res => {
         if (res.packages) setPackages(res.packages);
         if (res.wallets) setWallets(res.wallets);
-      }).catch(() => {});
+        setPaymentAvailable(res.paymentAvailable);
+        setPaymentNotice(res.paymentNotice || (res.paymentAvailable ? '' : '支付服务暂不可用'));
+      }).catch(() => {
+        setPaymentAvailable(false);
+        setPaymentNotice('无法读取支付服务状态，请稍后重试。');
+      });
     }
   }, [isOpen, tenantId]);
 
@@ -91,8 +87,16 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
     setSuccessMsg(null);
 
     const amount = getUsdtAmount();
+    if (!paymentAvailable || !currentWallet) {
+      setError(paymentNotice || '支付服务尚未配置');
+      return;
+    }
     if (amount <= 0) {
       setError('请选择充值套餐或输入有效的 USDT 金额');
+      return;
+    }
+    if (!/^[a-fA-F0-9]{64}$/.test(txHash.trim())) {
+      setError('请输入 TRON 主网 64 位交易哈希；提交后将进入链上核验。');
       return;
     }
 
@@ -100,14 +104,11 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
     try {
       const res = await onRechargeSuccess(
         amount, 
-        undefined, 
+        txHash.trim(),
         'TRC20', 
         selectedPkgId !== 'custom' ? selectedPkgId : undefined
       );
-      setSuccessMsg(res?.message || `充值成功！已到账 ${calculateCredits().toLocaleString()} 积分`);
-      setTimeout(() => {
-        onClose();
-      }, 1600);
+      setSuccessMsg(res?.message || '交易哈希已提交，等待链上核验；核验前不会入账。');
     } catch (err: any) {
       setError(err?.message || '充值处理失败，请检查网络后重试');
     } finally {
@@ -249,6 +250,12 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
             </div>
           </div>
 
+          {!paymentAvailable || !currentWallet ? (
+            <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs leading-6 text-amber-900">
+              <strong className="block text-amber-950">支付服务尚未开放</strong>
+              {paymentNotice}
+            </div>
+          ) : <>
           {/* 收款地址与二维码 */}
           <div className="p-4 rounded-xl bg-slate-50/70 space-y-3">
             <div className="flex items-center justify-between">
@@ -298,29 +305,43 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
                 充值: <strong className="text-slate-900 font-mono">${getUsdtAmount()} USDT</strong>
               </div>
               <div className="text-slate-600">
-                预计到账: <strong className="text-slate-900 font-bold text-sm">+{calculateCredits().toLocaleString()} 积分</strong>
+                核验后到账: <strong className="text-slate-900 font-bold text-sm">+{calculateCredits().toLocaleString()} 积分</strong>
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="tron-transaction-hash" className="block text-xs font-bold text-slate-900">TRON 交易哈希</label>
+              <input
+                id="tron-transaction-hash"
+                value={txHash}
+                onChange={(event) => setTxHash(event.target.value)}
+                placeholder="粘贴 64 位交易哈希"
+                autoComplete="off"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-mono text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+              />
+              <p className="text-[11px] leading-5 text-slate-500">仅支持 TRC20；提交哈希不等于入账，系统将在已固化交易中核验收款地址、合约和金额。</p>
             </div>
 
             <button
               id="btn-confirm-recharge-submit"
               type="submit"
-              disabled={loading || getUsdtAmount() <= 0}
+              disabled={loading || !paymentAvailable || !currentWallet || getUsdtAmount() <= 0}
               className="w-full py-3.5 px-4 bg-slate-950 hover:bg-slate-900 text-white font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm active:scale-[0.99] cursor-pointer"
             >
               {loading ? (
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>正在入账处理中...</span>
+                  <span>正在提交核验…</span>
                 </div>
               ) : (
                 <>
                   <Coins className="w-4 h-4 text-emerald-400" />
-                  <span>确认充值 ${getUsdtAmount()} USDT</span>
+                  <span>提交交易哈希核验</span>
                 </>
               )}
             </button>
           </form>
+          </>}
         </div>
       </div>
     </div>

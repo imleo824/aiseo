@@ -3,11 +3,11 @@ import { IWordPressPublisher } from '../../domain/ports';
 import { logger } from '../../utils/logger';
 import { generateSeoSlug } from '../../utils/validator';
 import { sanitizeArticleHtml } from '../../utils/contentSanitizer';
+import { resolvePublicHttpsOrigin } from '../../utils/networkSafety';
 
 export class WordPressAdapter implements IWordPressPublisher {
-  private getBaseEndpoint(site: WordPressSite): string {
-    const domain = site.domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
-    return `https://${domain}/wp-json`;
+  private async getBaseEndpoint(site: WordPressSite): Promise<string> {
+    return `${await resolvePublicHttpsOrigin(site.domain.trim())}/wp-json`;
   }
 
   private getAuthHeaders(site: WordPressSite): Record<string, string> {
@@ -40,10 +40,10 @@ export class WordPressAdapter implements IWordPressPublisher {
     message: string;
   }> {
     const profiler = logger.profile('WP_ADAPTER', `testConnection(${site.domain})`);
-    const baseEndpoint = this.getBaseEndpoint(site);
     const headers = this.getAuthHeaders(site);
 
     try {
+      const baseEndpoint = await this.getBaseEndpoint(site);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 6000);
 
@@ -125,7 +125,6 @@ export class WordPressAdapter implements IWordPressPublisher {
     error?: string;
   }> {
     const profiler = logger.profile('WP_ADAPTER', `publishPost(${site.domain}, "${draft.title.slice(0, 20)}...")`);
-    const baseEndpoint = this.getBaseEndpoint(site);
     const headers = this.getAuthHeaders(site);
     const postStatus = draft.status || 'publish';
 
@@ -150,6 +149,7 @@ export class WordPressAdapter implements IWordPressPublisher {
 
     if (headers['Authorization']) {
       try {
+        const baseEndpoint = await this.getBaseEndpoint(site);
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 12000);
 
@@ -205,7 +205,6 @@ export class WordPressAdapter implements IWordPressPublisher {
 
   public async deletePost(site: WordPressSite, wpPostId: number): Promise<{ success: boolean; message: string }> {
     const profiler = logger.profile('WP_ADAPTER', `deletePost(${site.domain}, ${wpPostId})`);
-    const baseEndpoint = this.getBaseEndpoint(site);
     const headers = this.getAuthHeaders(site);
 
     if (process.env.NODE_ENV === 'test') {
@@ -221,6 +220,7 @@ export class WordPressAdapter implements IWordPressPublisher {
 
     if (headers['Authorization'] && wpPostId) {
       try {
+        const baseEndpoint = await this.getBaseEndpoint(site);
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000);
 

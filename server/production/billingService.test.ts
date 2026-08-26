@@ -85,6 +85,11 @@ describe('payment intent and transaction-hash state machine', () => {
     expect(mocks.auditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'PAYMENT_INTENT_CREATED' }) }));
   });
 
+  it('rejects fractional USDT instead of silently truncating the credited amount', async () => {
+    await expect(billingService.createPaymentIntent('org-1', '12.5')).rejects.toThrow('仅支持整数 USDT');
+    expect(mocks.paymentIntent.create).not.toHaveBeenCalled();
+  });
+
   it('only attaches valid, unique hashes to an active intent', async () => {
     await expect(billingService.attachTransactionHash('org-1', 'payment-1', 'bad')).rejects.toThrow('交易哈希格式无效');
     mocks.paymentIntent.findFirst.mockResolvedValue(payment());

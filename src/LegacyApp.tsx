@@ -35,7 +35,7 @@ const getDefaultLanguage = (): Language => {
 };
 
 export default function LegacyApp() {
-  const [activeTenantId, setActiveTenantId] = useState<string>('tenant-a');
+  const [activeTenantId, setActiveTenantId] = useState<string>('');
   const [activeNav, setActiveNav] = useState<NavItem>('DASHBOARD');
   const [globalLanguage, setGlobalLanguage] = useState<Language>(getDefaultLanguage());
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
@@ -172,7 +172,7 @@ export default function LegacyApp() {
             <div className="flex items-center space-x-2 sm:space-x-3 text-sm truncate">
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg text-slate-700 font-medium border border-slate-200/80 shadow-xs">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"></span>
-                <span className="truncate max-w-[150px]">{account?.username || '演示租户'}</span>
+                <span className="truncate max-w-[150px]">{account?.username || '未登录'}</span>
               </div>
               <ChevronRight className="w-3.5 h-3.5 text-slate-300 hidden sm:inline" />
               <span className="text-slate-950 font-bold text-sm sm:text-base lg:text-lg tracking-tight truncate">{pageInfo.title}</span>
@@ -271,9 +271,6 @@ export default function LegacyApp() {
             <ProAuditLedgerTab
               sites={sites}
               drafts={drafts}
-              onRePushIndexing={async (draftId) => {
-                await actions.handleApprovePublish(draftId);
-              }}
             />
           )}
 
@@ -306,7 +303,6 @@ export default function LegacyApp() {
               account={account}
               allTenants={allTenants}
               activeTenantId={activeTenantId}
-              onSwitchTenant={(tid) => setActiveTenantId(tid)}
               onRefreshData={() => actions.loadTenantData()}
             />
           )}

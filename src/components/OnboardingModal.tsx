@@ -45,6 +45,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [wpAppPassword, setWpAppPassword] = useState('');
   const [niche, setNiche] = useState('企业出海与技术服务');
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -53,20 +54,25 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     if (!domain.trim()) return;
 
     setSubmitting(true);
+    setError(null);
     const cleanDomain = domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
 
-    await onAddSite({
-      domain: cleanDomain,
-      name: name.trim() || cleanDomain,
-      siteType,
-      siteLanguage,
-      wpUsername: wpUsername.trim() || undefined,
-      wpAppPassword: wpAppPassword.trim() || undefined,
-      niche: niche.trim() || undefined
-    });
-
-    setSubmitting(false);
-    onClose();
+    try {
+      await onAddSite({
+        domain: cleanDomain,
+        name: name.trim() || cleanDomain,
+        siteType,
+        siteLanguage,
+        wpUsername: wpUsername.trim() || undefined,
+        wpAppPassword: wpAppPassword.trim() || undefined,
+        niche: niche.trim() || undefined
+      });
+      onClose();
+    } catch (submissionError) {
+      setError(submissionError instanceof Error ? submissionError.message : '站点保存失败，请检查配置后重试。');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -95,6 +101,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 text-xs overflow-y-auto flex-1">
+          {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 leading-5 text-rose-800">{error}</div>}
           
           {/* Site Type & Language */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

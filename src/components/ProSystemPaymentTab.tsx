@@ -10,14 +10,12 @@ interface ProSystemPaymentTabProps {
 
 export const ProSystemPaymentTab: React.FC<ProSystemPaymentTabProps> = ({
   account,
-  activeTenantId = 'tenant-a'
+  activeTenantId
 }) => {
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
-  const [updatingTxId, setUpdatingTxId] = useState<string | null>(null);
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   const fetchPaymentLogs = async () => {
     setLoading(true);
@@ -50,24 +48,6 @@ export const ProSystemPaymentTab: React.FC<ProSystemPaymentTabProps> = ({
     navigator.clipboard.writeText(hash);
     setCopiedHash(hash);
     setTimeout(() => setCopiedHash(null), 2000);
-  };
-
-  const handleConfirmStatus = async (tx: CreditTransaction, newStatus: 'CONFIRMED' | 'PENDING' | 'REJECTED') => {
-    setUpdatingTxId(tx.id);
-    setActionNotice(null);
-    try {
-      const api = createApiService(activeTenantId);
-      const res = await api.confirmPaymentStatus(tx.id, newStatus, tx.tenantId);
-      if (res.success) {
-        setActionNotice(res.message);
-        fetchPaymentLogs();
-      }
-    } catch (err: any) {
-      setActionNotice(`❌ 确认到账失败: ${err.message}`);
-    } finally {
-      setUpdatingTxId(null);
-      setTimeout(() => setActionNotice(null), 4000);
-    }
   };
 
   const filteredTxs = useMemo(() => {
@@ -117,14 +97,6 @@ export const ProSystemPaymentTab: React.FC<ProSystemPaymentTabProps> = ({
         </div>
       </div>
 
-      {/* Action Notice Banner */}
-      {actionNotice && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-lg flex items-center gap-2 animate-in fade-in">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          <span>{actionNotice}</span>
-        </div>
-      )}
-
       {/* Main Payment Log Card */}
       <div className="bg-white border border-slate-200/80 rounded-lg shadow-sm overflow-hidden">
         
@@ -170,7 +142,7 @@ export const ProSystemPaymentTab: React.FC<ProSystemPaymentTabProps> = ({
                     <div>
                       <div className="font-bold text-slate-900 text-sm">{tx.description || 'USDT 充值'}</div>
                       <div className="text-[11px] text-slate-400 mt-1 font-mono">
-                        租户: {tx.tenantId || 'tenant-a'}
+                        租户: {tx.tenantId || '未知租户'}
                       </div>
                     </div>
                     <div className="shrink-0">
@@ -236,42 +208,7 @@ export const ProSystemPaymentTab: React.FC<ProSystemPaymentTabProps> = ({
                     <span className="text-slate-400 text-[11px] font-mono shrink-0">
                       {tx.createdAt ? new Date(tx.createdAt).toLocaleString('zh-CN', { hour12: false }) : '2026-08-24'}
                     </span>
-                    {account?.role === 'ADMIN' ? (
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {statusKey !== 'CONFIRMED' && (
-                          <button
-                            type="button"
-                            onClick={() => handleConfirmStatus(tx, 'CONFIRMED')}
-                            disabled={updatingTxId === tx.id}
-                            className="px-2 py-1 text-[10px] font-bold text-emerald-700 bg-white hover:bg-emerald-50 border border-emerald-300 rounded-md transition"
-                          >
-                            确认
-                          </button>
-                        )}
-                        {statusKey !== 'PENDING' && (
-                          <button
-                            type="button"
-                            onClick={() => handleConfirmStatus(tx, 'PENDING')}
-                            disabled={updatingTxId === tx.id}
-                            className="px-2 py-1 text-[10px] font-medium text-amber-700 bg-white hover:bg-amber-50 border border-amber-300 rounded-md transition"
-                          >
-                            待核
-                          </button>
-                        )}
-                        {statusKey !== 'REJECTED' && (
-                          <button
-                            type="button"
-                            onClick={() => handleConfirmStatus(tx, 'REJECTED')}
-                            disabled={updatingTxId === tx.id}
-                            className="px-2 py-1 text-[10px] font-medium text-rose-700 bg-white hover:bg-rose-50 border border-rose-300 rounded-md transition"
-                          >
-                            拒绝
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-slate-400 text-[10px]">系统自动校核</span>
-                    )}
+                    <span className="text-slate-400 text-[10px]">仅链上核验 Worker 可结算</span>
                   </div>
                 </div>
               );
@@ -315,7 +252,7 @@ export const ProSystemPaymentTab: React.FC<ProSystemPaymentTabProps> = ({
                       <td className="py-3.5 px-4">
                         <div className="font-semibold text-slate-900">{tx.description || 'USDT 充值'}</div>
                         <div className="text-[11px] text-slate-400 font-mono">
-                          租户: {tx.tenantId || 'tenant-a'}
+                        租户: {tx.tenantId || '未知租户'}
                         </div>
                       </td>
 
@@ -373,41 +310,10 @@ export const ProSystemPaymentTab: React.FC<ProSystemPaymentTabProps> = ({
                         )}
                       </td>
 
-                      {/* Action Column for Manual Confirmation */}
+                      {/* Settlement is intentionally performed only by the chain-verification worker. */}
                       <td className="py-3.5 px-4 text-center">
                         {account?.role === 'ADMIN' ? (
-                          <div className="inline-flex items-center gap-1 bg-slate-50 p-1 rounded-md border border-slate-200/80">
-                            {statusKey !== 'CONFIRMED' && (
-                              <button
-                                type="button"
-                                onClick={() => handleConfirmStatus(tx, 'CONFIRMED')}
-                                disabled={updatingTxId === tx.id}
-                                className="px-2 py-0.5 text-[10px] font-bold text-emerald-700 bg-white hover:bg-emerald-50 border border-emerald-300 rounded transition cursor-pointer disabled:opacity-50"
-                              >
-                                确认到账
-                              </button>
-                            )}
-                            {statusKey !== 'PENDING' && (
-                              <button
-                                type="button"
-                                onClick={() => handleConfirmStatus(tx, 'PENDING')}
-                                disabled={updatingTxId === tx.id}
-                                className="px-2 py-0.5 text-[10px] font-medium text-amber-700 bg-white hover:bg-amber-50 border border-amber-300 rounded transition cursor-pointer disabled:opacity-50"
-                              >
-                                标为待核
-                              </button>
-                            )}
-                            {statusKey !== 'REJECTED' && (
-                              <button
-                                type="button"
-                                onClick={() => handleConfirmStatus(tx, 'REJECTED')}
-                                disabled={updatingTxId === tx.id}
-                                className="px-2 py-0.5 text-[10px] font-medium text-rose-700 bg-white hover:bg-rose-50 border border-rose-300 rounded transition cursor-pointer disabled:opacity-50"
-                              >
-                                拒绝/退回
-                              </button>
-                            )}
-                          </div>
+                          <span className="text-[10px] text-slate-500">链上核验自动结算</span>
                         ) : (
                           <span className="text-slate-400 text-[11px]">系统自动校核</span>
                         )}

@@ -4,6 +4,7 @@ import { fileTenantRepository } from "../infrastructure/persistence/fileTenantRe
 import { wordPressAdapter } from "../infrastructure/wordpress/wordpressAdapter";
 import { searchEngineAdapter } from "../infrastructure/searchEngine/searchEngineAdapter";
 import { NotFoundError } from "../domain/errors";
+import { ValidationError } from '../domain/errors';
 
 export const getDrafts = async (req: TenantRequest, res: Response) => {
   const tenantData = fileTenantRepository.getTenantData(req.tenantId);
@@ -21,6 +22,9 @@ export const approveAndPublishDraft = async (req: TenantRequest, res: Response) 
 
   if (!site) {
     throw new NotFoundError(`Site with ID "${draft.siteId}" was not found.`);
+  }
+  if (!draft.qualityGate?.passed || draft.status === 'QUALITY_FAILED') {
+    throw new ValidationError('质量门禁未通过，已阻止发布。请修订草稿后重新生成。');
   }
 
   // 1. WordPress REST Publishing
@@ -50,25 +54,29 @@ export const approveAndPublishDraft = async (req: TenantRequest, res: Response) 
   }
 
   // 2. Search Engine Submissions (Multi-Protocol)
-  let pushDetail = '搜索引擎推送已分发';
+  const pushResults: string[] = [];
   if (site && draft.publishedUrl) {
     if (draft.language === 'zh-CN' && site.baiduToken) {
       const baiduRes = await searchEngineAdapter.pushToBaidu(site.domain, site.baiduToken, [draft.publishedUrl]);
-      await fileTenantRepository.appendBaiduLog(req.tenantId, {
-        id: `baidu-${Date.now()}`,
-        url: draft.publishedUrl,
-        submittedAt: new Date().toISOString(),
-        type: 'DAILY_API',
-        status: 'SUBMITTED',
-        remainQuota: baiduRes.remain || 90
-      });
-      pushDetail = baiduRes.message;
+      if (baiduRes.success && !baiduRes.skipped) {
+        await fileTenantRepository.appendBaiduLog(req.tenantId, {
+          id: `baidu-${Date.now()}`,
+          url: draft.publishedUrl,
+          submittedAt: new Date().toISOString(),
+          type: 'DAILY_API',
+          status: 'SUBMITTED',
+          remainQuota: baiduRes.remain || 0
+        });
+      }
+      pushResults.push(`百度：${baiduRes.message}`);
     }
 
     if (site.googleServiceAccountJson) {
-      await searchEngineAdapter.pushToGoogle(site.domain, site.googleServiceAccountJson, [draft.publishedUrl]);
+      const googleRes = await searchEngineAdapter.pushToGoogle(site.domain, site.googleServiceAccountJson, [draft.publishedUrl]);
+      pushResults.push(`Google：${googleRes.message}`);
     }
   }
+  const pushDetail = pushResults.length ? pushResults.join('；') : '未配置可用的搜索引擎推送凭证，等待自然抓取';
 
   if (site) {
     site.pagesCount = (site.pagesCount || 0) + 1;
@@ -95,7 +103,7 @@ export const approveAndPublishDraft = async (req: TenantRequest, res: Response) 
     action: 'MANUAL_APPROVE_PUBLISH',
     target: draft.title,
     result: 'SUCCESS',
-    details: `用户人工审核通过并推送至目标站点！URL: ${draft.publishedUrl} · ${pushDetail} (REST API 实时写入)`
+    details: `已发布至目标站点。URL: ${draft.publishedUrl}；${pushDetail}`
   });
 
   res.json({ draft, site, publishedUrl: draft.publishedUrl, wpPostId: draft.wpPostId, isFallback: false });

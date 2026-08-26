@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { fileTenantRepository, DEFAULT_PRICING_CONFIG } from '../infrastructure/persistence/fileTenantRepository';
-import { UsdtNetwork, PricingConfig } from '../../src/types/seo';
+import { PricingConfig } from '../../src/types/seo';
 import { logger } from '../utils/logger';
 import { TenantRequest } from '../middleware/tenant';
 
@@ -19,27 +19,24 @@ const ensureTenantResolved = (req: Request): void => {
   }
 };
 
+const LEGACY_PAYMENT_NOTICE = 'USDT 链上核验尚未接入当前运行环境。请完成 /api/v1 的数据库与 TronGrid Worker 配置后再开放真实收款。';
+
 export const creditController = {
   /**
    * 获取充值配置信息（套餐、收款钱包地址、汇率说明、扣费标准）
    */
   getConfig: async (_req: Request, res: Response): Promise<void> => {
     const config = fileTenantRepository.getPricingConfig();
-    const wallets = {
-      TRC20: {
-        network: 'TRC20 (Tron 波场网络 · 极速低 Gas)',
-        address: config.trc20Address || 'TLv5R4q9k8YJ3Z2QxP8wK1M7n6VbC9XyZ1',
-        qrCodePlaceholder: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${config.trc20Address || 'TLv5R4q9k8YJ3Z2QxP8wK1M7n6VbC9XyZ1'}`
-      }
-    };
 
     res.json({
       success: true,
       rate: config.rate || '1 USDT = 100 基础积分',
-      trc20Address: config.trc20Address || 'TLv5R4q9k8YJ3Z2QxP8wK1M7n6VbC9XyZ1',
+      trc20Address: undefined,
       packages: config.packages || DEFAULT_PRICING_CONFIG.packages,
-      wallets,
-      actionPricing: config.actionPricing || DEFAULT_PRICING_CONFIG.actionPricing
+      wallets: {},
+      actionPricing: config.actionPricing || DEFAULT_PRICING_CONFIG.actionPricing,
+      paymentAvailable: false,
+      paymentNotice: LEGACY_PAYMENT_NOTICE
     });
   },
 
@@ -149,37 +146,9 @@ export const creditController = {
       res.status(401).json({ success: false, message: '未登录或身份凭证已失效' });
       return;
     }
-    const { usdtAmount, txHash, network = 'TRC20', packageId } = req.body;
+    res.status(503).json({ success: false, message: LEGACY_PAYMENT_NOTICE, error: { code: 'PAYMENT_VERIFICATION_UNAVAILABLE' } });
+    return;
 
-    const parsedUsdt = Number(usdtAmount);
-    if (!Number.isFinite(parsedUsdt) || parsedUsdt <= 0 || parsedUsdt > 100000) {
-      res.status(400).json({ success: false, message: '请输入有效且处于允许范围内的充值 USDT 金额' });
-      return;
-    }
-    if (!txHash || typeof txHash !== 'string' || txHash.trim().length < 16) {
-      res.status(400).json({ success: false, message: '必须提供有效交易哈希；充值将在链上核验后到账' });
-      return;
-    }
-
-    const config = fileTenantRepository.getPricingConfig();
-    const packages = config.packages || DEFAULT_PRICING_CONFIG.packages;
-    const selectedPackage = packages.find(pkg => pkg.id === packageId && pkg.usdtAmount === parsedUsdt);
-    const requestedCredits = selectedPackage ? selectedPackage.credits : Math.floor(parsedUsdt * 100);
-    const transaction = await fileTenantRepository.createPendingRecharge(
-      tenantId,
-      parsedUsdt,
-      requestedCredits,
-      txHash.trim(),
-      network as UsdtNetwork
-    );
-
-    // A submitted hash is not proof of payment. Crediting is intentionally limited to
-    // the verified settlement flow until a chain-indexer is connected.
-    res.status(202).json({
-      success: true,
-      message: '充值申请已提交，等待链上交易核验后入账。',
-      transaction
-    });
   },
 
   /**
@@ -265,26 +234,12 @@ export const creditController = {
       return;
     }
 
-    const { txId, status, targetTenantId = 'tenant-a' } = req.body;
-    if (!txId || !['CONFIRMED', 'PENDING', 'REJECTED'].includes(status)) {
-      res.status(400).json({ success: false, message: '参数无效：请提供有效的交易 ID 及状态 (CONFIRMED / PENDING / REJECTED)' });
-      return;
-    }
+    res.status(409).json({
+      success: false,
+      message: '旧版 JSON 账务不允许人工确认或直接上分。请使用已启用链上核验与不可变总账的 /api/v1 支付流程。',
+      error: { code: 'LEGACY_PAYMENT_SETTLEMENT_DISABLED' }
+    });
+    return;
 
-    try {
-      const result = await fileTenantRepository.updatePaymentStatus(
-        targetTenantId,
-        txId,
-        status,
-        tenantReq.tenantId
-      );
-      res.json({
-        success: true,
-        message: `✅ 已成功将交易 ${txId} 状态更新为: ${status === 'CONFIRMED' ? '已确认到账' : status === 'REJECTED' ? '已拒绝/未到账' : '待核验'}`,
-        transaction: result.tx
-      });
-    } catch (err: any) {
-      res.status(400).json({ success: false, message: err.message || '确认状态更新失败' });
-    }
   }
 };

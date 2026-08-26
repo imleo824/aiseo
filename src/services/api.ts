@@ -20,14 +20,17 @@ import {
 } from "../types/seo";
 
 export class ApiService {
-  private tenantId: string;
-
-  constructor(tenantId: string = 'tenant-a') {
-    this.tenantId = tenantId;
+  constructor(_tenantId?: string) {
+    // Tenant identity is derived exclusively from the HttpOnly server session.
+    // Keep the optional argument for legacy component compatibility; never use it
+    // as a client-controlled tenancy selector.
+    void _tenantId;
   }
 
   public setTenantId(tenantId: string) {
-    this.tenantId = tenantId;
+    // Compatibility no-op. Changing a local value must not change the workspace
+    // that the backend authorizes for the current session.
+    void tenantId;
   }
 
   public setAuthToken(token: string | null) {
@@ -121,7 +124,9 @@ export class ApiService {
       trc20Address: string;
       packages: UsdtPackage[]; 
       wallets: Record<string, { network: string; address: string; qrCodePlaceholder: string }>; 
-      actionPricing: Array<{ action: string; name?: string; credits: number; desc: string; enabled?: boolean }> 
+      actionPricing: Array<{ action: string; name?: string; credits: number; desc: string; enabled?: boolean }>;
+      paymentAvailable: boolean;
+      paymentNotice?: string;
     }>('/api/credits/config');
   }
 
@@ -378,7 +383,7 @@ export class ApiService {
   }
 
   public runTaskNow(taskId: string) {
-    return this.request<{ success: boolean; task: AutomatedTask; generatedDraft?: ArticleDraft }>(`/api/tasks/${taskId}/run`, {
+    return this.request<{ success: boolean; message?: string; task: AutomatedTask; generatedDraft?: ArticleDraft }>(`/api/tasks/${taskId}/run`, {
       method: 'POST'
     });
   }
@@ -418,4 +423,4 @@ export class ApiService {
   }
 }
 
-export const createApiService = (tenantId: string = 'tenant-a') => new ApiService(tenantId);
+export const createApiService = (tenantId?: string) => new ApiService(tenantId);

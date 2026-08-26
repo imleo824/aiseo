@@ -23,7 +23,7 @@ interface ProSystemBillingTabProps {
 
 export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
   account,
-  activeTenantId = 'tenant-a'
+  activeTenantId
 }) => {
   const [usages, setUsages] = useState<UsageRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -160,7 +160,7 @@ export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
                   <div>
                     <div className="font-bold text-slate-900 text-sm">{u.actionName || u.description || '算力消耗'}</div>
                     <div className="text-[11px] text-slate-400 mt-1 font-mono">
-                      租户: {u.tenantId || 'tenant-a'}
+                      租户: {u.tenantId || '未知租户'}
                     </div>
                   </div>
                   <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-lg shrink-0 ${getActionBadgeClass(u.action)}`}>
@@ -218,7 +218,7 @@ export const ProSystemBillingTab: React.FC<ProSystemBillingTabProps> = ({
                     <td className="py-3.5 px-4">
                       <div className="font-semibold text-slate-900">{u.actionName || u.description || '算力消耗'}</div>
                       <div className="text-[11px] text-slate-400 font-mono">
-                        租户: {u.tenantId || 'tenant-a'}
+                        租户: {u.tenantId || '未知租户'}
                       </div>
                     </td>
 

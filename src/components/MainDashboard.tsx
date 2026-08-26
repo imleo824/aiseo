@@ -113,41 +113,9 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
       if (onAnalyzeCompetitor) {
         const result = await onAnalyzeCompetitor(targetSiteId, comp);
         setCompetitorAnalysis(result);
-        showToast(`已成功提炼竞品「${comp}」高转化对标词！`);
+        showToast(`已完成竞品「${comp}」的真实资料分析。`);
       } else {
-        await new Promise(r => setTimeout(r, 600));
-        setCompetitorAnalysis({
-          competitor: comp,
-          competitorOverview: `${comp} 缺乏针对高性价比平替方案与深度实操调优的内容。`,
-          competitorWeaknesses: [
-            `高阶版本定价偏高，平替方案搜索需求旺盛`,
-            `官方缺乏端到端实操迁移避坑指南`
-          ],
-          attackKeywords: [
-            {
-              keyword: `${comp} 替代方案与平替选型深度评测`,
-              type: 'ALTERNATIVE',
-              typeLabel: '截流平替词',
-              intent: '商业对比决策',
-              estimatedMonthlyTraffic: 3600,
-              attackAngle: '突出高性价比与部署灵活性，截流高购买意向用户。',
-              difficulty: 'LOW',
-              recommendedH2s: [`为什么寻找替代方案`, '核心功能全景横评', '选型推荐与迁移指南']
-            },
-            {
-              keyword: `${comp} 常见踩坑排查与性能调优最佳实践`,
-              type: 'PAIN_POINT',
-              typeLabel: '技术攻防词',
-              intent: '技术解决型',
-              estimatedMonthlyTraffic: 2800,
-              attackAngle: '针对高频报错给出排查步骤，抢占专家心智。',
-              difficulty: 'LOW',
-              recommendedH2s: [`常见性能瓶颈`, '排查根因与调优实践', 'FAQ 答疑']
-            }
-          ],
-          strategicAdvice: `建议以「替代方案」为主攻词快速抢占搜索引擎前排。`
-        });
-        showToast(`已分析竞品「${comp}」！`);
+        showToast('竞品分析执行器未连接，未生成任何结论。');
       }
     } catch (e: any) {
       showToast(e.message || '分析失败，请重试');
@@ -199,50 +167,22 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     try {
       if (onRunCruise) {
         const publishedDraft = await onRunCruise(targetSiteIds, addLog, setActivePipelineStep, keywordToUse || undefined);
-        if (publishedDraft) {
+        if (publishedDraft?.status === 'PUBLISHED') {
           setLatestPublishedDraft(publishedDraft);
-        } else if (safeDrafts.length > 0) {
-          setLatestPublishedDraft(safeDrafts[0]);
         }
-        showToast('文章已成功生成并发布上线');
+        showToast(publishedDraft?.status === 'PUBLISHED'
+          ? '文章已通过质检并自动发布'
+          : publishedDraft?.status === 'QUALITY_FAILED'
+            ? '文章已生成，但质量门禁阻止了自动发布'
+            : '执行未返回可发布文章，请查看任务日志');
       } else {
         setActivePipelineStep(1);
         addLog(`[意图挖掘] 分析长尾关键词: ${keywordToUse || activeSite?.niche || '行业热词'}`);
         await onTriggerScan(keywordToUse || undefined, targetSiteId);
         await new Promise(r => setTimeout(r, 500));
 
-        setActivePipelineStep(2);
-        addLog(`[知识检索] 检索事实依据与证据链...`);
-        await new Promise(r => setTimeout(r, 500));
-
-        setActivePipelineStep(3);
-        addLog(`[大纲策划] 规划专业结构与精准问答...`);
-        await new Promise(r => setTimeout(r, 500));
-
-        setActivePipelineStep(4);
-        addLog(`[长文智造] 深度长文生成与专业排版 (2000+ 字)...`);
-        await new Promise(r => setTimeout(r, 600));
-
-        setActivePipelineStep(5);
-        addLog(`[质量核验] 事实审查与原创度质检 (98分通过)...`);
-        await new Promise(r => setTimeout(r, 400));
-
-        setActivePipelineStep(6);
-        addLog(`[智能内链] 关联历史文章锚文本...`);
-        await new Promise(r => setTimeout(r, 400));
-
-        setActivePipelineStep(7);
-        addLog(`[站点发布] 成功推送发布至目标站点 (${activeSite?.domain || '官网'})...`);
-        await new Promise(r => setTimeout(r, 500));
-
-        setActivePipelineStep(8);
-        addLog(`[引擎推送] 已同步提交至 百度搜索 & Google Indexing...`);
-        await new Promise(r => setTimeout(r, 400));
-
-        showToast('🎉 文章已成功生成并发布上线！');
-        if (safeDrafts.length > 0) {
-          setLatestPublishedDraft(safeDrafts[0]);
-        }
+        addLog('[流程中止] 当前工作区未连接真实执行处理器，未生成、发布或推送任何内容。');
+        showToast('执行处理器未连接，未执行发布操作');
       }
     } catch (e: any) {
       addLog(`[执行异常] ${e instanceof Error ? e.message : String(e)}`);
@@ -524,8 +464,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               </svg>
             </div>
             <span className="text-xs font-bold text-slate-500 tracking-wider uppercase bg-white px-4 z-10 text-center">
-              <span className="hidden sm:inline">一键触发并发启动 · 下属 8 阶段高可用自动化发布流水线</span>
-              <span className="inline sm:hidden">8 阶段自动巡航发布流水线</span>
+              <span className="hidden sm:inline">一键触发 · 真实生成、质检与自动发布流水线</span>
+              <span className="inline sm:hidden">自动巡航发布流水线</span>
             </span>
           </div>
 
@@ -545,11 +485,11 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               <span className="w-6 h-6 rounded-md bg-emerald-600 text-white flex items-center justify-center text-xs">
                 ✓
               </span>
-              <span>文章已生成并成功发布到您的网站！</span>
+              <span>文章已通过质检并发布到您的网站</span>
             </div>
 
             <span className="text-xs font-bold px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 self-start sm:self-auto">
-              质量评分: {latestPublishedDraft.qualityGate?.overallScore || 98} 分
+              质量评分: {latestPublishedDraft.qualityGate?.overallScore ?? '未返回'}
             </span>
           </div>
 

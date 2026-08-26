@@ -36,6 +36,9 @@ export const billingService = {
   async createPaymentIntent(organizationId: string, amount: unknown): Promise<PaymentIntentResponse> {
     if (!env.trc20RecipientAddress) throw new ValidationError('平台尚未配置 TRC20 收款地址');
     const expectedAmountMicros = parseUsdtMicros(amount);
+    if (expectedAmountMicros % USDT_MICROS !== 0n) {
+      throw new ValidationError('当前积分套餐仅支持整数 USDT 金额');
+    }
     const credits = Number(expectedAmountMicros / USDT_MICROS) * 100;
     const payment = await prisma.paymentIntent.create({
       data: {

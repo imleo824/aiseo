@@ -21,8 +21,9 @@ export const scanOpportunities = async (req: TenantRequest, res: Response) => {
     throw new NotFoundError(`Site with ID "${req.params.id}" was not found.`);
   }
 
-  const keyword = (req.body && req.body.keyword && String(req.body.keyword).trim()) || 
-    (site.siteLanguage === 'zh-CN' ? 'DeepSeek K8s 部署' : 'Kubernetes FinOps 2026');
+  const keyword = req.body?.keyword && String(req.body.keyword).trim();
+  if (!keyword) throw new ValidationError('请提供需要分析的目标关键词');
+  if (!geminiAdapter.isConfigured()) throw new ValidationError('AI 服务尚未配置，无法生成真实的选题与意图分析');
   
   const analysis = await geminiAdapter.analyzeSearchDemand(keyword, site.siteLanguage, site.niche);
 
@@ -35,29 +36,28 @@ export const scanOpportunities = async (req: TenantRequest, res: Response) => {
     targetKeyword: keyword,
     category: site.whitelistedCategories[0] || '技术干货',
     riskLevel: 'LOW',
-    estimatedMonthlyVisitsGain: analysis.estimatedTrafficGain || 2400,
+    // An LLM can interpret an explicit user seed, but it cannot replace GSC or
+    // DataForSEO as evidence of search volume, rank, or projected traffic.
+    estimatedMonthlyVisitsGain: 0,
     demandEvidence: {
-      sourceType: 'GSC_QUERY',
+      sourceType: 'USER_SEED',
       queryOrTopic: keyword,
-      monthlyImpressions: 16500,
-      currentClicks: 140,
-      currentPosition: 19.2,
-      evidenceDescription: `GSC 包含该词的增量搜索展现，对应搜索意图：${analysis.searchIntent}`,
-      reliabilityConfidence: 0.95
+      evidenceDescription: `基于用户提交关键词的 AI 意图分析：${analysis.searchIntent}。尚未连接 GSC / DataForSEO，因此不展示搜索量、排名或流量预估。`,
+      reliabilityConfidence: 0
     },
     scoreBreakdown: {
-      businessValue: 19,
-      searchDemand: 18,
-      winProbability: 15,
-      currentRanking: 10,
-      engagementPotential: 9,
-      googleBaiduReuse: 9,
-      internalLinkValue: 5,
-      freshness: 5,
-      dataReliability: 5,
+      businessValue: 0,
+      searchDemand: 0,
+      winProbability: 0,
+      currentRanking: 0,
+      engagementPotential: 0,
+      googleBaiduReuse: 0,
+      internalLinkValue: 0,
+      freshness: 0,
+      dataReliability: 0,
       riskPenalty: 0,
-      costPenalty: 1,
-      totalScore: 94
+      costPenalty: 0,
+      totalScore: 0
     },
     status: 'PROPOSED',
     createdAt: new Date().toISOString(),
@@ -73,7 +73,7 @@ export const scanOpportunities = async (req: TenantRequest, res: Response) => {
     action: 'SCAN_SEARCH_DEMAND',
     target: keyword,
     result: 'SUCCESS',
-    details: `通过 GSC 与多模态需求分析挖掘到新机会: "${newOpp.title}"，综合得分 94 分。`
+    details: `已根据用户种子词生成内容机会: "${newOpp.title}"。GSC / DataForSEO 未连接，搜索指标与优先级评分均未生成。`
   });
 
   res.json({ opportunity: newOpp });
@@ -90,6 +90,7 @@ export const generateBrief = async (req: TenantRequest, res: Response) => {
     .filter(k => k.siteId === opp.siteId)
     .map(k => `${k.title}: ${k.contentSnippet}`);
 
+  if (!geminiAdapter.isConfigured()) throw new ValidationError('AI 服务尚未配置，无法生成内容大纲');
   const brief = await geminiAdapter.generateContentBrief(opp.id, opp.targetKeyword, opp.language, kbSnippets);
 
   opp.status = 'APPROVED';
@@ -120,6 +121,12 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
   if (!site) {
     throw new NotFoundError(`Site with ID "${opp.siteId}" was not found.`);
   }
+  if (!geminiAdapter.isConfigured()) throw new ValidationError('AI 服务尚未配置，无法生成文章');
+
+  const knowledgeSources = fileTenantRepository.getTenantData(req.tenantId).knowledgeSources
+    .filter((source) => source.siteId === opp.siteId)
+    .map((source) => `${source.title}: ${source.contentSnippet}`);
+  if (!knowledgeSources.length) throw new ValidationError('请先为站点添加至少一条客户知识库或原创研究资料，自动发布不能使用虚构来源');
 
   // 扣除积分 (AI 单独写稿生成根据管理员配置动态扣除，默认 10 积分)
   if (!fileTenantRepository.isActionEnabled('DRAFT_GENERATE')) {
@@ -141,10 +148,7 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
 
   try {
     const tenantData = fileTenantRepository.getTenantData(req.tenantId);
-
-    const kbSnippets = tenantData.knowledgeSources
-      .filter(k => k.siteId === opp.siteId)
-      .map(k => `${k.title}: ${k.contentSnippet}`);
+    const kbSnippets = knowledgeSources;
 
     const brief = await geminiAdapter.generateContentBrief(opp.id, opp.targetKeyword, opp.language, kbSnippets);
     const result = await geminiAdapter.generateArticleAndQualityCheck(opp.targetKeyword, opp.language, brief, kbSnippets);
@@ -160,10 +164,11 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
       }
     }
 
-    const isAutoEligible = false;
+    const isAutoEligible = result.qualityGate.passed;
 
     let publishedUrl: string | undefined;
     let wpPostId: number | undefined;
+    const indexingMessages: string[] = [];
 
     if (isAutoEligible) {
       const wpRes = await wordPressAdapter.publishPost(site, {
@@ -173,6 +178,9 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
         category: opp.category,
         status: 'publish'
       });
+      if (!wpRes.success || !wpRes.publishedUrl) {
+        throw new Error(wpRes.error || 'WordPress 自动发布未返回有效文章链接');
+      }
       publishedUrl = wpRes.publishedUrl;
       wpPostId = wpRes.wpPostId;
     }
@@ -188,7 +196,7 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
       contentHtml: finalContentHtml,
       sourcesUsed: kbSnippets.length > 0 ? kbSnippets : ['客户知识库及权威来源'],
       qualityGate: result.qualityGate,
-      status: isAutoEligible ? 'PUBLISHED' : 'QUALITY_PASSED',
+      status: isAutoEligible ? 'PUBLISHED' : 'QUALITY_FAILED',
       publishedUrl,
       publishedAt: isAutoEligible ? new Date().toISOString() : undefined,
       wpPostId,
@@ -197,25 +205,29 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
 
     if (isAutoEligible && publishedUrl) {
       opp.status = 'AUTO_PUBLISHED';
-      site.currentWeeklyPublished += 1;
-      site.pagesCount += 1;
+      site.currentWeeklyPublished = (site.currentWeeklyPublished || 0) + 1;
+      site.pagesCount = (site.pagesCount || 0) + 1;
       await fileTenantRepository.saveSite(req.tenantId, site);
 
       if (opp.language === 'zh-CN') {
         const baiduRes = await searchEngineAdapter.pushToBaidu(site.domain, site.baiduToken, [publishedUrl]);
-        await fileTenantRepository.appendBaiduLog(req.tenantId, {
-          id: `baidu-${Date.now()}`,
-          url: publishedUrl,
-          submittedAt: new Date().toISOString(),
-          type: 'DAILY_API',
-          status: 'SUBMITTED',
-          remainQuota: baiduRes.remain || 90
-        });
+        indexingMessages.push(`百度：${baiduRes.message}`);
+        if (baiduRes.success && !baiduRes.skipped) {
+          await fileTenantRepository.appendBaiduLog(req.tenantId, {
+            id: `baidu-${Date.now()}`,
+            url: publishedUrl,
+            submittedAt: new Date().toISOString(),
+            type: 'DAILY_API',
+            status: 'SUBMITTED',
+            remainQuota: baiduRes.remain || 0
+          });
+        }
       }
 
-      await searchEngineAdapter.pushToGoogle(site.domain, site.googleServiceAccountJson, [publishedUrl]);
+      const googleRes = await searchEngineAdapter.pushToGoogle(site.domain, site.googleServiceAccountJson, [publishedUrl]);
+      indexingMessages.push(`Google：${googleRes.message}`);
     } else {
-      opp.status = 'IN_QUALITY_GATE';
+      opp.status = 'REJECTED';
     }
 
     opp.updatedAt = new Date().toISOString();
@@ -227,12 +239,12 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
       siteId: opp.siteId,
       timestamp: new Date().toISOString(),
       actor: 'SYSTEM_AUTOPILOT',
-      action: isAutoEligible ? 'AUTO_PUBLISH_ARTICLE' : 'QUALITY_GATE_CHECK',
+      action: isAutoEligible ? 'AUTO_PUBLISH_ARTICLE' : 'QUALITY_GATE_BLOCKED',
       target: result.title,
       result: result.qualityGate.passed ? 'SUCCESS' : 'WARNING',
       details: isAutoEligible 
-        ? `过闸且符合低风险白名单，自动发布至目标站点，文章 URL: ${newDraft.publishedUrl} 并已完成搜索引擎广播。`
-        : `质检完成（得分 ${result.qualityGate.overallScore}）。待人工复核。`
+        ? `质量门禁已通过并自动发布至目标站点，文章 URL: ${newDraft.publishedUrl}。${indexingMessages.join('；') || '未配置搜索引擎推送，等待自然抓取。'}`
+        : `质量门禁未通过（得分 ${result.qualityGate.overallScore}），已阻止自动发布。`
     });
 
     res.json({ draft: newDraft, opportunity: opp });

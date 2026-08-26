@@ -7,6 +7,7 @@ import { disconnectDatabase } from './prisma';
 import { createRateLimiter } from '../middleware/rateLimiter';
 import { traceMiddleware } from '../middleware/traceMiddleware';
 import { logger } from '../utils/logger';
+import { requireSameOriginForCookieWrites } from '../middleware/csrf';
 
 const addSecurityHeaders = (_req: Request, res: Response, next: NextFunction): void => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -24,11 +25,13 @@ const startProductionServer = async (): Promise<void> => {
     logger.warn('CONFIGURATION', warning);
   }
   const app = express();
+  let legacyScheduler: { start: () => void; stop: () => void } | undefined;
   const port = Number(process.env.PORT) || 3000;
   const host = process.env.HOST || '0.0.0.0';
   const distPath = path.join(process.cwd(), 'dist');
   app.disable('x-powered-by');
-  app.set('trust proxy', false);
+  const configuredProxyHops = Number(process.env.TRUST_PROXY_HOPS);
+  app.set('trust proxy', Number.isInteger(configuredProxyHops) && configuredProxyHops > 0 ? configuredProxyHops : Boolean(process.env.RAILWAY_ENVIRONMENT));
   app.use(addSecurityHeaders);
   app.use(traceMiddleware);
   app.use((req: Request, res: Response, next: NextFunction) => {
@@ -42,6 +45,7 @@ const startProductionServer = async (): Promise<void> => {
   });
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+  app.use(requireSameOriginForCookieWrites);
   app.use('/api/v1', createRateLimiter(60_000, 120));
   app.use('/api/v1', (req: Request, res: Response, next: NextFunction) => {
     if (!isDatabaseBackedRuntimeUnavailable()) {
@@ -60,10 +64,13 @@ const startProductionServer = async (): Promise<void> => {
   app.use('/api/v1', apiV1Router);
   app.use('/api/v1', productionErrorHandler);
   if (process.env.ENABLE_LEGACY_API !== 'false') {
-    const [{ tenantMiddleware }, { apiRouter }] = await Promise.all([
+    const [{ tenantMiddleware }, { apiRouter }, { cronScheduler }] = await Promise.all([
       import('../middleware/tenant'),
-      import('../routes')
+      import('../routes'),
+      import('../application/cronScheduler')
     ]);
+    legacyScheduler = cronScheduler;
+    legacyScheduler.start();
     app.use(tenantMiddleware);
     app.use('/api', createRateLimiter(60_000, 300));
     app.use('/api', apiRouter);
@@ -91,6 +98,7 @@ const startProductionServer = async (): Promise<void> => {
     shuttingDown = true;
     logger.info('SERVER_SHUTDOWN', `Received ${signal}. Shutting down gracefully.`);
     server.close(() => {
+      legacyScheduler?.stop();
       Promise.all([closeQueue(), disconnectDatabase()])
         .catch((error) => logger.error('SERVER_SHUTDOWN', 'Failed to close production resources', { data: error }))
         .finally(() => process.exit(0));

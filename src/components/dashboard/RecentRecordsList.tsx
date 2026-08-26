@@ -48,11 +48,12 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
       if (onRePushIndexing) {
         await onRePushIndexing(draftId);
       } else {
-        await new Promise(r => setTimeout(r, 500));
+        showLocalToast('收录推送执行器未连接，未提交任何请求。');
+        return;
       }
       showLocalToast('已重新向搜索引擎推送收录请求');
     } catch {
-      showLocalToast('推送完成');
+      showLocalToast('收录推送失败，未确认提交成功。');
     } finally {
       setPushingDraftId(null);
     }

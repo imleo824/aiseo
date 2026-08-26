@@ -1,10 +1,13 @@
 import { createHmac, timingSafeEqual } from 'crypto';
-import { lookup } from 'dns/promises';
 import { DataSource, DataStatus, type IntegrationConnection } from '@prisma/client';
 import { ExternalServiceError, ValidationError } from '../domain/errors';
 import { decryptSecret, encryptSecret } from './crypto';
 import { env } from './env';
 import { prisma } from './prisma';
+import { resolvePublicHttpsOrigin } from '../utils/networkSafety';
+
+const externalFetch = (input: RequestInfo | URL, init: RequestInit = {}) =>
+  fetch(input, { ...init, signal: init.signal || AbortSignal.timeout(15_000) });
 
 const responseJson = async (response: Response): Promise<any> => {
   const body = await response.json().catch(() => ({}));
@@ -47,7 +50,7 @@ export const gscProvider = {
 
   async exchangeCode(code: string, siteUrl: string): Promise<GscCredentials> {
     assertGscConfigured();
-    const response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code, client_id: env.gscClientId, client_secret: env.gscClientSecret, redirect_uri: `${env.appBaseUrl}/api/v1/integrations/gsc/callback`, grant_type: 'authorization_code' }) });
+    const response = await externalFetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code, client_id: env.gscClientId, client_secret: env.gscClientSecret, redirect_uri: `${env.appBaseUrl}/api/v1/integrations/gsc/callback`, grant_type: 'authorization_code' }) });
     const token = await responseJson(response);
     if (!token.refresh_token) throw new ExternalServiceError('Google 未返回刷新令牌；请重新授权并允许离线访问');
     return { refreshToken: token.refresh_token, siteUrl, scope: token.scope || 'https://www.googleapis.com/auth/webmasters.readonly' };
@@ -60,11 +63,11 @@ export const gscProvider = {
   async sync(connection: IntegrationConnection): Promise<{ rows: unknown[]; availableFrom: Date }> {
     assertGscConfigured();
     const credentials = decryptSecret<GscCredentials>(Buffer.from(connection.encryptedCredentials));
-    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: env.gscClientId, client_secret: env.gscClientSecret, refresh_token: credentials.refreshToken, grant_type: 'refresh_token' }) });
+    const tokenResponse = await externalFetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: env.gscClientId, client_secret: env.gscClientSecret, refresh_token: credentials.refreshToken, grant_type: 'refresh_token' }) });
     const token = await responseJson(tokenResponse);
     const availableFrom = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
     const day = availableFrom.toISOString().slice(0, 10);
-    const response = await fetch(`https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(credentials.siteUrl)}/searchAnalytics/query`, { method: 'POST', headers: { authorization: `Bearer ${token.access_token}`, 'content-type': 'application/json' }, body: JSON.stringify({ startDate: day, endDate: day, dimensions: ['query', 'page', 'country', 'device'], rowLimit: 25_000, type: 'web' }) });
+    const response = await externalFetch(`https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(credentials.siteUrl)}/searchAnalytics/query`, { method: 'POST', headers: { authorization: `Bearer ${token.access_token}`, 'content-type': 'application/json' }, body: JSON.stringify({ startDate: day, endDate: day, dimensions: ['query', 'page', 'country', 'device'], rowLimit: 25_000, type: 'web' }) });
     const result = await responseJson(response);
     return { rows: result.rows || [], availableFrom };
   }
@@ -74,7 +77,7 @@ const dataForSeoAuth = () => `Basic ${Buffer.from(`${env.dataForSeoLogin}:${env.
 export const dataForSeoProvider = {
   async createSerpTask(input: { keyword: string; locationCode: number; languageCode: string; tag: string }): Promise<string> {
     assertDataForSeoConfigured();
-    const response = await fetch('https://api.dataforseo.com/v3/serp/google/organic/task_post', { method: 'POST', headers: { authorization: dataForSeoAuth(), 'content-type': 'application/json' }, body: JSON.stringify([{ keyword: input.keyword, location_code: input.locationCode, language_code: input.languageCode, tag: input.tag, depth: 10 }]) });
+    const response = await externalFetch('https://api.dataforseo.com/v3/serp/google/organic/task_post', { method: 'POST', headers: { authorization: dataForSeoAuth(), 'content-type': 'application/json' }, body: JSON.stringify([{ keyword: input.keyword, location_code: input.locationCode, language_code: input.languageCode, tag: input.tag, depth: 10 }]) });
     const result = await responseJson(response);
     const task = result.tasks?.[0]?.result?.[0];
     if (!task?.id) throw new ExternalServiceError(result.tasks?.[0]?.status_message || 'DataForSEO 未返回任务 ID');
@@ -82,7 +85,7 @@ export const dataForSeoProvider = {
   },
   async getSerpTask(taskId: string): Promise<{ ready: boolean; payload?: unknown }> {
     assertDataForSeoConfigured();
-    const response = await fetch(`https://api.dataforseo.com/v3/serp/google/organic/task_get/advanced/${encodeURIComponent(taskId)}`, { headers: { authorization: dataForSeoAuth() } });
+    const response = await externalFetch(`https://api.dataforseo.com/v3/serp/google/organic/task_get/advanced/${encodeURIComponent(taskId)}`, { headers: { authorization: dataForSeoAuth() } });
     const result = await responseJson(response);
     const task = result.tasks?.[0];
     if (task?.status_code === 20000) return { ready: true, payload: task.result };
@@ -98,7 +101,7 @@ export const tronGridProvider = {
     url.searchParams.set('only_confirmed', 'true');
     url.searchParams.set('contract_address', env.trc20UsdtContract);
     url.searchParams.set('limit', '200');
-    const response = await fetch(url, { headers: { 'TRON-PRO-API-KEY': env.tronGridApiKey } });
+    const response = await externalFetch(url, { headers: { 'TRON-PRO-API-KEY': env.tronGridApiKey } });
     const result = await responseJson(response);
     const transfer = (result.data || []).find((item: any) => item.transaction_id?.toLowerCase() === input.txHash.toLowerCase());
     if (!transfer) throw new ExternalServiceError('未在已固化 TRC20 转账中找到该交易，请稍后重试');
@@ -108,25 +111,13 @@ export const tronGridProvider = {
 };
 
 type WordPressCredentials = { username: string; applicationPassword: string };
-const isPrivateAddress = (address: string): boolean => {
-  if (address.includes(':')) return address === '::1' || address.startsWith('fc') || address.startsWith('fd') || address.startsWith('fe80:');
-  const [a, b] = address.split('.').map(Number);
-  return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
-};
-const assertPublicWordPressUrl = async (domain: string): Promise<string> => {
-  const url = new URL(domain.startsWith('http') ? domain : `https://${domain}`);
-  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hostname.endsWith('.local') || url.hostname.endsWith('.internal')) throw new ValidationError('WordPress 域名必须是公网 HTTPS 域名');
-  const addresses = await lookup(url.hostname, { all: true, verbatim: true });
-  if (!addresses.length || addresses.some(({ address }) => isPrivateAddress(address))) throw new ValidationError('WordPress 域名不能解析到私有网络地址');
-  return url.origin;
-};
 
 export const wordPressProvider = {
   async publish(input: { domain: string; credentials: Buffer; title: string; html: string }): Promise<string> {
-    const baseUrl = await assertPublicWordPressUrl(input.domain);
+    const baseUrl = await resolvePublicHttpsOrigin(input.domain);
     const credentials = decryptSecret<WordPressCredentials>(input.credentials);
     const authorization = `Basic ${Buffer.from(`${credentials.username}:${credentials.applicationPassword}`).toString('base64')}`;
-    const response = await fetch(`${baseUrl}/wp-json/wp/v2/posts`, { method: 'POST', headers: { authorization, 'content-type': 'application/json' }, body: JSON.stringify({ title: input.title, content: input.html, status: 'publish' }), signal: AbortSignal.timeout(12_000) });
+    const response = await externalFetch(`${baseUrl}/wp-json/wp/v2/posts`, { method: 'POST', headers: { authorization, 'content-type': 'application/json' }, body: JSON.stringify({ title: input.title, content: input.html, status: 'publish' }), signal: AbortSignal.timeout(12_000) });
     const result = await responseJson(response);
     if (!result.link) throw new ExternalServiceError('WordPress 未返回文章链接');
     return result.link;

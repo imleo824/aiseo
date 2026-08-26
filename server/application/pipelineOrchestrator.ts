@@ -395,8 +395,8 @@ export class SEOPipelineOrchestrator {
     traceId?: string
   ): Promise<void> {
     opportunity.status = 'AUTO_PUBLISHED';
-    site.currentWeeklyPublished += 1;
-    site.pagesCount += 1;
+    site.currentWeeklyPublished = (site.currentWeeklyPublished || 0) + 1;
+    site.pagesCount = (site.pagesCount || 0) + 1;
     await this.repository.saveSite(tenantId, site);
     await this.repository.saveOpportunity(tenantId, opportunity);
 
@@ -406,14 +406,14 @@ export class SEOPipelineOrchestrator {
     if (opportunity.language === 'zh-CN') {
       if (site.baiduToken && site.baiduToken.trim()) {
         const baiduRes = await this.searchEngineSubmitter.pushToBaidu(site.domain, site.baiduToken, [publishedUrl]);
-        if (!baiduRes.skipped) {
+        if (baiduRes.success && !baiduRes.skipped) {
           await this.repository.appendBaiduLog(tenantId, {
             id: `baidu-${Date.now()}`,
             url: publishedUrl,
             submittedAt: new Date().toISOString(),
             type: 'DAILY_API',
             status: 'SUBMITTED',
-            remainQuota: baiduRes.remain || 88
+          remainQuota: baiduRes.remain || 0
           });
           stagesCompleted.push('BAIDU_INDEXING_DISPATCH');
           anyEnginePushed = true;
@@ -430,7 +430,7 @@ export class SEOPipelineOrchestrator {
         site.googleServiceAccountJson, 
         [publishedUrl]
       );
-      if (!googleRes.skipped) {
+      if (googleRes.success && !googleRes.skipped) {
         stagesCompleted.push('GOOGLE_INDEXING_DISPATCH');
         anyEnginePushed = true;
       }
@@ -439,7 +439,7 @@ export class SEOPipelineOrchestrator {
     if (anyEnginePushed) {
       stagesCompleted.push('SEARCH_ENGINE_PUSH');
     } else {
-      logger.info('PIPELINE', `站点 ${site.domain} 未配置搜索引擎推送凭证，文章已发布上线，等待蜘蛛自然抓取`);
+      logger.info('PIPELINE', `站点 ${site.domain} 未完成搜索引擎推送，文章已发布上线，等待蜘蛛自然抓取或后续重试`);
     }
 
     eventBus.publish({

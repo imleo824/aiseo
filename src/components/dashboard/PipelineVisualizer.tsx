@@ -7,11 +7,8 @@ import {
   FileText, 
   Send, 
   Share2, 
-  ShieldCheck, 
-  Network, 
-  ChevronDown, 
+  ChevronDown,
   ChevronUp, 
-  Cpu 
 } from 'lucide-react';
 
 interface PipelineStep {
@@ -33,13 +30,10 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
 
   const pipelineSteps: PipelineStep[] = [
     { num: 1, title: '意图挖掘', icon: <Search className="w-4 h-4" /> },
-    { num: 2, title: '知识检索', icon: <ShieldCheck className="w-4 h-4" /> },
-    { num: 3, title: '大纲策划', icon: <Sparkles className="w-4 h-4" /> },
-    { num: 4, title: '长文智造', icon: <FileText className="w-4 h-4" /> },
-    { num: 5, title: '质量核验', icon: <Cpu className="w-4 h-4" /> },
-    { num: 6, title: '智能内链', icon: <Network className="w-4 h-4" /> },
-    { num: 7, title: '站点发布', icon: <Send className="w-4 h-4" /> },
-    { num: 8, title: '引擎推送', icon: <Share2 className="w-4 h-4" /> }
+    { num: 2, title: '大纲生成', icon: <Sparkles className="w-4 h-4" /> },
+    { num: 3, title: '生成与质检', icon: <FileText className="w-4 h-4" /> },
+    { num: 4, title: '自动发布', icon: <Send className="w-4 h-4" /> },
+    { num: 5, title: '收录推送', icon: <Share2 className="w-4 h-4" /> }
   ];
 
   const isRunning = activePipelineStep !== null;
@@ -47,8 +41,7 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
   return (
     <div className="space-y-4 pt-1">
       
-      {/* 8-Stage Progress Flow - Clean, spacious & legible */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 sm:gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 sm:gap-3">
         {pipelineSteps.map((s) => {
           const isActive = activePipelineStep === s.num;
           const isCompleted = activePipelineStep !== null && activePipelineStep > s.num;

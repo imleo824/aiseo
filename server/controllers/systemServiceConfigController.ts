@@ -4,6 +4,7 @@ import { systemServiceConfigRepository } from '../infrastructure/persistence/sys
 import { validateSystemServicesConfig } from '../utils/validator';
 import { GoogleGenAI } from '@google/genai';
 import { logger } from '../utils/logger';
+import { resolvePublicHttpsOrigin } from '../utils/networkSafety';
 
 export class SystemServiceConfigController {
   public async getServicesConfig(req: TenantRequest, res: Response): Promise<void> {
@@ -41,6 +42,13 @@ export class SystemServiceConfigController {
       });
       return;
     }
+    if (process.env.NODE_ENV === 'production') {
+      res.status(409).json({
+        success: false,
+        message: '生产环境不允许把服务密钥保存到本地文件。请通过部署平台的受管环境变量或 Supabase 密钥管理配置。'
+      });
+      return;
+    }
 
     // Comprehensive field standards and best practices validation
     const validation = validateSystemServicesConfig(incoming);
@@ -69,6 +77,13 @@ export class SystemServiceConfigController {
       res.status(403).json({
         success: false,
         message: '权限拒绝：仅系统管理员（ADMIN）有权恢复系统默认服务配置。'
+      });
+      return;
+    }
+    if (process.env.NODE_ENV === 'production') {
+      res.status(409).json({
+        success: false,
+        message: '生产环境不允许重置本地服务配置；受管密钥由部署平台维护。'
       });
       return;
     }
@@ -167,14 +182,15 @@ export class SystemServiceConfigController {
           const latencyMs = Date.now() - start;
           const json = await pingRes.json().catch(() => null);
 
+          const success = Boolean(pingRes.ok && json && typeof json.success === 'number');
           res.json({
             service: 'BAIDU_PUSH',
-            success: pingRes.status !== 500,
+            success,
             latencyMs,
             statusCode: pingRes.status,
-            message: pingRes.ok 
+            message: success
               ? `百度站长推送通道连通成功！今日剩余配额: ${json?.remain ?? 100} 条`
-              : `百度站长推送测试响应 (HTTP ${pingRes.status}): ${json?.message || 'Token 或站点校验完成'}`,
+              : `百度站长推送测试失败 (HTTP ${pingRes.status}): ${json?.message || pingRes.statusText || '未收到有效成功响应'}`,
             details: {
               siteDomain: cleanDomain,
               remainQuota: json?.remain ?? 'N/A',
@@ -229,7 +245,8 @@ export class SystemServiceConfigController {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-          const tronRes = await fetch(`${rpcUrl}/wallet/getnowblock`, {
+          const safeOrigin = await resolvePublicHttpsOrigin(rpcUrl);
+          const tronRes = await fetch(`${safeOrigin}/wallet/getnowblock`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             signal: controller.signal
@@ -248,7 +265,7 @@ export class SystemServiceConfigController {
               ? `TRC20 波场区块链节点连通正常！当前最新区块高度: #${blockData?.block_header?.raw_data?.number?.toLocaleString() || 'N/A'}`
               : `TRC20 节点响应失败: HTTP ${tronRes.status}`,
             details: {
-              rpcUrl,
+              rpcUrl: safeOrigin,
               blockNumber: blockData?.block_header?.raw_data?.number,
               blockTimestamp: blockData?.block_header?.raw_data?.timestamp ? new Date(blockData.block_header.raw_data.timestamp).toISOString() : null
             },

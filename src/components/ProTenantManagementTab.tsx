@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Users, Shield, Search, RefreshCw, ArrowRightLeft, CheckCircle2, Coins, CreditCard, UserCheck, PlusCircle, MinusCircle, X, AlertCircle } from 'lucide-react';
+import { Users, Shield, Search, RefreshCw, Coins, CreditCard, UserCheck, PlusCircle, MinusCircle, X, AlertCircle } from 'lucide-react';
 import { TenantAccount } from '../types/seo';
 import { createApiService } from '../services/api';
 
@@ -7,20 +7,17 @@ interface ProTenantManagementTabProps {
   account?: TenantAccount | null;
   allTenants?: TenantAccount[];
   activeTenantId?: string;
-  onSwitchTenant?: (tenantId: string) => void;
   onRefreshData?: () => void;
 }
 
 export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
   allTenants: initialTenants,
-  activeTenantId = 'tenant-a',
-  onSwitchTenant,
+  activeTenantId,
   onRefreshData
 }) => {
   const [tenants, setTenants] = useState<TenantAccount[]>(initialTenants || []);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [switchingId, setSwitchingId] = useState<string | null>(null);
 
   // Modal State for Credit Adjustment
   const [adjustTarget, setAdjustTarget] = useState<TenantAccount | null>(null);
@@ -56,16 +53,6 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
   const handleRefresh = async () => {
     await fetchTenants();
     if (onRefreshData) onRefreshData();
-  };
-
-  const handleSwitch = (tenantId: string) => {
-    setSwitchingId(tenantId);
-    setTimeout(() => {
-      if (onSwitchTenant) {
-        onSwitchTenant(tenantId);
-      }
-      setSwitchingId(null);
-    }, 200);
   };
 
   const filteredTenants = useMemo(() => {
@@ -274,16 +261,6 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                         <Coins className="w-3 h-3 text-indigo-600" /> 上下分
                       </button>
                       
-                      {!isActive && (
-                        <button
-                          type="button"
-                          onClick={() => handleSwitch(t.id)}
-                          disabled={switchingId === t.id}
-                          className="px-2.5 py-1 text-[11px] font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-md transition cursor-pointer"
-                        >
-                          模拟视角
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -304,7 +281,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                 <th className="py-3 px-4">已消耗积分</th>
                 <th className="py-3 px-4">注册时间</th>
                 <th className="py-3 px-4 text-center">上下分</th>
-                <th className="py-3 px-4 text-right">视角切换</th>
+                <th className="py-3 px-4 text-right">当前会话</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
@@ -388,21 +365,9 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
 
                       {/* Perspective Switch */}
                       <td className="py-3.5 px-4 text-right">
-                        {isActive ? (
-                          <span className="text-[11px] font-semibold text-blue-600 flex items-center justify-end gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> 已激活
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleSwitch(t.id)}
-                            disabled={switchingId === t.id}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white border border-slate-200/80 hover:bg-slate-100 rounded transition cursor-pointer disabled:opacity-50"
-                          >
-                            <ArrowRightLeft className="w-3 h-3 text-slate-500" />
-                            切换视角
-                          </button>
-                        )}
+                        <span className={`text-[11px] font-semibold flex items-center justify-end gap-1 ${isActive ? 'text-blue-600' : 'text-slate-400'}`}>
+                          {isActive ? '当前会话' : '不可切换'}
+                        </span>
                       </td>
                     </tr>
                   );

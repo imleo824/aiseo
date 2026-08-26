@@ -3,6 +3,7 @@ import { fileTenantRepository } from "../infrastructure/persistence/fileTenantRe
 import { TenantData } from "../domain/repository";
 import { TenantAccount } from "../../src/types/seo";
 import { TenantContext } from "../utils/tenantContext";
+import { requireSameOriginForCookieWrites } from './csrf';
 
 export interface TenantRequest extends Request {
   tenantId: string;
@@ -51,13 +52,12 @@ export const tenantMiddleware = (req: Request, res: Response, next: NextFunction
   tenantRequest.tenantId = session.tenantId;
   tenantRequest.account = session.account;
   tenantRequest.tenantData = session.tenantData;
-  
   TenantContext.run(
     {
       tenantId: session.tenantId,
       account: session.account,
       role: session.account?.role || 'TENANT'
     },
-    () => next()
+    () => requireSameOriginForCookieWrites(req, res, next)
   );
 };

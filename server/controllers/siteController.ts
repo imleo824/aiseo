@@ -5,7 +5,7 @@ import { validateSiteInput, validateDomain } from "../utils/validator";
 import { fileTenantRepository } from "../infrastructure/persistence/fileTenantRepository";
 import { wordPressAdapter } from "../infrastructure/wordpress/wordpressAdapter";
 import { searchEngineAdapter } from "../infrastructure/searchEngine/searchEngineAdapter";
-import { NotFoundError, ValidationError, ConflictError, ForbiddenError, InsufficientCreditsError } from "../domain/errors";
+import { NotFoundError, ValidationError, ConflictError } from "../domain/errors";
 
 type PublicWordPressSite = Omit<WordPressSite, 'wpAppPassword' | 'baiduToken' | 'googleServiceAccountJson'> & {
   credentialStatus: {
@@ -25,6 +25,13 @@ const toPublicSite = (site: WordPressSite): PublicWordPressSite => {
       googleConfigured: Boolean(googleServiceAccountJson)
     }
   };
+};
+
+const assertLegacySecretStorageAllowed = (credentials: unknown[]): void => {
+  const hasSecret = credentials.some((value) => Boolean(String(value || '').trim()));
+  if (hasSecret && process.env.NODE_ENV === 'production') {
+    throw new ValidationError('生产环境不会把站点凭证写入本地 JSON。请先启用 Supabase /api/v1，再通过受管密钥连接 WordPress、百度或 Google。');
+  }
 };
 
 export const getSites = async (req: TenantRequest, res: Response) => {
@@ -100,8 +107,8 @@ export const testSiteSearchEngine = async (req: TenantRequest, res: Response) =>
         });
         return;
       }
-      const testUrl = `https://${site.domain}/google-probe-${Date.now()}.html`;
-      const pushRes = await searchEngineAdapter.pushToGoogle(site.domain, serviceAccountJson, [testUrl]);
+      // Never send a fabricated URL to the Indexing API merely to test a key.
+      const pushRes = await searchEngineAdapter.testGoogleCredentials(serviceAccountJson);
       res.json({
         engine: 'GOOGLE',
         success: pushRes.success && !pushRes.skipped,
@@ -146,59 +153,41 @@ export const createSite = async (req: TenantRequest, res: Response) => {
     throw new ConflictError(`站点域名 ${cleanDomain} 已经在当前租户中绑定，请勿重复添加。`);
   }
 
-  // 扣除积分 (新增站点诊断与初始化接入根据管理员配置动态扣除，默认 5 积分)
-  if (!fileTenantRepository.isActionEnabled('SITE_AUDIT')) {
-    throw new ForbiddenError('“站点添加与深度连接体检”功能当前已被系统管理员暂停使用。');
-  }
+  assertLegacySecretStorageAllowed([wpAppPassword, baiduToken, googleServiceAccountJson]);
 
-  const auditCost = fileTenantRepository.getActionCost('SITE_AUDIT', 5);
-  const creditRes = await fileTenantRepository.consumeCredits(
-    req.tenantId,
-    auditCost,
-    'SITE_AUDIT',
-    `绑定新站点并深度体检 (${cleanDomain})`,
-    { domain: cleanDomain }
-  );
-
-  if (!creditRes.success) {
-    throw new InsufficientCreditsError(creditRes.message || '积分不足，请充值 USDT');
-  }
-
-  try {
-    const newSite: WordPressSite = {
+  const newSite: WordPressSite = {
       id: `site-${Date.now()}`,
       name: (name && String(name).trim()) || cleanDomain,
       domain: cleanDomain,
       niche: (niche && String(niche).trim()) || '通用行业',
       siteType: siteType || 'WORDPRESS',
       siteLanguage: siteLanguage || 'zh-CN',
-      pagesCount: 120,
-      connectorStatus: 'CONNECTED',
-      wpVersion: '6.7.1',
+      pagesCount: 0,
+      connectorStatus: 'DISCONNECTED',
       wpUsername: wpUsername ? String(wpUsername).trim() : undefined,
       wpAppPassword: wpAppPassword ? String(wpAppPassword).trim() : undefined,
       baiduToken: baiduToken ? String(baiduToken).trim() : undefined,
       googleServiceAccountJson: googleServiceAccountJson ? String(googleServiceAccountJson).trim() : undefined,
-      pluginInstalled: true,
+      pluginInstalled: false,
       whitelistedCategories: ['技术干货', '行业新闻'],
-      gscConnected: Boolean(googleServiceAccountJson),
-      ga4Connected: true,
-      baiduConnected: Boolean(baiduToken),
+      gscConnected: false,
+      ga4Connected: false,
+      baiduConnected: false,
       currentWeeklyPublished: 0,
       calibration: {
-        isCalibrating: true,
-        daysRemaining: 14,
-        totalApprovedRequired: 10,
+        isCalibrating: false,
+        daysRemaining: 0,
+        totalApprovedRequired: 0,
         approvedCount: 0,
         rejectedCount: 0,
         zeroFactErrorStreak: 0,
-        autoPublishUnlocked: false
+        autoPublishUnlocked: true
       },
       createdAt: new Date().toISOString()
     };
 
-    await fileTenantRepository.saveSite(req.tenantId, newSite);
-    await fileTenantRepository.appendAuditLog(req.tenantId, {
+  await fileTenantRepository.saveSite(req.tenantId, newSite);
+  await fileTenantRepository.appendAuditLog(req.tenantId, {
       id: `log-${Date.now()}`,
       siteId: newSite.id,
       timestamp: new Date().toISOString(),
@@ -206,20 +195,10 @@ export const createSite = async (req: TenantRequest, res: Response) => {
       action: 'CONNECT_WORDPRESS_SITE',
       target: newSite.name,
       result: 'SUCCESS',
-      details: `已接入 WordPress 独立站: ${newSite.domain}，初始化 14 天校准期模式。`
-    });
+      details: `站点已添加为待连接状态。WordPress、搜索引擎和分析数据只有在真实凭证验证成功后才会显示为已连接。`
+  });
 
-    res.status(201).json({ site: toPublicSite(newSite) });
-  } catch (err: any) {
-    await fileTenantRepository.refundCredits(
-      req.tenantId,
-      auditCost,
-      'SITE_AUDIT',
-      `站点接入失败自动退款 (${cleanDomain})`,
-      { domain: cleanDomain, error: err?.message }
-    );
-    throw err;
-  }
+  res.status(201).json({ site: toPublicSite(newSite) });
 };
 
 export const updateSite = async (req: TenantRequest, res: Response) => {
@@ -240,6 +219,8 @@ export const updateSite = async (req: TenantRequest, res: Response) => {
     baiduToken,
     googleServiceAccountJson
   } = req.body;
+
+  assertLegacySecretStorageAllowed([wpAppPassword, baiduToken, googleServiceAccountJson]);
 
   if (name !== undefined) site.name = String(name).trim();
   if (domain !== undefined && String(domain).trim()) {

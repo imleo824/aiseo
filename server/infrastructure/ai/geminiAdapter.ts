@@ -6,11 +6,25 @@ import { geminiCircuitBreaker } from "../resilience/circuitBreaker";
 import { serpAnalysisCache } from "../../utils/lruCache";
 import { systemServiceConfigRepository } from "../persistence/systemServiceConfigRepository";
 import { logger } from "../../utils/logger";
+import { ExternalServiceError } from '../../domain/errors';
+
+const syntheticContentAllowed = (): boolean =>
+  process.env.NODE_ENV !== 'production' && process.env.ALLOW_SYNTHETIC_CONTENT === 'true';
+
+const requireVerifiedModelResponse = (operation: string): void => {
+  if (!syntheticContentAllowed()) {
+    throw new ExternalServiceError(`${operation} 未获得可验证的模型响应。请配置 AI 服务后重试；系统不会生成合成 SEO 数据或内容。`);
+  }
+};
 
 export class GeminiAdapter implements IContentIntelligenceEngine {
   private aiClient: GoogleGenAI | null = null;
   private openaiClient: OpenAI | null = null;
   private currentApiKey: string | null = null;
+
+  public isConfigured(): boolean {
+    return Boolean(this.getOpenAIClient() || this.getGeminiClient());
+  }
 
   private getGeminiClient(): GoogleGenAI | null {
     const config = systemServiceConfigRepository.getServicesConfig();
@@ -257,6 +271,8 @@ Return JSON matching schema with fields: searchIntent, targetAudience, recommend
       }
     }
 
+    requireVerifiedModelResponse('搜索需求分析');
+
     let defaultTitle = language === 'zh-CN' 
       ? `针对“${cleanKw.replace(/\[.*?\]/g, '').trim()}”的企业级落地实践与性能调优全景指南`
       : `Enterprise Architecture Guide to ${cleanKw.replace(/\[.*?\]/g, '').trim()}: Best Practices and Benchmark Analysis`;
@@ -376,9 +392,7 @@ Return JSON matching schema.`;
       }
     }
 
-    if (process.env.NODE_ENV === 'production' || process.env.ALLOW_SYNTHETIC_CONTENT !== 'true') {
-      throw new Error('AI_GENERATION_UNAVAILABLE: no verified model response was produced; synthetic content is disabled.');
-    }
+    requireVerifiedModelResponse('竞品分析');
 
     // Explicitly opt-in developer fixture only. It must never be presented as verified content.
     const isZh = language === 'zh-CN';
@@ -530,7 +544,8 @@ Return JSON matching schema.`;
       }
     }
 
-    profiler.done('Deterministic brief fallback');
+    requireVerifiedModelResponse('内容大纲生成');
+    profiler.done('Development-only deterministic brief fixture');
     return {
       opportunityId,
       targetKeyword,
@@ -648,9 +663,7 @@ Return JSON strictly with fields: title, summary, contentHtml, factReliabilitySc
       }
     }
 
-    if (process.env.NODE_ENV === 'production' || process.env.ALLOW_SYNTHETIC_CONTENT !== 'true') {
-      throw new Error('AI_GENERATION_UNAVAILABLE: no verified model response was produced; synthetic content is disabled.');
-    }
+    requireVerifiedModelResponse('文章生成与质量核验');
 
     // Explicitly opt-in developer fixture only. It must never be presented as verified content.
     const isZh = language === 'zh-CN';

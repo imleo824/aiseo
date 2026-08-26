@@ -21,7 +21,7 @@ interface ProAutopilotTasksTabProps {
   onCreateTask: (task: Partial<AutomatedTask>) => Promise<void>;
   onToggleTask: (taskId: string, currentStatus: 'ACTIVE' | 'PAUSED') => Promise<void>;
   onDeleteTask: (taskId: string) => Promise<void>;
-  onRunTaskNow: (taskId: string) => Promise<void>;
+  onRunTaskNow: (taskId: string) => Promise<{ success?: boolean; message?: string } | void>;
 }
 
 export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
@@ -98,8 +98,12 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
   const handleRunNow = async (taskId: string) => {
     setRunningTaskId(taskId);
     try {
-      await onRunTaskNow(taskId);
-      showToast('计划任务已执行并发布完成');
+      const result = await onRunTaskNow(taskId);
+      if (result && result.success === false) {
+        showToast(result.message || '任务未完成发布，请查看审计日志');
+      } else {
+        showToast((result && 'message' in result ? result.message : undefined) || '计划任务已完成执行');
+      }
     } catch {
       showToast('执行异常，请稍后重试');
     } finally {

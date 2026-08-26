@@ -224,11 +224,11 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
       modeTitle = '手动指定关键词';
     }
 
-    addLog(`[准备启动] 模式：【${modeTitle}】· 正在为 ${targetSites.length} 个站点初始化全流程自动发文流水线...`);
+    addLog(`[准备启动] 模式：【${modeTitle}】· 正在为 ${targetSites.length} 个站点启动自动生成、质检与发布流程。`);
     setActiveStep(1);
 
-    // Step 1: SERP 意图发现
-    addLog(`[步骤 1/8 · 意图挖掘] (${modeTitle}) 分析全网搜索热点、行业需求缺口与关键词结构...`);
+    // Step 1: real model-backed intent discovery (no timer-based progress simulation).
+    addLog(`[步骤 1/5 · 意图挖掘] (${modeTitle}) 正在请求 AI 分析目标关键词…`);
     const opps: Opportunity[] = [];
     for (const site of targetSites) {
       const defaultKeyword = keyword || (site.niche && site.niche !== '通用行业' && site.niche !== '通用商业技术'
@@ -239,24 +239,19 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
         opps.push(res.opportunity);
       }
     }
-    await new Promise(r => setTimeout(r, 400));
+    if (!opps.length) throw new Error('没有生成可继续处理的内容机会');
 
-    // Step 2: 竞品反向拆解
+    // Step 2: content brief.
     setActiveStep(2);
-    addLog(`[步骤 2/8 · 竞品穿透] (${modeTitle}) 深度解析头部竞品排名页面、盲区与核心长尾词...`);
-    await new Promise(r => setTimeout(r, 400));
-
-    // Step 3: 大纲生成
-    setActiveStep(3);
-    addLog(`[步骤 3/8 · 大纲生成] (${modeTitle}) 结合企业知识库与 E-E-A-T 规范，智能生成文章大纲...`);
+    addLog(`[步骤 2/5 · 内容大纲] (${modeTitle}) 正在结合站点知识库生成结构化大纲…`);
     for (const opp of opps) {
       await api.generateBrief(opp.id);
     }
-    await new Promise(r => setTimeout(r, 400));
 
-    // Step 4: 3000+ 字 SEO 创作
-    setActiveStep(4);
-    addLog(`[步骤 4/8 · 深度长文创作] (${modeTitle}) 3000+ 字深度长文自动成稿，注入 Schema 标记与内链...`);
+    // Step 3: article generation. The server runs the actual quality gate and
+    // only then attempts WordPress publishing.
+    setActiveStep(3);
+    addLog(`[步骤 3/5 · 生成与质检] (${modeTitle}) 正在生成文章并执行质量门禁…`);
     const draftsList: ArticleDraft[] = [];
     for (const opp of opps) {
       const draftRes = await api.generateDraft(opp.id);
@@ -264,37 +259,14 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
         draftsList.push(draftRes.draft);
       }
     }
-    await new Promise(r => setTimeout(r, 400));
-
-    // Step 5: 真实配图生成
+    const publishedDrafts = draftsList.filter((draft) => draft.status === 'PUBLISHED' && draft.publishedUrl);
+    const blockedDrafts = draftsList.filter((draft) => draft.status !== 'PUBLISHED');
+    setActiveStep(4);
+    addLog(`[步骤 4/5 · 自动发布] 已发布 ${publishedDrafts.length} 篇；质量门禁阻止 ${blockedDrafts.length} 篇。`);
     setActiveStep(5);
-    addLog(`[步骤 5/8 · 智能配图] 自动生成高分辨率封面图与技术架构配图...`);
-    await new Promise(r => setTimeout(r, 400));
-
-    // Step 6: 22 项严苛质检
-    setActiveStep(6);
-    addLog(`[步骤 6/8 · 质量门禁] 执行 22 项 SEO 严格质量门禁检测...`);
-    await new Promise(r => setTimeout(r, 400));
-
-    // Step 7: 站点发布 (支持多 CMS 引擎)
-    setActiveStep(7);
-    addLog(`[步骤 7/8 · 站点发布] 通过 API / Webhook 自动发布上线至目标站点...`);
-    for (const draft of draftsList) {
-      await api.approveAndPublishDraft(draft.id);
-    }
-    await new Promise(r => setTimeout(r, 400));
-
-    // Step 8: 百度 API & Google Indexing 推送
-    setActiveStep(8);
-    let pushedCount = 0;
-    for (const s of targetSites) {
-      if (s.domain) pushedCount += 1;
-    }
-    if (pushedCount > 0) {
-      addLog(`[步骤 8/8 · 毫秒推送] 全网广播完毕！已向搜索引擎收录队列推送 ${pushedCount} 条最新 URL。`);
-    }
+    addLog(`[步骤 5/5 · 收录推送] 发布后的搜索引擎推送由服务端按已配置渠道执行；未配置渠道会被明确跳过。`);
     await loadTenantData();
-    return draftsList[0];
+    return publishedDrafts[0] || draftsList[0];
   };
 
   const handleAnalyzeCompetitorAttack = async (siteId: string, competitor: string) => {
@@ -377,6 +349,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
       setTasks(prev => prev.map(t => t.id === taskId ? res.task : t));
     }
     await loadTenantData();
+    return { success: res.success, message: res.message };
   };
 
   return {

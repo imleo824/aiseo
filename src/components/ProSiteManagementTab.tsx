@@ -532,6 +532,9 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                     onChange={(e) => setEditForm({ ...editForm, googleServiceAccountJson: e.target.value })}
                     className="w-full px-3 py-2 bg-white border border-slate-200/80 rounded-lg text-slate-900 text-xs font-mono focus:outline-none focus:border-slate-400"
                   />
+                  <p className="text-[10px] leading-4 text-slate-500">
+                    仅适用于 JobPosting 或含 BroadcastEvent 的 VideoObject 页面；普通文章请通过站点地图与 GSC 监测收录。生产环境需通过 Supabase 受管密钥保存。
+                  </p>
                   {renderCardTestResult('GOOGLE')}
                 </div>
               </div>

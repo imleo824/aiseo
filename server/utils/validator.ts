@@ -75,18 +75,22 @@ export function validateTaskInput(body: any): ValidationResult {
     return { isValid: false, errors: ['请求主体不能为空'] };
   }
 
-  const { taskName, scheduleType, articleCountPerRun } = body;
+  const { taskName, scheduleType, scheduleTime, articleCountPerRun } = body;
   if (!taskName || typeof taskName !== 'string' || taskName.trim().length === 0) {
     errors.push('任务名称 (taskName) 不能为空');
   }
 
-  if (scheduleType && !['DAILY', 'WEEKLY', 'MONTHLY'].includes(scheduleType)) {
-    errors.push('调度周期 (scheduleType) 必须为 DAILY, WEEKLY 或 MONTHLY');
+  if (scheduleType && !['DAILY', 'WEEKLY', 'INTERVAL'].includes(scheduleType)) {
+    errors.push('调度周期 (scheduleType) 必须为 DAILY, WEEKLY 或 INTERVAL');
+  }
+
+  if (scheduleTime !== undefined && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(scheduleTime))) {
+    errors.push('执行时间 (scheduleTime) 必须为 HH:mm（24 小时制）');
   }
 
   if (articleCountPerRun !== undefined) {
     const count = Number(articleCountPerRun);
-    if (isNaN(count) || count < 1 || count > 50) {
+    if (!Number.isInteger(count) || count < 1 || count > 50) {
       errors.push('单次生成篇数 (articleCountPerRun) 必须在 1 到 50 之间');
     }
   }

@@ -133,6 +133,20 @@ apiV1Router.post('/organizations/:organizationId/integrations/gsc/sync', asyncRo
   const result = await replayOrExecute({ organizationId: id, userId: user.id, key, body: req.body, execute: async () => ({ statusCode: 202, response: { job: await jobService.enqueue({ organizationId: id, type: JobType.GSC_SYNC, payload: {}, idempotencyKey: key }) } }) });
   res.status(result.statusCode).json(result.response);
 }));
+apiV1Router.delete('/organizations/:organizationId/integrations/gsc', asyncRoute(async (req, res) => {
+  const { user, organizationId: id } = await requireOrganization(req, roleForWrite);
+  const key = headerIdempotencyKey(req);
+  const result = await replayOrExecute({ organizationId: id, userId: user.id, key, body: { provider: DataSource.GSC }, execute: async () => {
+    await prisma.$transaction([
+      prisma.integrationConnection.deleteMany({ where: { organizationId: id, provider: DataSource.GSC } }),
+      prisma.auditEvent.create({ data: { organizationId: id, actorId: user.id, action: 'GSC_DISCONNECTED', targetType: 'integration', targetId: DataSource.GSC } })
+    ]);
+    // Preserve a replayable JSON response. Storing an undefined response would
+    // leave the idempotency record permanently in an in-progress state.
+    return { statusCode: 200, response: { disconnected: true } };
+  } });
+  res.status(result.statusCode).json(result.response);
+}));
 
 apiV1Router.post('/organizations/:organizationId/serp-tasks', asyncRoute(async (req, res) => {
   const { user, organizationId: id } = await requireOrganization(req, roleForWrite);
@@ -171,6 +185,7 @@ apiV1Router.get('/organizations/:organizationId/jobs/:jobId', asyncRoute(async (
 apiV1Router.get('/organizations/:organizationId/data-snapshots', asyncRoute(async (req, res) => {
   const { organizationId: id } = await requireOrganization(req);
   const source = req.query.source ? String(req.query.source) as DataSource : undefined;
+  if (source && !Object.values(DataSource).includes(source)) throw new ValidationError('数据来源无效');
   const snapshots = await prisma.dataSnapshot.findMany({ where: { organizationId: id, ...(source ? { source } : {}) }, orderBy: { fetchedAt: 'desc' }, take: 100 });
   const data = snapshots.map((snapshot) => ({ id: snapshot.id, payload: snapshot.payload, provenance: { source: snapshot.source, status: snapshot.status, fetchedAt: snapshot.fetchedAt.toISOString(), providerTaskId: snapshot.providerTaskId || undefined, availableFrom: snapshot.availableFrom?.toISOString() } satisfies DataProvenance }));
   res.json({ snapshots: data });

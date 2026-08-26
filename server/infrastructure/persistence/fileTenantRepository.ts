@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 import { 
   initialSites, 
   initialOpportunities, 
@@ -390,7 +391,7 @@ export class FileTenantRepository implements ITenantRepository {
     if (sanitized.account) {
       this.indexTenantAccount(tenantId, sanitized.account);
     }
-    this.flushToDisk();
+    this.flushToDisk(process.env.NODE_ENV === 'production');
   }
 
   public getAllTenantIds(): string[] {
@@ -485,7 +486,7 @@ export class FileTenantRepository implements ITenantRepository {
       account.totalConsumedCredits = (account.totalConsumedCredits || 0) + amount;
 
       const tx: CreditTransaction = {
-        id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: `tx-${randomUUID()}`,
         tenantId,
         type: 'CONSUME',
         action,
@@ -517,7 +518,7 @@ export class FileTenantRepository implements ITenantRepository {
     amount: number,
     action: CreditActionType,
     reason: string,
-    _metadata?: any
+    metadata?: any
   ): Promise<{ success: boolean; balance: number; tx?: CreditTransaction }> {
     return this.withTenantLock(tenantId, async () => {
       const data = this.getTenantData(tenantId);
@@ -525,21 +526,27 @@ export class FileTenantRepository implements ITenantRepository {
 
       account.credits += amount;
       account.totalConsumedCredits = Math.max(0, (account.totalConsumedCredits || 0) - amount);
-
-      if (data.creditTransactions && data.creditTransactions.length > 0) {
-        const idx = data.creditTransactions.findIndex(t => t.type === 'CONSUME' && t.action === action && Math.abs(t.amount) === amount);
-        if (idx !== -1) {
-          data.creditTransactions.splice(idx, 1);
-        }
-      }
+      const tx: CreditTransaction = {
+        id: `tx-refund-${randomUUID()}`,
+        tenantId,
+        type: 'RECHARGE',
+        action,
+        amount,
+        balance: account.credits,
+        description: `任务失败补偿退款：${reason}`,
+        createdAt: new Date().toISOString(),
+        metadata
+      };
 
       data.account = account;
+      data.creditTransactions = [tx, ...(data.creditTransactions || [])];
       await this.saveTenantData(tenantId, data);
 
       logger.info('CREDIT_RESTORE', `Tenant ${tenantId} restored ${amount} credits for ${action} (${reason}). New balance: ${account.credits}`);
       return {
         success: true,
-        balance: account.credits
+        balance: account.credits,
+        tx
       };
     });
   }
@@ -558,7 +565,7 @@ export class FileTenantRepository implements ITenantRepository {
     account.totalRechargedUsdt = (account.totalRechargedUsdt || 0) + usdtAmount;
 
     const tx: CreditTransaction = {
-      id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: `tx-${randomUUID()}`,
       tenantId,
       type: 'RECHARGE',
       action: 'USDT_TOPUP',
@@ -604,7 +611,7 @@ export class FileTenantRepository implements ITenantRepository {
       const data = this.getTenantData(tenantId);
       const account = this.getAccount(tenantId);
       const tx: CreditTransaction = {
-        id: `pay-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+        id: `pay-${randomUUID()}`,
         tenantId,
         type: 'RECHARGE',
         action: 'USDT_TOPUP',
@@ -635,51 +642,51 @@ export class FileTenantRepository implements ITenantRepository {
       throw new Error(`租户 ${targetTenantId} 不存在`);
     }
 
-    const data = this.getTenantData(targetTenantId);
-    const account = this.getAccount(targetTenantId);
+    return this.withTenantLock(targetTenantId, async () => {
+      const data = this.getTenantData(targetTenantId);
+      const account = this.getAccount(targetTenantId);
 
-    const isTopUp = deltaCredits >= 0;
-    const absDelta = Math.abs(deltaCredits);
+      const isTopUp = deltaCredits >= 0;
+      const absDelta = Math.abs(deltaCredits);
 
-    if (!isTopUp && account.credits < absDelta) {
-      throw new Error(`租户积分余额不足 (${account.credits} 积分)，无法下扣 ${absDelta} 积分`);
-    }
+      if (!isTopUp && account.credits < absDelta) {
+        throw new Error(`租户积分余额不足 (${account.credits} 积分)，无法下扣 ${absDelta} 积分`);
+      }
 
-    account.credits += deltaCredits;
-    if (isTopUp) {
-      // no change to totalRechargedUsdt unless specified, but keep consistency
-    } else {
-      account.totalConsumedCredits = (account.totalConsumedCredits || 0) + absDelta;
-    }
+      account.credits += deltaCredits;
+      if (!isTopUp) {
+        account.totalConsumedCredits = (account.totalConsumedCredits || 0) + absDelta;
+      }
 
-    const tx: CreditTransaction = {
-      id: `tx-adj-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      tenantId: targetTenantId,
-      type: isTopUp ? 'RECHARGE' : 'CONSUME',
-      action: 'ADMIN_ADJUSTMENT',
-      amount: deltaCredits,
-      balance: account.credits,
-      description: `[管理员${isTopUp ? '上分' : '下扣'}] ${reason || '手动调整算力积分'} (操作人: ${adminTenantId})`,
-      createdAt: new Date().toISOString(),
-      status: 'CONFIRMED',
-      confirmedAt: new Date().toISOString(),
-      confirmedBy: adminTenantId
-    };
+      const tx: CreditTransaction = {
+        id: `tx-adj-${randomUUID()}`,
+        tenantId: targetTenantId,
+        type: isTopUp ? 'RECHARGE' : 'CONSUME',
+        action: 'ADMIN_ADJUSTMENT',
+        amount: deltaCredits,
+        balance: account.credits,
+        description: `[管理员${isTopUp ? '上分' : '下扣'}] ${reason || '手动调整算力积分'} (操作人: ${adminTenantId})`,
+        createdAt: new Date().toISOString(),
+        status: 'CONFIRMED',
+        confirmedAt: new Date().toISOString(),
+        confirmedBy: adminTenantId
+      };
 
-    if (!data.creditTransactions) {
-      data.creditTransactions = [];
-    }
-    data.creditTransactions.unshift(tx);
-    data.account = account;
-    await this.saveTenantData(targetTenantId, data);
+      if (!data.creditTransactions) {
+        data.creditTransactions = [];
+      }
+      data.creditTransactions.unshift(tx);
+      data.account = account;
+      await this.saveTenantData(targetTenantId, data);
 
-    logger.info('ADMIN_CREDIT_ADJUST', `Admin ${adminTenantId} adjusted tenant ${targetTenantId} credits by ${deltaCredits}. New balance: ${account.credits}`);
-    return {
-      success: true,
-      balance: account.credits,
-      account,
-      tx
-    };
+      logger.info('ADMIN_CREDIT_ADJUST', `Admin ${adminTenantId} adjusted tenant ${targetTenantId} credits by ${deltaCredits}. New balance: ${account.credits}`);
+      return {
+        success: true,
+        balance: account.credits,
+        account,
+        tx
+      };
+    });
   }
 
   public async updatePaymentStatus(

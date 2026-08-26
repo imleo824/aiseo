@@ -1,20 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
 
-interface RateLimitStore {
-  [key: string]: {
-    count: number;
-    resetTime: number;
-  };
+interface RateLimitEntry {
+  count: number;
+  resetTime: number;
 }
 
-const store: RateLimitStore = {};
+const store = new Map<string, RateLimitEntry>();
 
 // Periodic garbage collection sweep every 2 minutes to prevent memory leaks
 setInterval(() => {
   const now = Date.now();
-  for (const key of Object.keys(store)) {
-    if (store[key] && now > store[key].resetTime) {
-      delete store[key];
+  for (const [key, entry] of store.entries()) {
+    if (now > entry.resetTime) {
+      store.delete(key);
     }
   }
 }, 120000).unref();
@@ -26,34 +24,39 @@ setInterval(() => {
  */
 export function createRateLimiter(windowMs: number = 60000, maxMax: number = 300) {
   return (req: Request, res: Response, next: NextFunction) => {
-    // Do not trust client-controlled forwarding or tenant headers. A reverse proxy
-    // must be configured explicitly with Express trust proxy before req.ip is used.
-    const ip = req.socket.remoteAddress || 'unknown-ip';
+    // req.ip uses the socket address unless the server has explicitly enabled a
+    // trusted proxy hop. This keeps the limiter correct both locally and behind
+    // Railway without accepting arbitrary X-Forwarded-For headers by default.
+    const ip = req.ip || req.socket.remoteAddress || 'unknown-ip';
     const tenantId = (req as any).tenantId || 'anonymous';
     const key = `${tenantId}:${ip}:${req.path.startsWith('/api/opportunities') ? 'ai' : 'general'}`;
 
     const now = Date.now();
     
-    if (!store[key] || now > store[key].resetTime) {
-      store[key] = {
+    const existing = store.get(key);
+    if (!existing || now > existing.resetTime) {
+      store.set(key, {
         count: 1,
         resetTime: now + windowMs
-      };
+      });
     } else {
-      store[key].count++;
+      existing.count++;
     }
+    const entry = store.get(key)!;
 
     // Standard RateLimit Headers
     res.setHeader('X-RateLimit-Limit', maxMax);
-    res.setHeader('X-RateLimit-Remaining', Math.max(0, maxMax - store[key].count));
-    res.setHeader('X-RateLimit-Reset', Math.ceil(store[key].resetTime / 1000));
+    res.setHeader('X-RateLimit-Remaining', Math.max(0, maxMax - entry.count));
+    res.setHeader('X-RateLimit-Reset', Math.ceil(entry.resetTime / 1000));
 
-    if (store[key].count > maxMax) {
+    if (entry.count > maxMax) {
+      const retryAfterSeconds = Math.ceil((entry.resetTime - now) / 1000);
+      res.setHeader('Retry-After', retryAfterSeconds);
       return res.status(429).json({
         error: {
           code: 'TOO_MANY_REQUESTS',
           message: '请求过于频繁，触发系统防护阈值，请稍后再试。',
-          retryAfterSeconds: Math.ceil((store[key].resetTime - now) / 1000)
+          retryAfterSeconds
         }
       });
     }
