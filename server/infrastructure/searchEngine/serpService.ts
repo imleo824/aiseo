@@ -38,7 +38,7 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs = 8_00
 /**
  * This legacy-compatible scanner deliberately reports only what a provider
  * returned. Search volume, keyword difficulty, KGR and ROI require a provider
- * that supplies those fields (DataForSEO in /api/v1), so this adapter never
+ * that supplies those fields (DataForSEO in the production API), so this adapter never
  * invents them from suggestions or organic-result counts.
  */
 export class SerpService {

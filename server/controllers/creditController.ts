@@ -19,7 +19,7 @@ const ensureTenantResolved = (req: Request): void => {
   }
 };
 
-const LEGACY_PAYMENT_NOTICE = 'USDT 链上核验尚未接入当前运行环境。请完成 /api/v1 的数据库与 TronGrid Worker 配置后再开放真实收款。';
+const PAYMENT_UNAVAILABLE_NOTICE = 'USDT 链上核验尚未接入当前运行环境。请完成 Supabase 与 TronGrid Worker 配置后再开放真实收款。';
 
 export const creditController = {
   /**
@@ -36,7 +36,7 @@ export const creditController = {
       wallets: {},
       actionPricing: config.actionPricing || DEFAULT_PRICING_CONFIG.actionPricing,
       paymentAvailable: false,
-      paymentNotice: LEGACY_PAYMENT_NOTICE
+      paymentNotice: PAYMENT_UNAVAILABLE_NOTICE
     });
   },
 
@@ -146,7 +146,7 @@ export const creditController = {
       res.status(401).json({ success: false, message: '未登录或身份凭证已失效' });
       return;
     }
-    res.status(503).json({ success: false, message: LEGACY_PAYMENT_NOTICE, error: { code: 'PAYMENT_VERIFICATION_UNAVAILABLE' } });
+    res.status(503).json({ success: false, message: PAYMENT_UNAVAILABLE_NOTICE, error: { code: 'PAYMENT_VERIFICATION_UNAVAILABLE' } });
     return;
 
   },
@@ -236,8 +236,8 @@ export const creditController = {
 
     res.status(409).json({
       success: false,
-      message: '旧版 JSON 账务不允许人工确认或直接上分。请使用已启用链上核验与不可变总账的 /api/v1 支付流程。',
-      error: { code: 'LEGACY_PAYMENT_SETTLEMENT_DISABLED' }
+      message: '账务尚未接入链上核验和不可变总账，禁止人工确认或直接上分。',
+      error: { code: 'PAYMENT_SETTLEMENT_UNAVAILABLE' }
     });
     return;
 

@@ -10,17 +10,17 @@ import { gscProvider, signGscState, verifyGscState, wordPressProvider } from './
 import { prisma } from './prisma';
 import { type AuthenticatedUser, sessionService } from './sessionService';
 
-type V1Request = Request & { authUser?: AuthenticatedUser };
-type Handler = (req: V1Request, res: Response) => Promise<void>;
+type AuthenticatedRequest = Request & { authUser?: AuthenticatedUser };
+type Handler = (req: AuthenticatedRequest, res: Response) => Promise<void>;
 
-const asyncRoute = (handler: Handler) => (req: Request, res: Response, next: NextFunction) => void handler(req as V1Request, res).catch(next);
+const asyncRoute = (handler: Handler) => (req: Request, res: Response, next: NextFunction) => void handler(req as AuthenticatedRequest, res).catch(next);
 const getToken = (req: Request): string | undefined => {
   const cookieToken = req.headers.cookie?.match(/(?:^|;\s*)seo_session=([^;]+)/)?.[1];
   return cookieToken || req.headers.authorization?.replace(/^Bearer\s+/i, '');
 };
 const setSessionCookie = (res: Response, token: string) => res.cookie('seo_session', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/', maxAge: env.sessionHours * 60 * 60 * 1000 });
 const clearSessionCookie = (res: Response) => res.clearCookie('seo_session', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' });
-const requireAuth = async (req: V1Request): Promise<AuthenticatedUser> => {
+const requireAuth = async (req: AuthenticatedRequest): Promise<AuthenticatedUser> => {
   const user = await sessionService.resolve(getToken(req));
   req.authUser = user;
   return user;
@@ -30,7 +30,7 @@ const organizationId = (req: Request) => {
   if (!value) throw new ValidationError('缺少 organizationId');
   return value;
 };
-const requireOrganization = async (req: V1Request, allowed: OrganizationRole[] = [OrganizationRole.OWNER, OrganizationRole.ADMIN, OrganizationRole.EDITOR, OrganizationRole.VIEWER]) => {
+const requireOrganization = async (req: AuthenticatedRequest, allowed: OrganizationRole[] = [OrganizationRole.OWNER, OrganizationRole.ADMIN, OrganizationRole.EDITOR, OrganizationRole.VIEWER]) => {
   const user = await requireAuth(req);
   const id = organizationId(req);
   sessionService.assertOrganizationRole(user, id, allowed);
@@ -40,37 +40,40 @@ const headerIdempotencyKey = (req: Request) => requireIdempotencyKey(req.header(
 const roleForWrite = [OrganizationRole.OWNER, OrganizationRole.ADMIN, OrganizationRole.EDITOR];
 const isSafeDomain = (domain: string) => /^[a-z0-9.-]+$/i.test(domain) && !domain.includes('..') && domain.length <= 253;
 
-export const apiV1Router = Router();
+// This router contains persistence-backed capabilities while they are being
+// moved into the canonical /api contract. It is deliberately not mounted as a
+// parallel public API surface.
+export const databaseCapabilityRouter = Router();
 
-apiV1Router.post('/auth/register', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.post('/auth/register', asyncRoute(async (req, res) => {
   const { email, username, password, organizationName } = req.body || {};
   const result = await sessionService.register({ email: String(email || ''), username: String(username || ''), password: String(password || ''), organizationName: String(organizationName || '') });
   setSessionCookie(res, result.token);
   res.status(201).json({ user: result.user });
 }));
-apiV1Router.post('/auth/login', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.post('/auth/login', asyncRoute(async (req, res) => {
   const result = await sessionService.login(String(req.body?.identifier || ''), String(req.body?.password || ''));
   setSessionCookie(res, result.token);
   res.json({ user: result.user });
 }));
-apiV1Router.post('/auth/logout', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.post('/auth/logout', asyncRoute(async (req, res) => {
   await sessionService.revoke(getToken(req));
   clearSessionCookie(res);
   res.status(204).end();
 }));
-apiV1Router.get('/auth/me', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.get('/auth/me', asyncRoute(async (req, res) => {
   res.json({ user: await requireAuth(req) });
 }));
 
-apiV1Router.get('/organizations', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.get('/organizations', asyncRoute(async (req, res) => {
   res.json({ organizations: (await requireAuth(req)).organizations });
 }));
-apiV1Router.get('/organizations/:organizationId/members', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.get('/organizations/:organizationId/members', asyncRoute(async (req, res) => {
   const { organizationId: id } = await requireOrganization(req);
   const members = await prisma.organizationMember.findMany({ where: { organizationId: id }, include: { user: { select: { id: true, email: true, username: true } } }, orderBy: { createdAt: 'asc' } });
   res.json({ members: members.map(({ user, role, createdAt }) => ({ ...user, role, createdAt })) });
 }));
-apiV1Router.post('/organizations/:organizationId/members', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.post('/organizations/:organizationId/members', asyncRoute(async (req, res) => {
   const { user, organizationId: id } = await requireOrganization(req, [OrganizationRole.OWNER, OrganizationRole.ADMIN]);
   const key = headerIdempotencyKey(req);
   const email = String(req.body?.email || '').trim().toLowerCase();
@@ -86,7 +89,7 @@ apiV1Router.post('/organizations/:organizationId/members', asyncRoute(async (req
   res.status(result.statusCode).json(result.response);
 }));
 
-apiV1Router.post('/organizations/:organizationId/sites', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.post('/organizations/:organizationId/sites', asyncRoute(async (req, res) => {
   const { user, organizationId: id } = await requireOrganization(req, roleForWrite);
   const key = headerIdempotencyKey(req);
   const domain = String(req.body?.domain || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -101,19 +104,19 @@ apiV1Router.post('/organizations/:organizationId/sites', asyncRoute(async (req, 
   } });
   res.status(result.statusCode).json(result.response);
 }));
-apiV1Router.get('/organizations/:organizationId/sites', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.get('/organizations/:organizationId/sites', asyncRoute(async (req, res) => {
   const { organizationId: id } = await requireOrganization(req);
   const sites = await prisma.site.findMany({ where: { organizationId: id }, orderBy: { createdAt: 'desc' }, select: { id: true, domain: true, name: true, language: true, createdAt: true, wordpressCredentials: true } });
   res.json({ sites: sites.map(({ wordpressCredentials, ...site }) => ({ ...site, wordpressConfigured: Boolean(wordpressCredentials) })) });
 }));
 
-apiV1Router.get('/organizations/:organizationId/integrations/gsc/authorize', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.get('/organizations/:organizationId/integrations/gsc/authorize', asyncRoute(async (req, res) => {
   const { user, organizationId: id } = await requireOrganization(req, roleForWrite);
   const siteUrl = String(req.query.siteUrl || '').trim();
   if (!/^https?:\/\//.test(siteUrl) && !siteUrl.startsWith('sc-domain:')) throw new ValidationError('siteUrl 必须为 GSC 属性 URL 或 sc-domain 属性');
   res.json({ authorizationUrl: gscProvider.authorizationUrl(signGscState({ organizationId: id, userId: user.id, siteUrl })) });
 }));
-apiV1Router.get('/integrations/gsc/callback', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.get('/integrations/gsc/callback', asyncRoute(async (req, res) => {
   const state = verifyGscState(String(req.query.state || ''));
   const user = await requireAuth(req);
   if (user.id !== state.userId) throw new ValidationError('GSC 回调会话与发起授权的用户不一致');
@@ -127,13 +130,13 @@ apiV1Router.get('/integrations/gsc/callback', asyncRoute(async (req, res) => {
   await gscProvider.storeConnection(state.organizationId, credentials);
   res.redirect('/?gsc=connected');
 }));
-apiV1Router.post('/organizations/:organizationId/integrations/gsc/sync', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.post('/organizations/:organizationId/integrations/gsc/sync', asyncRoute(async (req, res) => {
   const { user, organizationId: id } = await requireOrganization(req, roleForWrite);
   const key = headerIdempotencyKey(req);
   const result = await replayOrExecute({ organizationId: id, userId: user.id, key, body: req.body, execute: async () => ({ statusCode: 202, response: { job: await jobService.enqueue({ organizationId: id, type: JobType.GSC_SYNC, payload: {}, idempotencyKey: key }) } }) });
   res.status(result.statusCode).json(result.response);
 }));
-apiV1Router.delete('/organizations/:organizationId/integrations/gsc', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.delete('/organizations/:organizationId/integrations/gsc', asyncRoute(async (req, res) => {
   const { user, organizationId: id } = await requireOrganization(req, roleForWrite);
   const key = headerIdempotencyKey(req);
   const result = await replayOrExecute({ organizationId: id, userId: user.id, key, body: { provider: DataSource.GSC }, execute: async () => {
@@ -148,7 +151,7 @@ apiV1Router.delete('/organizations/:organizationId/integrations/gsc', asyncRoute
   res.status(result.statusCode).json(result.response);
 }));
 
-apiV1Router.post('/organizations/:organizationId/serp-tasks', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.post('/organizations/:organizationId/serp-tasks', asyncRoute(async (req, res) => {
   const { user, organizationId: id } = await requireOrganization(req, roleForWrite);
   const key = headerIdempotencyKey(req);
   const keyword = String(req.body?.keyword || '').trim();
@@ -162,7 +165,7 @@ apiV1Router.post('/organizations/:organizationId/serp-tasks', asyncRoute(async (
   res.status(result.statusCode).json(result.response);
 }));
 
-apiV1Router.post('/organizations/:organizationId/content-tasks', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.post('/organizations/:organizationId/content-tasks', asyncRoute(async (req, res) => {
   const { user, organizationId: id } = await requireOrganization(req, roleForWrite);
   const key = headerIdempotencyKey(req);
   const siteId = String(req.body?.siteId || '');
@@ -177,12 +180,12 @@ apiV1Router.post('/organizations/:organizationId/content-tasks', asyncRoute(asyn
   res.status(result.statusCode).json(result.response);
 }));
 
-apiV1Router.get('/organizations/:organizationId/jobs/:jobId', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.get('/organizations/:organizationId/jobs/:jobId', asyncRoute(async (req, res) => {
   const { organizationId: id } = await requireOrganization(req);
   const job = await jobService.get(id, req.params.jobId);
   res.json({ job });
 }));
-apiV1Router.get('/organizations/:organizationId/data-snapshots', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.get('/organizations/:organizationId/data-snapshots', asyncRoute(async (req, res) => {
   const { organizationId: id } = await requireOrganization(req);
   const source = req.query.source ? String(req.query.source) as DataSource : undefined;
   if (source && !Object.values(DataSource).includes(source)) throw new ValidationError('数据来源无效');
@@ -191,13 +194,13 @@ apiV1Router.get('/organizations/:organizationId/data-snapshots', asyncRoute(asyn
   res.json({ snapshots: data });
 }));
 
-apiV1Router.post('/organizations/:organizationId/payment-intents', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.post('/organizations/:organizationId/payment-intents', asyncRoute(async (req, res) => {
   const { user, organizationId: id } = await requireOrganization(req, roleForWrite);
   const key = headerIdempotencyKey(req);
   const result = await replayOrExecute({ organizationId: id, userId: user.id, key, body: req.body, execute: async () => ({ statusCode: 201, response: { paymentIntent: await billingService.createPaymentIntent(id, req.body?.amountUsdt) } }) });
   res.status(result.statusCode).json(result.response);
 }));
-apiV1Router.post('/organizations/:organizationId/payment-intents/:paymentIntentId/transaction', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.post('/organizations/:organizationId/payment-intents/:paymentIntentId/transaction', asyncRoute(async (req, res) => {
   const { user, organizationId: id } = await requireOrganization(req, roleForWrite);
   const key = headerIdempotencyKey(req);
   const txHash = String(req.body?.txHash || '');
@@ -208,18 +211,18 @@ apiV1Router.post('/organizations/:organizationId/payment-intents/:paymentIntentI
   } });
   res.status(result.statusCode).json(result.response);
 }));
-apiV1Router.get('/organizations/:organizationId/ledger', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.get('/organizations/:organizationId/ledger', asyncRoute(async (req, res) => {
   const { organizationId: id } = await requireOrganization(req);
   const [organization, entries, holds] = await Promise.all([prisma.organization.findUniqueOrThrow({ where: { id }, select: { creditBalance: true } }), prisma.ledgerEntry.findMany({ where: { organizationId: id }, orderBy: { createdAt: 'desc' }, take: 200 }), prisma.creditHold.aggregate({ where: { organizationId: id, status: 'HELD' }, _sum: { amount: true } })]);
   res.json({ balance: organization.creditBalance, held: holds._sum.amount || 0, available: organization.creditBalance - (holds._sum.amount || 0), entries });
 }));
 
-apiV1Router.get('/organizations/:organizationId/drafts', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.get('/organizations/:organizationId/drafts', asyncRoute(async (req, res) => {
   const { organizationId: id } = await requireOrganization(req);
   const drafts = await prisma.contentDraft.findMany({ where: { organizationId: id }, include: { approvals: true }, orderBy: { createdAt: 'desc' } });
   res.json({ drafts });
 }));
-apiV1Router.post('/organizations/:organizationId/drafts/:draftId/approve', asyncRoute(async (req, res) => {
+databaseCapabilityRouter.post('/organizations/:organizationId/drafts/:draftId/approve', asyncRoute(async (req, res) => {
   const { user, organizationId: id } = await requireOrganization(req, roleForWrite);
   const key = headerIdempotencyKey(req);
   const draftId = req.params.draftId;

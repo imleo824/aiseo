@@ -30,7 +30,7 @@ const toPublicSite = (site: WordPressSite): PublicWordPressSite => {
 const assertLegacySecretStorageAllowed = (credentials: unknown[]): void => {
   const hasSecret = credentials.some((value) => Boolean(String(value || '').trim()));
   if (hasSecret && process.env.NODE_ENV === 'production') {
-    throw new ValidationError('生产环境不会把站点凭证写入本地 JSON。请先启用 Supabase /api/v1，再通过受管密钥连接 WordPress、百度或 Google。');
+    throw new ValidationError('生产环境不会把站点凭证写入本地 JSON。请先启用 Supabase，再通过受管密钥连接 WordPress、百度或 Google。');
   }
 };
 

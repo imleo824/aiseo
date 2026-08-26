@@ -44,13 +44,13 @@ export const verifyGscState = (value: string): { organizationId: string; userId:
 export const gscProvider = {
   authorizationUrl(state: string): string {
     assertGscConfigured();
-    const params = new URLSearchParams({ client_id: env.gscClientId, redirect_uri: `${env.appBaseUrl}/api/v1/integrations/gsc/callback`, response_type: 'code', access_type: 'offline', prompt: 'consent', scope: 'https://www.googleapis.com/auth/webmasters.readonly', state });
+    const params = new URLSearchParams({ client_id: env.gscClientId, redirect_uri: `${env.appBaseUrl}/api/integrations/gsc/callback`, response_type: 'code', access_type: 'offline', prompt: 'consent', scope: 'https://www.googleapis.com/auth/webmasters.readonly', state });
     return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
   },
 
   async exchangeCode(code: string, siteUrl: string): Promise<GscCredentials> {
     assertGscConfigured();
-    const response = await externalFetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code, client_id: env.gscClientId, client_secret: env.gscClientSecret, redirect_uri: `${env.appBaseUrl}/api/v1/integrations/gsc/callback`, grant_type: 'authorization_code' }) });
+    const response = await externalFetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code, client_id: env.gscClientId, client_secret: env.gscClientSecret, redirect_uri: `${env.appBaseUrl}/api/integrations/gsc/callback`, grant_type: 'authorization_code' }) });
     const token = await responseJson(response);
     if (!token.refresh_token) throw new ExternalServiceError('Google 未返回刷新令牌；请重新授权并允许离线访问');
     return { refreshToken: token.refresh_token, siteUrl, scope: token.scope || 'https://www.googleapis.com/auth/webmasters.readonly' };

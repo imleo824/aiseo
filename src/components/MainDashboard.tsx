@@ -3,6 +3,7 @@ import {
   WordPressSite, 
   ArticleDraft,
   CompetitorAttackAnalysis,
+  AUTOMATION_PIPELINE_STAGES,
   PipelineStepStates,
   PipelineStepStatus
 } from '../types/seo';
@@ -40,16 +41,9 @@ interface MainDashboardProps {
   onOpenOnboarding?: () => void;
 }
 
-const initialPipelineStepStates = (): PipelineStepStates => ({
-  1: 'PENDING',
-  2: 'PENDING',
-  3: 'PENDING',
-  4: 'PENDING',
-  5: 'PENDING',
-  6: 'PENDING',
-  7: 'PENDING',
-  8: 'PENDING'
-});
+const initialPipelineStepStates = (): PipelineStepStates => Object.fromEntries(
+  AUTOMATION_PIPELINE_STAGES.map(({ number }) => [number, 'PENDING'])
+) as PipelineStepStates;
 
 export const MainDashboard: React.FC<MainDashboardProps> = ({
   sites = [],

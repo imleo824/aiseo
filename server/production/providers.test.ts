@@ -57,7 +57,7 @@ describe('provider security boundaries', () => {
     const url = new URL(gscProvider.authorizationUrl('signed-state'));
     expect(url.origin).toBe('https://accounts.google.com');
     expect(url.searchParams.get('scope')).toBe('https://www.googleapis.com/auth/webmasters.readonly');
-    expect(url.searchParams.get('redirect_uri')).toBe('https://app.example.com/api/v1/integrations/gsc/callback');
+    expect(url.searchParams.get('redirect_uri')).toBe('https://app.example.com/api/integrations/gsc/callback');
 
     global.fetch = vi.fn().mockResolvedValueOnce(jsonResponse({ refresh_token: 'refresh-secret', scope: 'https://www.googleapis.com/auth/webmasters.readonly' }));
     await expect(gscProvider.exchangeCode('authorization-code', 'sc-domain:example.com')).resolves.toEqual({ refreshToken: 'refresh-secret', siteUrl: 'sc-domain:example.com', scope: 'https://www.googleapis.com/auth/webmasters.readonly' });

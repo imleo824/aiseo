@@ -4,10 +4,9 @@ import { createServer as createViteServer } from "vite";
 import { traceMiddleware } from "./server/middleware/traceMiddleware";
 import { createRateLimiter } from "./server/middleware/rateLimiter";
 import { logger } from "./server/utils/logger";
-import { apiV1Router, productionErrorHandler } from './server/production/router';
-import { assertProductionConfiguration } from './server/production/env';
 import { closeQueue } from './server/production/queue';
 import { disconnectDatabase } from './server/production/prisma';
+import { AUTOMATION_PIPELINE_STAGE_COUNT } from './src/types/seo';
 
 async function startServer() {
   const app = express();
@@ -16,17 +15,13 @@ async function startServer() {
   let legacyRepository: any;
   let legacyScheduler: any;
 
-  if (isProduction) {
-    assertProductionConfiguration();
-  } else {
-    const [{ fileTenantRepository }, { cronScheduler }] = await Promise.all([
-      import('./server/infrastructure/persistence/fileTenantRepository'),
-      import('./server/application/cronScheduler')
-    ]);
-    legacyRepository = fileTenantRepository;
-    legacyScheduler = cronScheduler;
-    legacyScheduler.start();
-  }
+  const [{ fileTenantRepository }, { cronScheduler }] = await Promise.all([
+    import('./server/infrastructure/persistence/fileTenantRepository'),
+    import('./server/application/cronScheduler')
+  ]);
+  legacyRepository = fileTenantRepository;
+  legacyScheduler = cronScheduler;
+  legacyScheduler.start();
 
   // Security Headers Middleware
   app.use((_req: Request, res: Response, next: NextFunction) => {
@@ -66,11 +61,13 @@ async function startServer() {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-  // Production APIs use database-backed sessions and explicit organization paths;
-  // they must never pass through the legacy tenant-header middleware.
-  app.use('/api/v1', createRateLimiter(60000, 120));
-  app.use('/api/v1', apiV1Router);
-  app.use('/api/v1', productionErrorHandler);
+  const [{ tenantMiddleware }, { apiRouter }] = await Promise.all([
+    import('./server/middleware/tenant'),
+    import('./server/routes')
+  ]);
+  app.use(tenantMiddleware);
+  app.use('/api', createRateLimiter(60000, 300));
+  app.use('/api', apiRouter);
 
   // Health & Telemetry Check Endpoint
   app.get("/api/health", (_req: Request, res: Response) => {
@@ -78,19 +75,11 @@ async function startServer() {
       status: "UP",
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.floor(process.uptime()),
-      mode: isProduction ? 'production' : 'development'
+      mode: isProduction ? 'production' : 'development',
+      apiPath: '/api',
+      automationStages: AUTOMATION_PIPELINE_STAGE_COUNT
     });
   });
-
-  if (!isProduction) {
-    const [{ tenantMiddleware }, { apiRouter }] = await Promise.all([
-      import('./server/middleware/tenant'),
-      import('./server/routes')
-    ]);
-    app.use(tenantMiddleware);
-    app.use('/api', createRateLimiter(60000, 300));
-    app.use('/api', apiRouter);
-  }
 
   // API 404 Fallback Handler
   app.use("/api/*", (req: Request, res: Response) => {

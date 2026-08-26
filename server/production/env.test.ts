@@ -34,7 +34,7 @@ describe('production configuration guard', () => {
     const config = await import('./env');
     expect(() => config.assertProductionConfiguration()).not.toThrow();
     expect(config.productionConfigurationStatus().runtime.databaseBackedApi).toBe(false);
-    expect(config.productionConfigurationWarnings()).toContain('DATABASE_URL is not set; database-backed /api/v1 is disabled.');
+    expect(config.productionConfigurationWarnings()).toContain('DATABASE_URL is not set; Supabase persistence is unavailable.');
   });
 
   it('rejects malformed positive integer settings', async () => {

@@ -1,22 +1,17 @@
 import React from 'react';
-import { PipelineStepStates, PipelineStepStatus } from '../../types/seo';
+import { AUTOMATION_PIPELINE_STAGES, PipelineStepStates, PipelineStepStatus } from '../../types/seo';
 import { 
   Check, 
   Terminal as TerminalIcon, 
   Search, 
   Sparkles, 
   FileText, 
+  Link2,
   Send, 
   Share2, 
   ChevronDown,
   ChevronUp, 
 } from 'lucide-react';
-
-interface PipelineStep {
-  num: number;
-  title: string;
-  icon: React.ReactNode;
-}
 
 interface PipelineVisualizerProps {
   activePipelineStep: number | null;
@@ -31,13 +26,16 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
 }) => {
   const [showLogs, setShowLogs] = React.useState<boolean>(true);
 
-  const pipelineSteps: PipelineStep[] = [
-    { num: 1, title: '意图挖掘', icon: <Search className="w-4 h-4" /> },
-    { num: 2, title: '大纲生成', icon: <Sparkles className="w-4 h-4" /> },
-    { num: 3, title: '生成与质检', icon: <FileText className="w-4 h-4" /> },
-    { num: 4, title: '自动发布', icon: <Send className="w-4 h-4" /> },
-    { num: 5, title: '收录推送', icon: <Share2 className="w-4 h-4" /> }
-  ];
+  const stageIcons: Record<number, React.ReactNode> = {
+    1: <Search className="w-4 h-4" />,
+    2: <TerminalIcon className="w-4 h-4" />,
+    3: <Sparkles className="w-4 h-4" />,
+    4: <FileText className="w-4 h-4" />,
+    5: <Check className="w-4 h-4" />,
+    6: <Link2 className="w-4 h-4" />,
+    7: <Send className="w-4 h-4" />,
+    8: <Share2 className="w-4 h-4" />
+  };
 
   const isRunning = activePipelineStep !== null;
 
@@ -45,9 +43,9 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
     <div className="space-y-4 pt-1">
       
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 sm:gap-3">
-        {pipelineSteps.map((s) => {
-          const status: PipelineStepStatus = stepStates[s.num]
-            || (activePipelineStep === s.num ? 'RUNNING' : 'PENDING');
+        {AUTOMATION_PIPELINE_STAGES.map((stage) => {
+          const status: PipelineStepStatus = stepStates[stage.number]
+            || (activePipelineStep === stage.number ? 'RUNNING' : 'PENDING');
           const isActive = status === 'RUNNING';
           const isCompleted = status === 'COMPLETED';
           const isPartial = status === 'PARTIAL';
@@ -64,11 +62,11 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
                   ? '已阻止'
                   : isActive
                     ? '执行中'
-                    : `步骤 ${s.num}`;
+                    : `步骤 ${stage.number}`;
 
           return (
             <div
-              key={s.num}
+              key={stage.number}
               className={`p-3 sm:p-3.5 rounded-xl border text-center transition-all duration-200 flex flex-col items-center justify-center gap-1.5 ${
                 isActive
                   ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-emerald-500/30'
@@ -101,10 +99,10 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
                 ) : isActive ? (
                   <div className="relative flex items-center justify-center">
                     <span className="animate-ping absolute inline-flex h-4 w-4 rounded-full bg-emerald-400 opacity-60"></span>
-                    <span className="relative">{s.icon}</span>
+                    <span className="relative">{stageIcons[stage.number]}</span>
                   </div>
                 ) : (
-                  s.icon
+                  stageIcons[stage.number]
                 )}
               </div>
 
@@ -120,7 +118,7 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
                           ? 'text-rose-900'
                           : 'text-slate-700'
                 }`}>
-                  {s.title}
+                  {stage.title}
                 </div>
                 <div className={`text-[11px] font-mono ${
                   isActive
