@@ -1,7 +1,7 @@
 import { Response } from "express";
 import { TenantRequest } from "../middleware/tenant";
 import { fileTenantRepository } from "../infrastructure/persistence/fileTenantRepository";
-import { wordPressAdapter } from "../infrastructure/wordpress/wordpressAdapter";
+import { publishingAdapterRouter, publishingProviderLabel } from '../infrastructure/publishing/publishingAdapterRouter';
 import { searchEngineAdapter } from "../infrastructure/searchEngine/searchEngineAdapter";
 import { NotFoundError } from "../domain/errors";
 import { ValidationError } from '../domain/errors';
@@ -26,9 +26,13 @@ export const approveAndPublishDraft = async (req: TenantRequest, res: Response) 
   if (!draft.qualityGate?.passed || draft.status === 'QUALITY_FAILED') {
     throw new ValidationError('质量门禁未通过，已阻止发布。请修订草稿后重新生成。');
   }
+  const publishingReadiness = publishingAdapterRouter.readiness(site);
+  if (!publishingReadiness.ready) {
+    throw new ValidationError(publishingReadiness.reason || `${publishingProviderLabel(site)} 发布连接器不可用；未调用 WordPress 或其他发布 API。`);
+  }
 
-  // 1. WordPress REST Publishing
-  const wpRes = await wordPressAdapter.publishPost(site, {
+  // 1. Publish through the connector declared by this exact site type.
+  const wpRes = await publishingAdapterRouter.forSite(site).publishPost(site, {
     title: draft.title,
     contentHtml: draft.contentHtml,
     summary: draft.summary,
@@ -38,7 +42,7 @@ export const approveAndPublishDraft = async (req: TenantRequest, res: Response) 
 
   if (!wpRes.success || !wpRes.publishedUrl) {
     return res.status(500).json({ 
-      error: { code: 'WP_PUBLISH_FAILED', message: wpRes.error || '发布到 WordPress 失败' } 
+      error: { code: 'SITE_PUBLISH_FAILED', message: wpRes.error || `发布到 ${publishingProviderLabel(site)} 失败` }
     });
   }
 
@@ -119,7 +123,7 @@ export const rollbackDraft = async (req: TenantRequest, res: Response) => {
 
   let deleteMsg = '文章已注销';
   if (site && draft.wpPostId) {
-    const delRes = await wordPressAdapter.deletePost(site, draft.wpPostId);
+    const delRes = await publishingAdapterRouter.forSite(site).deletePost(site, draft.wpPostId);
     deleteMsg = delRes.message;
   }
 

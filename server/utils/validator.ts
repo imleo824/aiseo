@@ -3,6 +3,11 @@ export interface ValidationResult {
   errors: string[];
 }
 
+export const KNOWN_SITE_TYPES = ['WORDPRESS', 'SHOPIFY', 'GHOST', 'WEBFLOW', 'CUSTOM_REST'] as const;
+
+export const isKnownSiteType = (value: unknown): value is typeof KNOWN_SITE_TYPES[number] =>
+  typeof value === 'string' && (KNOWN_SITE_TYPES as readonly string[]).includes(value);
+
 export function validateDomain(domain: string): { isValid: boolean; sanitized: string } {
   if (!domain || typeof domain !== 'string') {
     return { isValid: false, sanitized: '' };
@@ -25,7 +30,7 @@ export function validateSiteInput(body: any): ValidationResult {
     return { isValid: false, errors: ['请求主体不能为空'] };
   }
 
-  const { domain, siteLanguage, baiduToken, googleServiceAccountJson } = body;
+  const { domain, siteType, siteLanguage, baiduToken, googleServiceAccountJson } = body;
   if (!domain || typeof domain !== 'string') {
     errors.push('域名 (domain) 不能为空');
   } else {
@@ -37,6 +42,10 @@ export function validateSiteInput(body: any): ValidationResult {
 
   if (siteLanguage && typeof siteLanguage !== 'string') {
     errors.push('语言格式不正确');
+  }
+
+  if (siteType !== undefined && !isKnownSiteType(siteType)) {
+    errors.push(`站点类型 (siteType) 无效，允许: ${KNOWN_SITE_TYPES.join(', ')}`);
   }
 
   // 站点级百度主动推送 Token 校验 (选填)

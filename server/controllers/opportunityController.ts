@@ -3,12 +3,14 @@ import { TenantRequest } from "../middleware/tenant";
 import { Opportunity, ArticleDraft } from "../../src/types/seo";
 import { geminiAdapter } from "../infrastructure/ai/geminiAdapter";
 import { fileTenantRepository } from "../infrastructure/persistence/fileTenantRepository";
-import { wordPressAdapter } from "../infrastructure/wordpress/wordpressAdapter";
+import { publishingAdapterRouter, publishingProviderLabel } from '../infrastructure/publishing/publishingAdapterRouter';
 import { searchEngineAdapter } from "../infrastructure/searchEngine/searchEngineAdapter";
 import { serpService } from '../infrastructure/searchEngine/serpService';
-import { NotFoundError, ValidationError, ForbiddenError, InsufficientCreditsError } from "../domain/errors";
+import { NotFoundError, ValidationError, ForbiddenError, InsufficientCreditsError, ConflictError } from "../domain/errors";
 import { sanitizeArticleHtml } from '../utils/contentSanitizer';
 import { applySiteContentQualityGate } from '../application/contentQualityGate';
+import { weaveRelevantInternalLink } from '../application/internalLinking';
+import { hasExistingTopic } from '../application/opportunitySafety';
 
 export const getSiteOpportunities = async (req: TenantRequest, res: Response) => {
   const tenantData = fileTenantRepository.getTenantData(req.tenantId);
@@ -25,6 +27,10 @@ export const scanOpportunities = async (req: TenantRequest, res: Response) => {
   const keyword = req.body?.keyword && String(req.body.keyword).trim();
   if (!keyword) throw new ValidationError('请提供需要分析的目标关键词');
   if (!geminiAdapter.isConfigured()) throw new ValidationError('AI 服务尚未配置，无法生成真实的选题与意图分析');
+  const tenantData = fileTenantRepository.getTenantData(req.tenantId);
+  if (hasExistingTopic(tenantData.opportunities, site.id, keyword)) {
+    throw new ConflictError(`“${keyword}”已在该站点的机会队列或已发布内容中。请改为内容更新任务，避免关键词蚕食与重复扣点。`);
+  }
   
   const analysis = await geminiAdapter.analyzeSearchDemand(keyword, site.siteLanguage, site.niche);
 
@@ -92,9 +98,13 @@ export const generateBrief = async (req: TenantRequest, res: Response) => {
     .map(k => `${k.title}: ${k.contentSnippet}`);
 
   if (!geminiAdapter.isConfigured()) throw new ValidationError('AI 服务尚未配置，无法生成内容大纲');
+  if (!kbSnippets.length) {
+    throw new ValidationError('知识检索未找到该站点的客户知识库或原创资料，已阻止生成大纲与后续自动发布。');
+  }
   const brief = await geminiAdapter.generateContentBrief(opp.id, opp.targetKeyword, opp.language, kbSnippets);
 
   opp.status = 'APPROVED';
+  opp.contentBrief = brief;
   opp.updatedAt = new Date().toISOString();
 
   await fileTenantRepository.saveOpportunity(req.tenantId, opp);
@@ -121,6 +131,10 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
   const site = fileTenantRepository.getSite(req.tenantId, opp.siteId);
   if (!site) {
     throw new NotFoundError(`Site with ID "${opp.siteId}" was not found.`);
+  }
+  const publishingReadiness = publishingAdapterRouter.readiness(site);
+  if (!publishingReadiness.ready) {
+    throw new ValidationError(publishingReadiness.reason || `${publishingProviderLabel(site)} 发布连接器不可用；已在生成与扣点前阻止自动发布。`);
   }
   if (!geminiAdapter.isConfigured()) throw new ValidationError('AI 服务尚未配置，无法生成文章');
 
@@ -151,7 +165,16 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
     const tenantData = fileTenantRepository.getTenantData(req.tenantId);
     const kbSnippets = knowledgeSources;
 
-    const brief = await geminiAdapter.generateContentBrief(opp.id, opp.targetKeyword, opp.language, kbSnippets);
+    // Cruise first persists the retrieved and planned brief. Reuse that exact
+    // artifact for writing; a hidden second planning pass would make steps 2–3
+    // decorative rather than causally connected to the published page.
+    let brief = opp.contentBrief;
+    if (!brief || brief.opportunityId !== opp.id || brief.targetKeyword !== opp.targetKeyword) {
+      brief = await geminiAdapter.generateContentBrief(opp.id, opp.targetKeyword, opp.language, kbSnippets);
+      opp.contentBrief = brief;
+      opp.updatedAt = new Date().toISOString();
+      await fileTenantRepository.saveOpportunity(req.tenantId, opp);
+    }
     const result = await geminiAdapter.generateArticleAndQualityCheck(opp.targetKeyword, opp.language, brief, kbSnippets);
     result.qualityGate = applySiteContentQualityGate(
       result.qualityGate,
@@ -163,33 +186,16 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
     // The result is returned to the client so the pipeline never claims a link
     // insertion that did not happen.
     let finalContentHtml = sanitizeArticleHtml(result.contentHtml);
-    let internalLinking: {
-      status: 'INSERTED' | 'SKIPPED';
-      message: string;
-      targetUrl?: string;
-    } = {
-      status: 'SKIPPED',
-      message: '没有可用的已发布站内文章，已跳过智能内链。'
-    };
     const otherPublished = tenantData.drafts.filter(d => d.siteId === site.id && d.status === 'PUBLISHED' && d.publishedUrl);
-    if (otherPublished.length > 0) {
-      const samplePrev = otherPublished[0];
-      const linkTag = `<p class="mt-4 p-3 bg-slate-900/60 rounded-lg text-xs text-slate-300 border border-slate-800">💡 <strong>延伸阅读</strong>：查看我们关于 <a href="${samplePrev.publishedUrl}" class="text-emerald-400 underline font-semibold hover:text-emerald-300" target="_blank">${samplePrev.title}</a> 的深度分析。</p>`;
-      if (!finalContentHtml.includes(samplePrev.title)) {
-        finalContentHtml = finalContentHtml + linkTag;
-        internalLinking = {
-          status: 'INSERTED',
-          message: `已插入指向《${samplePrev.title}》的站内链接。`,
-          targetUrl: samplePrev.publishedUrl
-        };
-      } else {
-        internalLinking = {
-          status: 'SKIPPED',
-          message: `正文已包含《${samplePrev.title}》链接，未重复插入。`,
-          targetUrl: samplePrev.publishedUrl
-        };
-      }
-    }
+    const linkedArticle = weaveRelevantInternalLink({
+      contentHtml: finalContentHtml,
+      articleTitle: result.title,
+      targetKeyword: opp.targetKeyword,
+      siteDomain: site.domain,
+      publishedDrafts: otherPublished
+    });
+    finalContentHtml = sanitizeArticleHtml(linkedArticle.contentHtml);
+    const internalLinking = linkedArticle.decision;
 
     const isAutoEligible = result.qualityGate.passed;
 
@@ -202,7 +208,7 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
     }> = [];
 
     if (isAutoEligible) {
-      const wpRes = await wordPressAdapter.publishPost(site, {
+      const wpRes = await publishingAdapterRouter.forSite(site).publishPost(site, {
         title: result.title,
         contentHtml: finalContentHtml,
         summary: result.summary,
@@ -210,7 +216,7 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
         status: 'publish'
       });
       if (!wpRes.success || !wpRes.publishedUrl) {
-        throw new Error(wpRes.error || 'WordPress 自动发布未返回有效文章链接');
+        throw new Error(wpRes.error || `${publishingProviderLabel(site)} 自动发布未返回有效文章链接`);
       }
       publishedUrl = wpRes.publishedUrl;
       wpPostId = wpRes.wpPostId;
@@ -306,12 +312,12 @@ export const generateArticle = async (req: TenantRequest, res: Response) => {
         publishing: isAutoEligible && publishedUrl
           ? {
               status: 'PUBLISHED',
-              message: `已通过 WordPress 自动发布。`,
+              message: `已通过 ${publishingProviderLabel(site)} 自动发布。`,
               publishedUrl
             }
           : {
               status: 'BLOCKED',
-              message: `质量门禁未通过（得分 ${result.qualityGate.overallScore}），未调用 WordPress 发布。`
+              message: `质量门禁未通过（得分 ${result.qualityGate.overallScore}），未调用 ${publishingProviderLabel(site)} 发布。`
             },
         indexing: {
           status: indexingStatus,

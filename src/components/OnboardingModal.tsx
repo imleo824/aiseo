@@ -116,11 +116,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:bg-white focus:border-slate-400 transition"
               >
                 <option value="WORDPRESS">WordPress</option>
-                
-                
-                
-                
+                <option value="SHOPIFY" disabled>Shopify（连接器待接入）</option>
+                <option value="GHOST" disabled>Ghost（连接器待接入）</option>
+                <option value="WEBFLOW" disabled>Webflow（连接器待接入）</option>
+                <option value="CUSTOM_REST" disabled>Custom REST（连接器待接入）</option>
               </select>
+              <p className="text-[10px] leading-4 text-slate-500">当前已接入的真实发布连接器为 WordPress；其他站点类型不会回退调用 WordPress。</p>
             </div>
 
             <div className="space-y-1.5">
@@ -184,12 +185,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             </div>
           </div>
 
-          {/* Auth Credentials */}
+          {/* WordPress credentials are shown only for the selected, supported connector. */}
           <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
             <div className="font-semibold text-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <Key className="w-3.5 h-3.5 text-slate-700" />
-                <span>接口凭证（发布与同步）</span>
+                <span>WordPress 发布凭证</span>
               </div>
               <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-normal border border-emerald-200">
                 支持后期修改

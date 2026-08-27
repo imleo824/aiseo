@@ -6,6 +6,10 @@ const plainText = (html: string): string => html
   .replace(/\s+/g, ' ')
   .trim();
 
+const wordCount = (text: string): number => (text.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || []).length;
+
+const hanCharacterCount = (text: string): number => (text.match(/\p{Script=Han}/gu) || []).length;
+
 const shingles = (text: string): Set<string> => {
   const normalized = plainText(text).toLocaleLowerCase();
   const latinTokens = normalized.match(/[\p{L}\p{N}]{3,}/gu) || [];
@@ -32,7 +36,12 @@ export const applySiteContentQualityGate = (
 ): QualityGateResult => {
   const text = plainText(contentHtml);
   const headingCount = (contentHtml.match(/<h[2-3]\b/gi) || []).length;
-  const hasSubstance = text.length >= 800;
+  const chineseCharacters = hanCharacterCount(text);
+  const words = wordCount(text);
+  // Character counts overstate substantive English content (for example a
+  // 900-character sales blurb). Require a realistic lower bound for the
+  // article language while preserving a Chinese-character threshold.
+  const hasSubstance = chineseCharacters >= 800 || words >= 450;
   const hasStructure = headingCount >= 2;
   const candidate = shingles(contentHtml);
   const maxSimilarity = publishedDrafts.reduce(
@@ -43,8 +52,8 @@ export const applySiteContentQualityGate = (
   const issues = [...(modelGate.issues || [])];
   const passedChecks = [...(modelGate.passedChecks || [])];
 
-  if (!hasSubstance) issues.push('正文有效文本少于 800 字符，不能作为可发布的深度内容。');
-  else passedChecks.push('正文长度达到自动发布下限');
+  if (!hasSubstance) issues.push(`正文深度不足：中文少于 800 字或英文少于 450 词（当前中文 ${chineseCharacters} 字、总计 ${words} 词）。`);
+  else passedChecks.push('正文长度达到自动发布下限（中文 ≥800 字或英文 ≥450 词）');
   if (!hasStructure) issues.push('正文缺少至少两个 H2/H3 小节，无法形成可扫描的内容结构。');
   else passedChecks.push('语义标题结构完整');
   if (!duplicateContentCheck) issues.push(`与已发布站内内容的词组重合度为 ${(maxSimilarity * 100).toFixed(0)}%，自动发布已阻止。`);

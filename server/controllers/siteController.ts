@@ -1,15 +1,17 @@
 import { Response } from "express";
 import { TenantRequest } from "../middleware/tenant";
 import { WordPressSite } from "../../src/types/seo";
-import { validateSiteInput, validateDomain } from "../utils/validator";
+import { isKnownSiteType, validateSiteInput, validateDomain } from "../utils/validator";
 import { fileTenantRepository } from "../infrastructure/persistence/fileTenantRepository";
-import { wordPressAdapter } from "../infrastructure/wordpress/wordpressAdapter";
+import { publishingAdapterRouter, publishingProviderLabel, resolvedSiteType } from '../infrastructure/publishing/publishingAdapterRouter';
 import { searchEngineAdapter } from "../infrastructure/searchEngine/searchEngineAdapter";
 import { NotFoundError, ValidationError, ConflictError } from "../domain/errors";
 
 type PublicWordPressSite = Omit<WordPressSite, 'wpAppPassword' | 'baiduToken' | 'googleServiceAccountJson'> & {
   credentialStatus: {
     wordpressConfigured: boolean;
+    publishingConfigured: boolean;
+    publishingProvider: string;
     baiduConfigured: boolean;
     googleConfigured: boolean;
   };
@@ -20,7 +22,9 @@ const toPublicSite = (site: WordPressSite): PublicWordPressSite => {
   return {
     ...publicSite,
     credentialStatus: {
-      wordpressConfigured: Boolean(wpAppPassword),
+      wordpressConfigured: resolvedSiteType(site) === 'WORDPRESS' && Boolean(wpAppPassword),
+      publishingConfigured: publishingAdapterRouter.readiness(site).ready,
+      publishingProvider: publishingProviderLabel(site),
       baiduConfigured: Boolean(baiduToken),
       googleConfigured: Boolean(googleServiceAccountJson)
     }
@@ -42,7 +46,7 @@ export const getSites = async (req: TenantRequest, res: Response) => {
 export const getSiteById = async (req: TenantRequest, res: Response) => {
   const site = fileTenantRepository.getSite(req.tenantId, req.params.id);
   if (!site) {
-    throw new NotFoundError(`WordPress Site with ID "${req.params.id}" was not found.`);
+    throw new NotFoundError(`Site with ID "${req.params.id}" was not found.`);
   }
   res.json({ site: toPublicSite(site) });
 };
@@ -50,10 +54,10 @@ export const getSiteById = async (req: TenantRequest, res: Response) => {
 export const testSiteConnection = async (req: TenantRequest, res: Response) => {
   const site = fileTenantRepository.getSite(req.tenantId, req.params.id);
   if (!site) {
-    throw new NotFoundError(`WordPress Site with ID "${req.params.id}" was not found.`);
+    throw new NotFoundError(`Site with ID "${req.params.id}" was not found.`);
   }
 
-  const result = await wordPressAdapter.testConnection(site);
+  const result = await publishingAdapterRouter.forSite(site).testConnection(site);
   site.connectorStatus = result.connected ? 'CONNECTED' : 'ERROR';
   await fileTenantRepository.saveSite(req.tenantId, site);
 
@@ -154,6 +158,9 @@ export const createSite = async (req: TenantRequest, res: Response) => {
   }
 
   assertLegacySecretStorageAllowed([wpAppPassword, baiduToken, googleServiceAccountJson]);
+  if (siteType !== undefined && siteType !== 'WORDPRESS' && (wpUsername || wpAppPassword)) {
+    throw new ValidationError('非 WordPress 站点不能配置 WordPress 用户名或应用密码。请先接入该站点类型的真实发布连接器。');
+  }
 
   const newSite: WordPressSite = {
       id: `site-${Date.now()}`,
@@ -192,10 +199,10 @@ export const createSite = async (req: TenantRequest, res: Response) => {
       siteId: newSite.id,
       timestamp: new Date().toISOString(),
       actor: 'USER_ADMIN',
-      action: 'CONNECT_WORDPRESS_SITE',
+      action: 'CONNECT_SITE',
       target: newSite.name,
       result: 'SUCCESS',
-      details: `站点已添加为待连接状态。WordPress、搜索引擎和分析数据只有在真实凭证验证成功后才会显示为已连接。`
+      details: `站点已添加为待连接状态（类型：${publishingProviderLabel(newSite)}）。只有该类型的真实发布连接器、搜索引擎和分析数据验证成功后才会显示为已连接。`
   });
 
   res.status(201).json({ site: toPublicSite(newSite) });
@@ -231,7 +238,10 @@ export const updateSite = async (req: TenantRequest, res: Response) => {
     site.domain = sanitized;
   }
   if (niche !== undefined) site.niche = String(niche).trim();
-  if (siteType !== undefined) site.siteType = siteType;
+  if (siteType !== undefined) {
+    if (!isKnownSiteType(siteType)) throw new ValidationError('站点类型无效');
+    site.siteType = siteType;
+  }
   if (siteLanguage !== undefined) site.siteLanguage = siteLanguage;
   if (whitelistedCategories !== undefined && Array.isArray(whitelistedCategories)) {
     site.whitelistedCategories = whitelistedCategories.filter(c => typeof c === 'string' && c.trim().length > 0);
@@ -246,6 +256,10 @@ export const updateSite = async (req: TenantRequest, res: Response) => {
   if (googleServiceAccountJson !== undefined) {
     site.googleServiceAccountJson = googleServiceAccountJson ? String(googleServiceAccountJson).trim() : undefined;
     site.gscConnected = Boolean(site.googleServiceAccountJson);
+  }
+  if (resolvedSiteType(site) !== 'WORDPRESS') {
+    site.wpUsername = undefined;
+    site.wpAppPassword = undefined;
   }
 
   await fileTenantRepository.saveSite(req.tenantId, site);
@@ -278,7 +292,7 @@ export const deleteSite = async (req: TenantRequest, res: Response) => {
     action: 'DELETE_SITE',
     target: site.name,
     result: 'SUCCESS',
-    details: `已解绑 WordPress 站点: ${site.domain}`
+    details: `已解绑 ${publishingProviderLabel(site)} 站点: ${site.domain}`
   });
 
   res.json({ success: true, message: `站点 ${site.name} 已成功移除。` });

@@ -6,6 +6,10 @@ import { sanitizeArticleHtml } from '../../utils/contentSanitizer';
 import { resolvePublicHttpsOrigin } from '../../utils/networkSafety';
 
 export class WordPressAdapter implements IWordPressPublisher {
+  private isWordPressSite(site: WordPressSite): boolean {
+    return (site.siteType || 'WORDPRESS') === 'WORDPRESS';
+  }
+
   private async getBaseEndpoint(site: WordPressSite): Promise<string> {
     return `${await resolvePublicHttpsOrigin(site.domain.trim())}/wp-json`;
   }
@@ -39,20 +43,37 @@ export class WordPressAdapter implements IWordPressPublisher {
     wpVersion?: string;
     message: string;
   }> {
+    if (!this.isWordPressSite(site)) {
+      return {
+        connected: false,
+        message: `站点类型为 ${site.siteType}，不会调用 WordPress REST API。请配置对应站点类型的真实连接器。`
+      };
+    }
     const profiler = logger.profile('WP_ADAPTER', `testConnection(${site.domain})`);
     const headers = this.getAuthHeaders(site);
+
+    if (!headers['Authorization']) {
+      profiler.fail('Missing publishing credentials');
+      return {
+        connected: false,
+        message: '缺少 WordPress 应用密码或发布令牌，不能把公开 REST API 访问视为可发布连接。'
+      };
+    }
 
     try {
       const baseEndpoint = await this.getBaseEndpoint(site);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 6000);
-
-      const rootRes = await fetch(baseEndpoint, {
-        method: 'GET',
-        headers,
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
+      let rootRes: Response;
+      try {
+        rootRes = await fetch(baseEndpoint, {
+          method: 'GET',
+          headers,
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!rootRes.ok) {
         profiler.fail(`HTTP ${rootRes.status}`);
@@ -63,38 +84,35 @@ export class WordPressAdapter implements IWordPressPublisher {
       }
 
       const rootData: any = await rootRes.json();
-
-      if (headers['Authorization']) {
-        try {
-          const meController = new AbortController();
-          const meTimeout = setTimeout(() => meController.abort(), 6000);
-          const meRes = await fetch(`${baseEndpoint}/wp/v2/users/me`, {
-            method: 'GET',
-            headers,
-            signal: meController.signal
-          });
-          clearTimeout(meTimeout);
-
-          if (meRes.ok) {
-            const meData: any = await meRes.json();
-            profiler.done(`Connected as ${meData.name || meData.slug}`);
-            return {
-              connected: true,
-              user: meData.name || meData.slug || 'Authenticated User',
-              siteName: rootData.name || site.name,
-              message: `已成功通过 Application Password 验证，用户 [${meData.name || meData.slug}] 具备文章发布权限！`
-            };
-          }
-        } catch (authErr: any) {
-          logger.warn('WP_ADAPTER', `/wp/v2/users/me auth check warning: ${authErr?.message}`);
-        }
+      const meController = new AbortController();
+      const meTimeout = setTimeout(() => meController.abort(), 6000);
+      let meRes: Response;
+      try {
+        meRes = await fetch(`${baseEndpoint}/wp/v2/users/me`, {
+          method: 'GET',
+          headers,
+          signal: meController.signal
+        });
+      } finally {
+        clearTimeout(meTimeout);
       }
 
-      profiler.done('Public REST API accessible');
+      if (!meRes.ok) {
+        profiler.fail(`Publishing authentication HTTP ${meRes.status}`);
+        return {
+          connected: false,
+          siteName: rootData.name || site.name,
+          message: `REST API 可访问，但发布鉴权失败 (${meRes.status})。请检查该站点的应用密码和发布权限。`
+        };
+      }
+
+      const meData: any = await meRes.json();
+      profiler.done(`Connected as ${meData.name || meData.slug}`);
       return {
         connected: true,
+        user: meData.name || meData.slug || 'Authenticated User',
         siteName: rootData.name || site.name,
-        message: `REST API 端口握手成功 (公开读取模式)`
+        message: `已成功通过 Application Password 验证，用户 [${meData.name || meData.slug}] 具备文章发布权限！`
       };
     } catch (err: any) {
       profiler.fail(err);
@@ -124,6 +142,12 @@ export class WordPressAdapter implements IWordPressPublisher {
     rawResponse?: any;
     error?: string;
   }> {
+    if (!this.isWordPressSite(site)) {
+      return {
+        success: false,
+        error: `站点类型为 ${site.siteType}，已阻止 WordPress 发布调用。请配置对应站点类型的真实连接器。`
+      };
+    }
     const profiler = logger.profile('WP_ADAPTER', `publishPost(${site.domain}, "${draft.title.slice(0, 20)}...")`);
     const headers = this.getAuthHeaders(site);
     const postStatus = draft.status || 'publish';
@@ -204,6 +228,12 @@ export class WordPressAdapter implements IWordPressPublisher {
   }
 
   public async deletePost(site: WordPressSite, wpPostId: number): Promise<{ success: boolean; message: string }> {
+    if (!this.isWordPressSite(site)) {
+      return {
+        success: false,
+        message: `站点类型为 ${site.siteType}，已阻止 WordPress 删除调用。请配置对应站点类型的真实连接器。`
+      };
+    }
     const profiler = logger.profile('WP_ADAPTER', `deletePost(${site.domain}, ${wpPostId})`);
     const headers = this.getAuthHeaders(site);
 

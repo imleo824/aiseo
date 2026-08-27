@@ -4,7 +4,7 @@ const allowedTags = [
   'p', 'br', 'strong', 'em', 'b', 'i', 'u', 's', 'blockquote',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'code', 'pre',
   'table', 'thead', 'tbody', 'tr', 'th', 'td', 'figure', 'figcaption',
-  'img', 'a', 'details', 'summary', 'div', 'span'
+  'img', 'a', 'details', 'summary', 'aside', 'div', 'span'
 ];
 
 export function sanitizeArticleHtml(html: string): string {

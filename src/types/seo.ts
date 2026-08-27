@@ -249,6 +249,11 @@ export interface Opportunity {
   createdAt: string;
   updatedAt: string;
   requiresManualReviewReason?: string;
+  /**
+   * The exact brief created in stages 2–3. Stage 4 must consume this value;
+   * otherwise the visible pipeline would not describe the writing work.
+   */
+  contentBrief?: ContentBrief;
 }
 
 export interface ContentBrief {

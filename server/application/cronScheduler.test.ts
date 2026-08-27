@@ -9,6 +9,7 @@ const site = {
   siteLanguage: 'zh-CN',
   pagesCount: 0,
   connectorStatus: 'CONNECTED',
+  wpAppPassword: 'test-application-password',
   pluginInstalled: true,
   whitelistedCategories: ['指南'],
   gscConnected: false,
@@ -83,6 +84,19 @@ describe('CronScheduler automated publication', () => {
       } as any,
       {
         isConfigured: () => true,
+        analyzeSearchDemand: vi.fn(async () => ({ suggestedTitle: '真实客户资料文章', searchIntent: 'INFORMATIONAL' })),
+        generateContentBrief: vi.fn(async () => ({
+          opportunityId: 'opp-task',
+          targetKeyword: '企业 SEO 自动化：核心原理与适用边界',
+          language: 'zh-CN',
+          searchIntent: 'INFORMATIONAL',
+          targetAudience: '企业团队',
+          recommendedWordCount: 1600,
+          articleStructure: [],
+          requiredKnowledgeSources: ['客户资料'],
+          internalLinksToInsert: [],
+          forbiddenTopics: []
+        })),
         generateArticleAndQualityCheck: vi.fn(async () => ({
           title: '真实客户资料文章',
           summary: '摘要',

@@ -10,6 +10,17 @@ import { sanitizeArticleHtml } from '../utils/contentSanitizer';
 import { randomUUID } from 'crypto';
 import { nextTaskRunAt } from '../utils/taskSchedule';
 import { applySiteContentQualityGate } from './contentQualityGate';
+import { publishingAdapterRouter, publishingProviderLabel } from '../infrastructure/publishing/publishingAdapterRouter';
+import { weaveRelevantInternalLink } from './internalLinking';
+import { hasExistingTopic } from './opportunitySafety';
+
+const scheduledTopicForArticle = (baseTopic: string, ordinal: number, articleCount: number, language: string): string => {
+  if (articleCount === 1) return baseTopic;
+  const chineseAngles = ['核心原理与适用边界', '技术选型与实施方案', '效果验证与持续优化', '常见失败模式与修复'];
+  const englishAngles = ['principles and scope', 'implementation and architecture', 'measurement and iteration', 'failure modes and remediation'];
+  const angles = language === 'zh-CN' ? chineseAngles : englishAngles;
+  return `${baseTopic}：${angles[(ordinal - 1) % angles.length]}`;
+};
 
 export class CronScheduler {
   private timer: NodeJS.Timeout | null = null;
@@ -98,16 +109,22 @@ export class CronScheduler {
       for (let articleOrdinal = 1; articleOrdinal <= articleCount; articleOrdinal += 1) {
       let creditsDeducted = false;
       try {
-        const keyword = task.targetKeywordTopic || 'AI 架构与企业级自动化实践';
-        const articlePrompt = articleCount > 1
-          ? `${keyword}\n\n这是本次定时任务的第 ${articleOrdinal}/${articleCount} 篇。请使用不同角度与结构，避免与同批内容重复。`
-          : keyword;
+        const baseKeyword = task.targetKeywordTopic || 'AI 架构与企业级自动化实践';
+        const keyword = scheduledTopicForArticle(baseKeyword, articleOrdinal, articleCount, site.siteLanguage || 'zh-CN');
+        if (hasExistingTopic(tenantData.opportunities || [], site.id, keyword)) {
+          throw new Error(`“${keyword}”已在站点机会队列或已发布内容中；定时巡航不会重复生产相同搜索意图。`);
+        }
+        const articlePrompt = `${keyword}\n\n这是本次定时任务的第 ${articleOrdinal}/${articleCount} 篇。仅覆盖这个明确角度，避免与同批或已发布内容重复。`;
         const knowledgeSources = tenantData.knowledgeSources
           .filter((source) => source.siteId === site.id)
           .map((source) => `${source.title}: ${source.contentSnippet}`);
         if (!knowledgeSources.length) throw new Error('自动发布要求至少一条客户知识库或原创研究资料');
         if ('isConfigured' in this.aiEngine && typeof this.aiEngine.isConfigured === 'function' && !this.aiEngine.isConfigured()) {
           throw new Error('AI 服务尚未配置，自动任务未执行');
+        }
+        const publishingReadiness = publishingAdapterRouter.readiness(site);
+        if (!publishingReadiness.ready) {
+          throw new Error(publishingReadiness.reason || `${publishingProviderLabel(site)} 发布连接器不可用`);
         }
 
         // 0. Credit Check & Deduction (Dynamic pricing with fallback)
@@ -140,12 +157,24 @@ export class CronScheduler {
           break;
         }
         creditsDeducted = true;
-        
-        // 1. Synthesize article with AI Engine
+
+        // Stages 1–3: turn the explicit task topic into a traceable intent
+        // and a brief grounded in the customer's actual knowledge sources.
+        const executionId = randomUUID();
+        const oppId = `opp-task-${executionId}`;
+        const demandAnalysis = await this.aiEngine.analyzeSearchDemand(keyword, site.siteLanguage || 'zh-CN', site.niche);
+        const contentBrief = await this.aiEngine.generateContentBrief(
+          oppId,
+          keyword,
+          site.siteLanguage || 'zh-CN',
+          knowledgeSources
+        );
+
+        // Stage 4 uses the same visible brief; it must not silently re-plan.
         const articleResult = await this.aiEngine.generateArticleAndQualityCheck(
           articlePrompt,
           site.siteLanguage || 'zh-CN',
-          undefined,
+          contentBrief,
           knowledgeSources
         );
         articleResult.qualityGate = applySiteContentQualityGate(
@@ -157,8 +186,15 @@ export class CronScheduler {
           throw new Error(`质量门禁未通过（得分 ${articleResult.qualityGate.overallScore}），自动发布已阻止`);
         }
 
-        // 2. Real WordPress Publishing
-        const sanitizedContentHtml = sanitizeArticleHtml(articleResult.contentHtml);
+        // 2. Real publication through the connector declared by this site.
+        const internalLinkResult = weaveRelevantInternalLink({
+          contentHtml: sanitizeArticleHtml(articleResult.contentHtml),
+          articleTitle: articleResult.title,
+          targetKeyword: keyword,
+          siteDomain: site.domain,
+          publishedDrafts: (tenantData.drafts || []).filter((draft) => draft.siteId === site.id && draft.status === 'PUBLISHED')
+        });
+        const sanitizedContentHtml = sanitizeArticleHtml(internalLinkResult.contentHtml);
         const wpResult = await this.wpPublisher.publishPost(site, {
           title: articleResult.title,
           contentHtml: sanitizedContentHtml,
@@ -166,7 +202,7 @@ export class CronScheduler {
           status: 'publish'
         });
         if (!wpResult.success || !wpResult.publishedUrl) {
-          throw new Error(wpResult.error || 'WordPress 发布未返回有效文章 URL');
+          throw new Error(wpResult.error || `${publishingProviderLabel(site)} 发布未返回有效文章 URL`);
         }
 
         // 3. 收录监测：普通文章不能调用受限的 Google Indexing API；仅保留
@@ -190,13 +226,11 @@ export class CronScheduler {
 
         const googleMonitoringMessage = '普通文章不调用 Google Indexing API；通过 canonical URL、站点地图与 GSC 监测发现状态';
 
-        // 4. Update Opportunity & Draft
-        const executionId = randomUUID();
-        const oppId = `opp-task-${executionId}`;
+        // Persist the evidence and planned brief with the published result.
         const newOpp: Opportunity = {
           id: oppId,
           siteId: site.id,
-          title: articleResult.title,
+          title: demandAnalysis.suggestedTitle || articleResult.title,
           type: 'NEW_CONTENT',
           language: site.siteLanguage || 'zh-CN',
           targetKeyword: keyword,
@@ -225,7 +259,8 @@ export class CronScheduler {
           },
           status: 'AUTO_PUBLISHED',
           createdAt: nowIso,
-          updatedAt: nowIso
+          updatedAt: nowIso,
+          contentBrief
         };
 
         const newDraft: ArticleDraft = {
@@ -264,7 +299,7 @@ export class CronScheduler {
           action: 'CRON_AUTO_PUBLISH',
           target: `${site.name} - ${articleResult.title}`,
           result: 'SUCCESS',
-          details: `定时巡航已自动发布。百度：${baiduResultMsg}；Google：${googleMonitoringMessage}；URL: ${wpResult.publishedUrl}`
+          details: `定时巡航已自动发布。内链：${internalLinkResult.decision.message}；百度：${baiduResultMsg}；Google：${googleMonitoringMessage}；URL: ${wpResult.publishedUrl}`
         });
       } catch (siteErr: any) {
         logger.error('SCHEDULER', `任务执行失败 (站点: ${site.name}): ${siteErr?.message}`, { tenantId });

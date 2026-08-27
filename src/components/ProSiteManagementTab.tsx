@@ -105,8 +105,9 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
       return;
     }
 
-    // If one WP credential field is entered, recommend the other is also filled
-    if ((editForm.wpUsername.trim() && !editForm.wpAppPassword.trim()) || (!editForm.wpUsername.trim() && editForm.wpAppPassword.trim())) {
+    // WordPress uses a username + application-password pair. Other platform
+    // types must never inherit these credentials or call the WordPress client.
+    if (editForm.siteType === 'WORDPRESS' && ((editForm.wpUsername.trim() && !editForm.wpAppPassword.trim()) || (!editForm.wpUsername.trim() && editForm.wpAppPassword.trim()))) {
       showToast('配置 WordPress REST API 时，账号和应用密码必须同时提供');
       return;
     }
@@ -117,8 +118,8 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
       niche: editForm.niche.trim() || '通用行业',
       siteType: editForm.siteType,
       siteLanguage: editForm.siteLanguage,
-      wpUsername: editForm.wpUsername.trim() || undefined,
-      wpAppPassword: editForm.wpAppPassword.trim() || undefined,
+      wpUsername: editForm.siteType === 'WORDPRESS' ? (editForm.wpUsername.trim() || undefined) : undefined,
+      wpAppPassword: editForm.siteType === 'WORDPRESS' ? (editForm.wpAppPassword.trim() || undefined) : undefined,
       baiduToken: editForm.baiduToken.trim() || undefined,
       googleServiceAccountJson: editForm.googleServiceAccountJson.trim() || undefined,
     });
@@ -279,14 +280,18 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                           行业: {site.niche || '通用'}
                         </span>
                         
-                        {site.wpAppPassword ? (
+                        {site.siteType === 'WORDPRESS' && site.wpAppPassword ? (
                           <span className="text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-md flex items-center gap-1 font-medium">
                             <Key className="w-3 h-3" />
-                            凭证就绪
+                            WordPress 凭证就绪
+                          </span>
+                        ) : site.siteType === 'WORDPRESS' || !site.siteType ? (
+                          <span className="text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-md font-medium">
+                            未配置 WordPress 发布凭证
                           </span>
                         ) : (
-                          <span className="text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-md font-medium">
-                            未配置密码
+                          <span className="text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-md font-medium">
+                            {getSiteTypeLabel(site.siteType)} 连接器未接入，自动发布已阻止
                           </span>
                         )}
                       </div>
@@ -391,7 +396,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                     </label>
                     <div className="w-full px-3.5 py-2 bg-slate-100/80 border border-slate-200/80 rounded-xl text-slate-700 text-xs font-semibold flex items-center gap-1.5 select-none h-[34px]">
                       <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                      <span>WordPress</span>
+                      <span>{getSiteTypeLabel(editForm.siteType)}</span>
                     </div>
                   </div>
 
@@ -437,7 +442,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                   </div>
                 </div>
 
-                {/* CMS Credentials in a super clean 2-column desktop layout */}
+                {editForm.siteType === 'WORDPRESS' ? (
                 <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-200/50 pb-1.5">
                     <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
@@ -472,6 +477,12 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                     </div>
                   </div>
                 </div>
+                ) : (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5 text-xs text-amber-950">
+                    <div className="font-bold">{getSiteTypeLabel(editForm.siteType)} 发布连接器尚未接入</div>
+                    <p>此站点不会调用 WordPress REST API。配置对应平台的真实凭证和适配器前，自动发布会被明确阻止。</p>
+                  </div>
+                )}
 
                 {/* Baidu Push Token */}
                 <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">

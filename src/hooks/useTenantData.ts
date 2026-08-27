@@ -268,7 +268,14 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
       }
     }
     if (!opps.length) throw new Error('没有生成可继续处理的内容机会');
-    setPipelineStep(1, 'COMPLETED');
+    const evidenceBackedOpportunities = opps.filter((opportunity) => opportunity.demandEvidence.sourceType !== 'USER_SEED').length;
+    if (evidenceBackedOpportunities === 0) {
+      addLog(`[步骤 1/8 · 意图挖掘] ${opps.length}/${opps.length} 个机会仅基于用户主题；GSC / DataForSEO 未接入，不能把它标记为“已完成流量机会”。`);
+      setPipelineStep(1, 'PARTIAL');
+    } else {
+      addLog(`[步骤 1/8 · 意图挖掘] ${evidenceBackedOpportunities}/${opps.length} 个机会带有可验证的搜索数据来源。`);
+      setPipelineStep(1, evidenceBackedOpportunities === opps.length ? 'COMPLETED' : 'PARTIAL');
+    }
 
     // Step 2: the brief endpoint first retrieves the customer knowledge sources.
     setPipelineStep(2, 'RUNNING');
@@ -278,7 +285,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
       const briefRes = await api.generateBrief(opp.id);
       briefs.push(briefRes.brief);
     }
-    setPipelineStep(2, 'COMPLETED');
+    setPipelineStep(2, briefs.filter(Boolean).length === opps.length ? 'COMPLETED' : 'PARTIAL');
 
     // Step 3 uses the real Content Brief returned in the previous operation.
     setPipelineStep(3, 'RUNNING');
@@ -316,7 +323,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     const publishedDrafts = draftsList.filter((draft) => draft.status === 'PUBLISHED' && draft.publishedUrl);
     const blockedDrafts = draftsList.filter((draft) => draft.status !== 'PUBLISHED');
     setPipelineStep(7, 'RUNNING');
-    addLog(`[步骤 7/8 · 站点发布] WordPress 自动发布 ${publishedDrafts.length} 篇；质量门禁阻止 ${blockedDrafts.length} 篇。`);
+    addLog(`[步骤 7/8 · 站点发布] 已按各站点类型的真实连接器自动发布 ${publishedDrafts.length} 篇；质量门禁或连接器配置阻止 ${blockedDrafts.length} 篇。`);
     setPipelineStep(7, publishedDrafts.length === 0 ? 'SKIPPED' : blockedDrafts.length === 0 ? 'COMPLETED' : 'PARTIAL');
 
     const indexingResults = automationResults.flatMap((result) => result.indexing.results);
@@ -327,7 +334,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     if (indexingResults.length === 0) {
       addLog('[步骤 8/8 · 收录监测] 没有已发布文章，未创建站点地图与 GSC 监测记录。');
     } else {
-    addLog(`[步骤 8/8 · 收录监测] 已提交 ${submittedIndexing} 个允许主动推送的渠道；${skippedIndexing} 个改由站点地图与 GSC 监测；失败 ${failedIndexing} 个。`);
+    addLog(`[步骤 8/8 · 收录监测] 已提交 ${submittedIndexing} 个允许主动推送的渠道；${skippedIndexing} 个未具备主动推送条件；失败 ${failedIndexing} 个。未连接 GSC 时不能确认收录、排名或流量，本步骤不会显示为完成。`);
     }
     await loadTenantData();
     setPipelineStep(
@@ -335,9 +342,9 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
       indexingResults.length === 0
         ? 'SKIPPED'
         : failedIndexing > 0
-          ? submittedIndexing > 0 || skippedIndexing > 0 ? 'PARTIAL' : 'FAILED'
+          ? 'FAILED'
           : submittedIndexing > 0
-            ? skippedIndexing > 0 ? 'PARTIAL' : 'COMPLETED'
+            ? 'PARTIAL'
             : 'SKIPPED'
     );
     return publishedDrafts[0] || draftsList[0];

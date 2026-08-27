@@ -7,10 +7,13 @@ import { searchEngineAdapter } from '../infrastructure/searchEngine/searchEngine
 import { geminiAdapter } from '../infrastructure/ai/geminiAdapter';
 import { fileTenantRepository } from '../infrastructure/persistence/fileTenantRepository';
 import { logger } from '../utils/logger';
-import { NotFoundError } from '../domain/errors';
+import { NotFoundError, ValidationError } from '../domain/errors';
 import { generateSeoSlug } from '../utils/validator';
 import { sanitizeArticleHtml } from '../utils/contentSanitizer';
 import { applySiteContentQualityGate } from './contentQualityGate';
+import { publishingAdapterRouter, publishingProviderLabel } from '../infrastructure/publishing/publishingAdapterRouter';
+import { weaveRelevantInternalLink } from './internalLinking';
+import { hasExistingTopic } from './opportunitySafety';
 
 export interface PipelineExecutionOptions {
   tenantId: string;
@@ -47,7 +50,11 @@ export class SEOPipelineOrchestrator {
     const site = tenantData.sites.find(s => s.id === siteId);
 
     if (!site) {
-      throw new NotFoundError(`WordPress site '${siteId}' was not found in tenant '${tenantId}'.`);
+      throw new NotFoundError(`Site '${siteId}' was not found in tenant '${tenantId}'.`);
+    }
+    const publishingReadiness = publishingAdapterRouter.readiness(site);
+    if (!publishingReadiness.ready) {
+      throw new ValidationError(publishingReadiness.reason || `${publishingProviderLabel(site)} 发布连接器不可用`);
     }
 
     const profiler = logger.profile('ORCHESTRATOR', `executePipeline(site: ${site.domain}, keyword: ${keyword || 'AUTO'})`, {
@@ -60,6 +67,10 @@ export class SEOPipelineOrchestrator {
         ? (site.siteLanguage === 'zh-CN' ? `${site.niche} 核心技术落地与选型指南` : `${site.niche} Architecture Best Practices`)
         : (site.siteLanguage === 'zh-CN' ? 'DeepSeek K8s 部署实践' : 'Kubernetes FinOps Guide 2026'));
 
+      if (hasExistingTopic(tenantData.opportunities || [], site.id, finalKeyword)) {
+        throw new ValidationError(`“${finalKeyword}”已在该站点的机会队列或已发布内容中；已阻止重复生产以避免关键词蚕食。`);
+      }
+
       // The automatic system may use a supplied topic without paid keyword data,
       // but it may never manufacture traffic evidence or publish without a
       // customer-approved knowledge source.
@@ -68,22 +79,21 @@ export class SEOPipelineOrchestrator {
         throw new Error('自动发布要求至少一条客户知识库或原创研究资料');
       }
 
-      // 1. Credit Deduction
+      // Billing is a preflight, not one of the customer-visible SEO stages.
       creditDeductedAmount = await this.deductPipelineCredits(tenantId, site, finalKeyword);
-      stagesCompleted.push('CREDIT_DEDUCTED');
 
-      // 2. Stage 1: SERP Intent & Search Demand Discovery
+      // Stage 1: SERP Intent & Search Demand Discovery
       const opportunity = await this.discoverSearchDemand(tenantId, site, finalKeyword, traceId);
       stagesCompleted.push('INTENT_DISCOVERY');
 
-      // 3. Stage 2: Enterprise Knowledge RAG Retrieval
+      // Stage 2: Enterprise Knowledge RAG Retrieval
       stagesCompleted.push('KNOWLEDGE_RAG_RETRIEVAL');
 
-      // 4. Stage 3: Strategic Brief & Content Architecture
+      // Stage 3: Strategic Brief & Content Architecture
       const brief = await this.synthesizeBrief(tenantId, site.id, opportunity, kbSnippets, traceId);
       stagesCompleted.push('BRIEF_SYNTHESIS');
 
-      // 5. Stage 4: Deep Semantic Article & E-E-A-T Quality Gate
+      // Stage 4: Deep Semantic Article
       const articleResult = await this.aiEngine.generateArticleAndQualityCheck(
         opportunity.targetKeyword, 
         opportunity.language, 
@@ -96,20 +106,27 @@ export class SEOPipelineOrchestrator {
         (tenantData.drafts || []).filter((draft) => draft.siteId === site.id && draft.status === 'PUBLISHED')
       );
       stagesCompleted.push('CONTENT_AEO_SYNTHESIS');
+
+      // Stage 5: deterministic quality checks supplement the model report.
       stagesCompleted.push('QUALITY_GATE_EEAT');
 
-      // 6. Stage 5: Semantic Internal Link Weaving
-      const finalContentHtml = sanitizeArticleHtml(this.weaveInternalLinks(articleResult.contentHtml, tenantData, site.id));
+      // Stage 6: Semantic Internal Link Weaving
+      const internalLinkResult = weaveRelevantInternalLink({
+        contentHtml: sanitizeArticleHtml(articleResult.contentHtml),
+        articleTitle: articleResult.title,
+        targetKeyword: opportunity.targetKeyword,
+        siteDomain: site.domain,
+        publishedDrafts: (tenantData.drafts || []).filter((draft) => draft.siteId === site.id && draft.status === 'PUBLISHED')
+      });
+      const finalContentHtml = sanitizeArticleHtml(internalLinkResult.contentHtml);
       stagesCompleted.push('INTERNAL_LINK_WEAVING');
 
-      // 7. Stage 6: Determine Autopilot Eligibility & Deploy to WordPress
+      // Stage 7: determine eligibility and deploy through this site's connector.
       const isAutoEligible = this.checkAutopilotEligibility(site, opportunity, articleResult.qualityGate);
-      const deploymentResult = await this.deployToWordPress(site, articleResult, finalContentHtml, opportunity.category, isAutoEligible);
-      if (deploymentResult.publishedUrl) {
-        stagesCompleted.push('WORDPRESS_DEPLOYMENT');
-      }
+      const deploymentResult = await this.deployToSite(site, articleResult, finalContentHtml, opportunity.category, isAutoEligible);
+      stagesCompleted.push('SITE_PUBLICATION');
 
-      // 8. Stage 7: Persist Draft & Opportunity State
+      // Persist the evidence of stages 1–7 before monitoring begins.
       const draft = await this.persistDraftRecord(
         tenantId,
         site.id,
@@ -124,7 +141,8 @@ export class SEOPipelineOrchestrator {
         deploymentResult.wpPostId
       );
 
-      // 9. Stage 8: Instant Search Engine Multi-Protocol Broadcast
+      // Stage 8: allowed push protocols plus GSC/sitemap monitoring. A
+      // submission is never interpreted as a confirmed Google indexation.
       if (isAutoEligible && deploymentResult.publishedUrl) {
         await this.dispatchSearchEnginePush(
           tenantId, 
@@ -132,7 +150,6 @@ export class SEOPipelineOrchestrator {
           opportunity, 
           draft, 
           deploymentResult.publishedUrl, 
-          stagesCompleted, 
           traceId
         );
       } else {
@@ -149,6 +166,7 @@ export class SEOPipelineOrchestrator {
           traceId
         });
       }
+      stagesCompleted.push('INDEXING_MONITORING');
 
       // 10. Audit Logging
       await this.recordAuditLog(tenantId, site, actor, isAutoEligible, articleResult);
@@ -320,23 +338,11 @@ export class SEOPipelineOrchestrator {
     return brief;
   }
 
-  private weaveInternalLinks(contentHtml: string, tenantData: TenantData, siteId: string): string {
-    const otherPublished = tenantData.drafts.filter(d => d.siteId === siteId && d.status === 'PUBLISHED' && d.publishedUrl);
-    if (otherPublished.length > 0) {
-      const samplePrev = otherPublished[0];
-      const linkTag = `<p class="mt-4 p-3 bg-slate-900/60 rounded-lg text-xs text-slate-300 border border-slate-800">💡 <strong>延伸阅读</strong>：查看我们关于 <a href="${samplePrev.publishedUrl}" class="text-emerald-400 underline font-semibold hover:text-emerald-300" target="_blank">${samplePrev.title}</a> 的深度分析。</p>`;
-      if (!contentHtml.includes(samplePrev.title)) {
-        return contentHtml + linkTag;
-      }
-    }
-    return contentHtml;
-  }
-
   private checkAutopilotEligibility(site: WordPressSite, _opportunity: Opportunity, qualityGate: QualityGateResult): boolean {
     return (site.autopilotEnabled || site.calibration?.autoPublishUnlocked) && qualityGate.passed;
   }
 
-  private async deployToWordPress(
+  private async deployToSite(
     site: WordPressSite,
     articleResult: { title: string; summary: string },
     finalContentHtml: string,
@@ -356,6 +362,10 @@ export class SEOPipelineOrchestrator {
       category,
       status: 'publish'
     });
+
+    if (!wpRes.success || !wpRes.publishedUrl) {
+      throw new Error(wpRes.error || `${publishingProviderLabel(site)} 发布未返回有效文章 URL`);
+    }
 
     return {
       publishedUrl: wpRes.publishedUrl,
@@ -404,7 +414,6 @@ export class SEOPipelineOrchestrator {
     opportunity: Opportunity,
     draft: ArticleDraft,
     publishedUrl: string,
-    stagesCompleted: string[],
     traceId?: string
   ): Promise<void> {
     opportunity.status = 'AUTO_PUBLISHED';
@@ -428,7 +437,6 @@ export class SEOPipelineOrchestrator {
             status: 'SUBMITTED',
           remainQuota: baiduRes.remain || 0
           });
-          stagesCompleted.push('BAIDU_INDEXING_DISPATCH');
           anyEnginePushed = true;
         }
       } else {
@@ -438,10 +446,8 @@ export class SEOPipelineOrchestrator {
 
     // 普通编辑文章不适用 Google Indexing API。第 8 阶段只记录由 canonical URL、
     // 站点地图和 GSC 完成的后续发现/表现监测；不得伪造“已实时收录”。
-    stagesCompleted.push('GOOGLE_SITEMAP_GSC_MONITORING');
-
     if (anyEnginePushed) {
-      stagesCompleted.push('SEARCH_ENGINE_PUSH');
+      logger.info('PIPELINE', `站点 ${site.domain} 已完成允许的百度主动推送；Google 仍等待站点地图与 GSC 的自然发现和监测`);
     } else {
       logger.info('PIPELINE', `站点 ${site.domain} 已发布；普通文章等待站点地图与 GSC 的自然发现和后续监测`);
     }

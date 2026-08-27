@@ -40,4 +40,12 @@ describe('site content quality gate', () => {
     expect(result.passed).toBe(true);
     expect(result.duplicateContentCheck).toBe(true);
   });
+
+  it('does not let a short English sales paragraph pass on character count alone', () => {
+    const content = `<h2>Why it matters</h2><p>${'A platform can improve collaboration, visibility, and predictable delivery. '.repeat(14)}</p><h2>How it works</h2><p>${'Teams review the workflow and apply the right change for their customers. '.repeat(14)}</p>`;
+    const result = applySiteContentQualityGate(passingModelGate, content, []);
+
+    expect(result.passed).toBe(false);
+    expect(result.issues).toEqual(expect.arrayContaining([expect.stringContaining('450') ]));
+  });
 });
