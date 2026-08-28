@@ -1,25 +1,29 @@
-AISEO production runbook
+# AISEO production runbook
 
-Production runtime uses Supabase Postgres, Redis/BullMQ workers, GSC, DataForSEO,
-WordPress, and an immutable TRC20 USDT credit ledger.
+## Services and environments
 
-Before deployment run: npm ci; npm run prisma:generate; npm run lint;
-npm run test:coverage; npm run build.
+Deploy exactly two application services from the same image: `node dist/server.cjs` and `node dist/worker.cjs`. Staging and production must have separate Supabase projects, persistent Redis instances, TRON addresses and third-party credentials. Redis AOF is required; Postgres remains the job source of truth.
 
-Copy .env.example into the deployment secret manager. Never expose Supabase
-service-role, GSC, DataForSEO, TronGrid, or WordPress credentials to browsers.
+Web must use `DATABASE_APP_URL` for a LOGIN role granted `app_backend`. Worker must use `DATABASE_WORKER_URL` for a LOGIN role granted `app_worker`. Neither role may own tables or have BYPASSRLS. `DATABASE_ADMIN_URL` is limited to migrations and the audited `npm run admin:bootstrap -- email "reason"` command.
 
-To verify local Supabase migrations: npx supabase@2.81.3 start; npm run
-supabase:push; npx supabase@2.81.3 test db.
+Run SQL migration before application deployment. A migration failure blocks deployment. `/api/health/live` checks only the process. `/api/health/ready` requires Postgres, Redis, current migration and a recent Worker heartbeat. Optional provider status is separate.
 
-Railway web service: push main before expecting GitHub autodeploy; a local
-commit alone is invisible to Railway. Configure NODE_ENV=production,
-DATABASE_URL from Supabase, REDIS_URL from Redis, and a generated
-APP_ENCRYPTION_KEY. APP_BASE_URL can be omitted on Railway when
-RAILWAY_PUBLIC_DOMAIN is present, but set it explicitly for custom domains.
-Configure the Railway Healthcheck Path as /api/health and verify the app logs
-"Production API running on http://0.0.0.0:$PORT".
+## Release verification
 
-Before production: link the approved Supabase project, rotate historical
-credentials, verify restore from backup, smoke-test staging integrations and
-confirmed TRC20 transfers, then complete the relevant USDT legal review.
+Required CI gates: lockfile install, Prisma validation/generation, TypeScript, unit coverage, Supabase reset, SQL lint, pgTAP RLS/grants, Prisma drift, production build, container syntax startup, high-severity dependency audit and secret scan.
+
+Staging must complete real GSC authorization/sync, a real DataForSEO scan, WordPress credential verification, publication and rollback, a low-value mainnet TRC20 transfer, ledger zero-difference reconciliation, and a Supabase PITR restore rehearsal. Mark all staging funds and records as test operations.
+
+Do not open public registration or充值 until CI is green, Critical/High findings are zero, queues have run 24 hours without stuck work, alert drills pass, RPO 15 minutes/RTO 2 hours are demonstrated, and counsel signs the service, privacy, AI/content, acceptable-use and USDT/refund terms.
+
+## Monitoring and incident response
+
+Configure `SENTRY_DSN` and `VITE_SENTRY_DSN`. Alerts cover unhandled API/Worker failures, payment verification, ledger mismatch, queue backlog, dead-letter jobs and Worker readiness. Provider errors include trace/job IDs but never credentials. Configure infrastructure alerts for Supabase backups/PITR, Redis persistence and service restarts.
+
+For a ledger mismatch, stop paid job creation and payment crediting, preserve logs and database snapshots, and reconcile from append-only ledger entries before resuming. Never edit or delete ledger rows. Corrections use an audited `ADJUSTMENT` entry.
+
+For Redis loss, restore Redis if available and keep the Worker running; reconciliation deterministically recreates queued jobs from `job_runs`. Never manufacture successful job states.
+
+## Backup and deletion
+
+Use a paid Supabase production plan with PITR and backups. Target RPO is 15 minutes and RTO is 2 hours. Perform restore drills before launch and quarterly. Account deletion revokes Supabase sessions, disables solely-owned organizations immediately, and erases content/credentials after 30 days. Financial and audit records are retained in de-identified form according to counsel-approved retention periods.

@@ -1,7 +1,21 @@
-AISEO
+# AISEO
 
-Production SEO SaaS: Supabase Postgres, Redis/BullMQ workers, GSC, DataForSEO,
-WordPress, and an immutable TRC20 USDT credit ledger.
+AISEO is a production SEO SaaS built on one runtime path:
 
-See RUNBOOK for local setup, Supabase migration verification, secret handling,
-staging checks, recovery expectations, and the real-USDT release checklist.
+- Supabase Auth (email/password, PKCE, verified email) and Supabase Postgres
+- Stateless Express `/api`
+- Redis/BullMQ Worker with Postgres-backed queue reconciliation
+- React 19 + TanStack Query
+- GSC, DataForSEO, OpenAI/Gemini and WordPress
+- TRC20 USDT payment intents and an append-only bigint-microcredit ledger
+
+There is no JSON database, in-memory session store, browser-accessible business Data API, demo data, synthetic metric fallback or non-WordPress CMS adapter.
+
+## Local verification
+
+1. Copy `.env.example` to a private environment file and provide the required values.
+2. Start Docker, then run `npx --yes supabase@2.81.3 start` and `npx --yes supabase@2.81.3 db reset --local --no-seed`.
+3. Run `npm ci`, `npm run lint`, `npm test`, `npm run db:drift`, and `npm run build`.
+4. Start Web with `npm run dev` and Worker with `npm run dev:worker`.
+
+Production deployment and release gates are in `RUNBOOK`. Legal drafts are served from `public/legal`; they require jurisdiction-specific counsel approval before public payment collection.

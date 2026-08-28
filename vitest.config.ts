@@ -7,7 +7,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary'],
-      exclude: ['src/**', 'server/mockData.ts', 'server/infrastructure/persistence/fileTenantRepository.ts'],
+      exclude: ['src/**', 'server/production/server.ts', 'server/production/worker.ts'],
       thresholds: {
         statements: 80,
         lines: 80,

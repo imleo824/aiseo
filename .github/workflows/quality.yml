@@ -34,6 +34,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: verify
     timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres?schema=public
+      TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
+      SMTP_HOST: localhost
+      SMTP_USER: test
+      SMTP_PASSWORD: test
+      SMTP_FROM_EMAIL: test@example.com
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -44,6 +51,8 @@ jobs:
       - run: npx --yes supabase@2.81.3 db reset --local --no-seed
       - run: npx --yes supabase@2.81.3 db lint --local --level error
       - run: npx --yes supabase@2.81.3 test db --local
+      - run: npm ci
+      - run: npm run db:drift
 
   container:
     runs-on: ubuntu-latest
@@ -55,3 +64,6 @@ jobs:
         with:
           context: .
           push: false
+          tags: aiseo:ci
+      - run: docker run --rm --entrypoint node aiseo:ci --check dist/server.cjs
+      - run: docker run --rm --entrypoint node aiseo:ci --check dist/worker.cjs

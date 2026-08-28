@@ -12,7 +12,7 @@
   }
 
   body {
-    @apply bg-slate-50 text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-700;
+    @apply bg-slate-950 text-slate-100 antialiased selection:bg-cyan-900 selection:text-cyan-100;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     overscroll-behavior-y: none;
   }
@@ -103,4 +103,25 @@
   .data-table tr {
     @apply hover:bg-slate-50/50 transition-colors;
   }
+
+  .screen-center { @apply min-h-screen grid place-items-center bg-slate-950 text-slate-100; }
+  .panel { @apply rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-xl shadow-black/10; }
+  .page-title { @apply text-2xl font-bold tracking-tight; }
+  .section-title { @apply text-lg font-semibold; }
+  .muted { @apply text-slate-400; }
+  .field { @apply mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20; }
+  .primary { @apply inline-flex items-center justify-center rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50; }
+  .secondary { @apply inline-flex items-center justify-center rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 hover:border-slate-500 disabled:opacity-50; }
+  .danger { @apply inline-flex items-center justify-center rounded-lg border border-rose-900 bg-rose-950/50 px-4 py-2 text-sm font-medium text-rose-200 hover:bg-rose-900/60 disabled:opacity-50; }
+  .nav-tab { @apply whitespace-nowrap border-b-2 border-transparent px-4 py-3 text-sm text-slate-400 hover:text-slate-100; }
+  .nav-tab-active { @apply border-cyan-400 text-cyan-300; }
+  .status { @apply inline-flex rounded-full border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs text-slate-300; }
+  .chip { @apply inline-flex items-center gap-2 rounded-full border border-slate-700 px-3 py-1.5 text-sm; }
+  .error-text { @apply text-sm text-rose-300; }
+  .empty { @apply py-8 text-center text-slate-500; }
+  .table-wrap { @apply mt-4 overflow-x-auto; }
+  .table-wrap table { @apply w-full min-w-2xl text-left text-sm; }
+  .table-wrap th { @apply border-b border-slate-700 px-3 py-3 font-medium text-slate-400; }
+  .table-wrap td { @apply border-b border-slate-800 px-3 py-3 align-top; }
+  .prose-preview { @apply max-h-96 overflow-auto rounded-xl bg-white p-5 text-slate-900; }
 }

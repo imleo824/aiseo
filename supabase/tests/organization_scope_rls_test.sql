@@ -1,51 +1,98 @@
 begin;
-select plan(22);
+select plan(16);
 
-select ok((select relrowsecurity from pg_class where oid = 'public.organizations'::regclass), 'organizations has RLS enabled');
-select ok((select relrowsecurity from pg_class where oid = 'public.organization_members'::regclass), 'organization_members has RLS enabled');
-select ok((select relrowsecurity from pg_class where oid = 'public.sites'::regclass), 'sites has RLS enabled');
-select ok((select relrowsecurity from pg_class where oid = 'public.integration_connections'::regclass), 'integration_connections has RLS enabled');
-select ok((select relrowsecurity from pg_class where oid = 'public.data_snapshots'::regclass), 'data_snapshots has RLS enabled');
-select ok((select relrowsecurity from pg_class where oid = 'public.job_runs'::regclass), 'job_runs has RLS enabled');
-select ok((select relrowsecurity from pg_class where oid = 'public.payment_intents'::regclass), 'payment_intents has RLS enabled');
-select ok((select relrowsecurity from pg_class where oid = 'public.ledger_entries'::regclass), 'ledger_entries has RLS enabled');
-select ok((select relrowsecurity from pg_class where oid = 'public.credit_holds'::regclass), 'credit_holds has RLS enabled');
-select ok((select relrowsecurity from pg_class where oid = 'public.content_drafts'::regclass), 'content_drafts has RLS enabled');
-select ok((select relrowsecurity from pg_class where oid = 'public.idempotency_keys'::regclass), 'idempotency_keys has RLS enabled');
-select ok((select relrowsecurity from pg_class where oid = 'public.audit_events'::regclass), 'audit_events has RLS enabled');
+select is(
+  (select count(*) from pg_class
+   where oid = any(array[
+     'public.profiles'::regclass, 'public.organizations'::regclass,
+     'public.organization_members'::regclass, 'public.sites'::regclass,
+     'public.integration_connections'::regclass, 'public.knowledge_sources'::regclass,
+     'public.data_snapshots'::regclass, 'public.keyword_scans'::regclass,
+     'public.opportunities'::regclass, 'public.automation_tasks'::regclass,
+     'public.job_runs'::regclass, 'public.content_drafts'::regclass,
+     'public.draft_reviews'::regclass, 'public.publish_attempts'::regclass,
+     'public.indexing_observations'::regclass, 'public.payment_packages'::regclass,
+     'public.action_prices'::regclass, 'public.payment_intents'::regclass,
+     'public.ledger_entries'::regclass, 'public.credit_holds'::regclass,
+     'public.usage_records'::regclass, 'public.idempotency_keys'::regclass,
+     'public.audit_events'::regclass, 'public.terms_acceptances'::regclass,
+     'public.notifications'::regclass, 'public.worker_heartbeats'::regclass,
+     'public.system_settings'::regclass
+   ]) and relrowsecurity and relforcerowsecurity),
+  27::bigint,
+  'every business table has RLS enabled and forced'
+);
 
-select ok(not has_table_privilege('anon', 'public.sites', 'select,insert,update,delete'), 'anon has no sites privileges');
-select ok(not has_table_privilege('authenticated', 'public.sites', 'select,insert,update,delete'), 'authenticated has no sites privileges');
-select ok(not has_table_privilege('anon', 'public.payment_intents', 'select,insert,update,delete'), 'anon has no payment privileges');
-select ok(not has_table_privilege('authenticated', 'public.ledger_entries', 'select,insert,update,delete'), 'authenticated has no ledger privileges');
-select ok(exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'sites' and policyname = 'sites_scope'), 'sites scope policy exists');
-select ok(exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'payment_intents' and policyname = 'payment_intents_scope'), 'payment intent scope policy exists');
+select ok(not has_table_privilege('anon', 'public.sites', 'select,insert,update,delete'), 'anon has no business-table privileges');
+select ok(not has_table_privilege('authenticated', 'public.sites', 'select,insert,update,delete'), 'authenticated has no business-table privileges');
+select ok(not (select rolbypassrls from pg_roles where rolname = 'app_backend'), 'Web role cannot bypass RLS');
+select ok(not (select rolbypassrls from pg_roles where rolname = 'app_worker'), 'Worker role cannot bypass RLS');
 
--- Exercise the actual policy using the Supabase authenticated role. These
--- temporary grants exist only inside this pgTAP transaction; production still
--- grants no direct Data API access to business tables.
-insert into public.organizations (id, name) values
-  ('00000000-0000-0000-0000-0000000000a1', 'RLS test organization A'),
-  ('00000000-0000-0000-0000-0000000000b2', 'RLS test organization B');
-insert into public.sites (id, organization_id, domain, name) values
-  ('00000000-0000-0000-0000-0000000000a3', '00000000-0000-0000-0000-0000000000a1', 'org-a.example.test', 'Org A site'),
-  ('00000000-0000-0000-0000-0000000000b4', '00000000-0000-0000-0000-0000000000b2', 'org-b.example.test', 'Org B site');
-grant usage on schema private to authenticated;
-grant select, insert, update on public.sites to authenticated;
+insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
+values
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-0000000000a1', 'authenticated', 'authenticated', 'owner-a@example.test', crypt('StrongPassword1', gen_salt('bf')), now(), now(), now()),
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-0000000000b2', 'authenticated', 'authenticated', 'owner-b@example.test', crypt('StrongPassword1', gen_salt('bf')), now(), now(), now());
 
-select set_config('app.organization_id', '00000000-0000-0000-0000-0000000000a1', true);
-set local role authenticated;
-select is((select count(*) from public.sites), 1::bigint, 'RLS only returns organization A rows');
-select is((with changed as (update public.sites set name = 'unexpected' where id = '00000000-0000-0000-0000-0000000000b4' returning id) select count(*) from changed), 0::bigint, 'RLS prevents organization A from updating organization B rows');
+select is((select count(*) from public.profiles where id in ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b2')), 2::bigint, 'Auth lifecycle creates matching profiles');
+
+create temporary table rls_context (label text primary key, organization_id uuid not null);
+select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000a1', true);
+insert into rls_context values ('a', private.bootstrap_organization('Organization A'));
+select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000b2', true);
+insert into rls_context values ('b', private.bootstrap_organization('Organization B'));
+
+select is((select credit_balance_micros from public.organizations where id = (select organization_id from rls_context where label = 'a')), 0::bigint, 'new organization starts with zero credits');
+
+select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000a1', true);
+select set_config('app.organization_id', (select organization_id::text from rls_context where label = 'a'), true);
+set local role app_backend;
+insert into public.sites (id, organization_id, domain, name, updated_at)
+values ('00000000-0000-0000-0000-0000000000a3', (select organization_id from rls_context where label = 'a'), 'org-a.example.test', 'Org A site', now());
+select is((select count(*) from public.sites), 1::bigint, 'owner can select own organization rows');
 reset role;
 
-select set_config('app.organization_id', '00000000-0000-0000-0000-0000000000b2', true);
-set local role authenticated;
-select is((select count(*) from public.sites), 1::bigint, 'RLS context switches to organization B without exposing organization A rows');
+select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000b2', true);
+select set_config('app.organization_id', (select organization_id::text from rls_context where label = 'b'), true);
+set local role app_backend;
+select is((select count(*) from public.sites), 0::bigint, 'cross-organization SELECT is denied');
 select throws_like(
-  $$insert into public.sites (organization_id, domain, name) values ('00000000-0000-0000-0000-0000000000a1', 'cross-org.example.test', 'Cross organization')$$,
-  'new row violates row-level security policy',
-  'RLS rejects a cross-organization insert'
+  format('insert into public.sites (organization_id, domain, name, updated_at) values (%L, %L, %L, now())', (select organization_id from rls_context where label = 'a'), 'cross.example.test', 'Cross org'),
+  '%row-level security%',
+  'cross-organization INSERT is denied'
+);
+reset role;
+
+select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000a1', true);
+select set_config('app.organization_id', (select organization_id::text from rls_context where label = 'a'), true);
+set local role app_backend;
+insert into public.organization_members (organization_id, profile_id, role)
+values ((select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000b2', 'VIEWER');
+reset role;
+
+select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000b2', true);
+select set_config('app.organization_id', (select organization_id::text from rls_context where label = 'a'), true);
+set local role app_backend;
+select is((select count(*) from public.sites), 1::bigint, 'viewer can SELECT organization rows');
+select throws_like(
+  format('insert into public.sites (organization_id, domain, name, updated_at) values (%L, %L, %L, now())', (select organization_id from rls_context where label = 'a'), 'viewer-write.example.test', 'Viewer write'),
+  '%row-level security%',
+  'viewer cannot INSERT organization rows'
+);
+select is((with changed as (update public.sites set name = 'viewer changed' returning id) select count(*) from changed), 0::bigint, 'viewer cannot UPDATE organization rows');
+reset role;
+
+update public.organizations set credit_balance_micros = 1000000 where id = (select organization_id from rls_context where label = 'a');
+insert into public.ledger_entries (organization_id, type, amount_micros, balance_after_micros, reason, idempotency_key)
+values ((select organization_id from rls_context where label = 'a'), 'ADJUSTMENT', 1000000, 1000000, 'RLS test adjustment', 'rls-test-ledger');
+select throws_like($$update public.ledger_entries set reason = 'mutated' where idempotency_key = 'rls-test-ledger'$$, '%append-only%', 'ledger UPDATE is rejected');
+select throws_like($$delete from public.ledger_entries where idempotency_key = 'rls-test-ledger'$$, '%append-only%', 'ledger DELETE is rejected');
+select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000b2', true);
+select set_config('app.organization_id', (select organization_id::text from rls_context where label = 'b'), true);
+set local role app_backend;
+select throws_like(
+  $$update public.profiles set platform_role = 'PLATFORM_ADMIN' where id = '00000000-0000-0000-0000-0000000000b2'$$,
+  '%audited bootstrap/admin action%',
+  'user cannot self-promote to platform administrator'
 );
 reset role;
 

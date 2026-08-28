@@ -1,129 +1,101 @@
-import { createHmac, timingSafeEqual } from 'crypto';
-import { DataSource, DataStatus, type IntegrationConnection } from '@prisma/client';
 import { ExternalServiceError, ValidationError } from '../domain/errors';
-import { decryptSecret, encryptSecret } from './crypto';
 import { env } from './env';
-import { prisma } from './prisma';
-import { resolvePublicHttpsOrigin } from '../utils/networkSafety';
 
-const externalFetch = (input: RequestInfo | URL, init: RequestInit = {}) =>
-  fetch(input, { ...init, signal: init.signal || AbortSignal.timeout(15_000) });
-
-const responseJson = async (response: Response): Promise<any> => {
+const externalFetch = (input: RequestInfo | URL, init: RequestInit = {}) => fetch(input, { ...init, signal: init.signal || AbortSignal.timeout(20_000) });
+const json = async (response: Response): Promise<Record<string, any>> => {
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new ExternalServiceError(`外部服务请求失败 (${response.status}): ${body.error?.message || body.status_message || response.statusText}`);
+  if (!response.ok) throw new ExternalServiceError(`供应商请求失败 (${response.status}): ${body.error?.message || body.status_message || response.statusText}`);
   return body;
 };
 
-const assertGscConfigured = (): void => {
-  if (!env.gscClientId || !env.gscClientSecret) throw new ValidationError('GSC OAuth 尚未配置');
+const dataForSeoHeaders = () => {
+  if (!env.dataForSeoLogin || !env.dataForSeoPassword) throw new ValidationError('DataForSEO 尚未配置');
+  return { authorization: `Basic ${Buffer.from(`${env.dataForSeoLogin}:${env.dataForSeoPassword}`).toString('base64')}`, 'content-type': 'application/json' };
 };
 
-const assertDataForSeoConfigured = (): void => {
-  if (!env.dataForSeoLogin || !env.dataForSeoPassword) throw new ValidationError('DataForSEO 凭证尚未配置');
+const dataForSeoLive = async (path: string, payload: Record<string, unknown>): Promise<Record<string, any>> => {
+  const response = await externalFetch(`https://api.dataforseo.com/v3/${path}`, { method: 'POST', headers: dataForSeoHeaders(), body: JSON.stringify([payload]) });
+  const body = await json(response);
+  const task = body.tasks?.[0];
+  if (task?.status_code !== 20000) throw new ExternalServiceError(task?.status_message || `DataForSEO ${path} 失败`);
+  return task;
 };
 
-export type GscCredentials = { refreshToken: string; siteUrl: string; scope: string };
-
-const stateSignature = (value: string) => createHmac('sha256', env.gscStateSecret).update(value).digest('base64url');
-export const signGscState = (input: { organizationId: string; userId: string; siteUrl: string }): string => {
-  if (!env.gscStateSecret) throw new ValidationError('尚未配置 GSC_STATE_SECRET');
-  const body = Buffer.from(JSON.stringify({ ...input, expiresAt: Date.now() + 10 * 60 * 1000 }), 'utf8').toString('base64url');
-  return `${body}.${stateSignature(body)}`;
-};
-export const verifyGscState = (value: string): { organizationId: string; userId: string; siteUrl: string } => {
-  const [body, signature] = value.split('.');
-  if (!body || !signature) throw new ValidationError('GSC 授权状态无效');
-  const expected = stateSignature(body);
-  if (Buffer.byteLength(signature) !== Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) throw new ValidationError('GSC 授权状态签名无效');
-  const parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
-  if (!parsed.expiresAt || parsed.expiresAt < Date.now()) throw new ValidationError('GSC 授权状态已过期');
-  return { organizationId: parsed.organizationId, userId: parsed.userId, siteUrl: parsed.siteUrl };
+export type KeywordMetrics = {
+  keyword: string;
+  searchVolume: number;
+  keywordDifficulty: number;
+  allintitleCount: number;
+  serp: unknown;
+  fetchedAt: string;
 };
 
-export const gscProvider = {
-  authorizationUrl(state: string): string {
-    assertGscConfigured();
-    const params = new URLSearchParams({ client_id: env.gscClientId, redirect_uri: `${env.appBaseUrl}/api/integrations/gsc/callback`, response_type: 'code', access_type: 'offline', prompt: 'consent', scope: 'https://www.googleapis.com/auth/webmasters.readonly', state });
-    return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
-  },
-
-  async exchangeCode(code: string, siteUrl: string): Promise<GscCredentials> {
-    assertGscConfigured();
-    const response = await externalFetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code, client_id: env.gscClientId, client_secret: env.gscClientSecret, redirect_uri: `${env.appBaseUrl}/api/integrations/gsc/callback`, grant_type: 'authorization_code' }) });
-    const token = await responseJson(response);
-    if (!token.refresh_token) throw new ExternalServiceError('Google 未返回刷新令牌；请重新授权并允许离线访问');
-    return { refreshToken: token.refresh_token, siteUrl, scope: token.scope || 'https://www.googleapis.com/auth/webmasters.readonly' };
-  },
-
-  async storeConnection(organizationId: string, credentials: GscCredentials): Promise<void> {
-    await prisma.integrationConnection.upsert({ where: { organizationId_provider: { organizationId, provider: DataSource.GSC } }, create: { organizationId, provider: DataSource.GSC, encryptedCredentials: encryptSecret(credentials), keyVersion: 1, status: DataStatus.PENDING }, update: { encryptedCredentials: encryptSecret(credentials), keyVersion: 1, status: DataStatus.PENDING, lastError: null } });
-  },
-
-  async sync(connection: IntegrationConnection): Promise<{ rows: unknown[]; availableFrom: Date }> {
-    assertGscConfigured();
-    const credentials = decryptSecret<GscCredentials>(Buffer.from(connection.encryptedCredentials));
-    const tokenResponse = await externalFetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: env.gscClientId, client_secret: env.gscClientSecret, refresh_token: credentials.refreshToken, grant_type: 'refresh_token' }) });
-    const token = await responseJson(tokenResponse);
-    const availableFrom = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-    const day = availableFrom.toISOString().slice(0, 10);
-    const response = await externalFetch(`https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(credentials.siteUrl)}/searchAnalytics/query`, { method: 'POST', headers: { authorization: `Bearer ${token.access_token}`, 'content-type': 'application/json' }, body: JSON.stringify({ startDate: day, endDate: day, dimensions: ['query', 'page', 'country', 'device'], rowLimit: 25_000, type: 'web' }) });
-    const result = await responseJson(response);
-    return { rows: result.rows || [], availableFrom };
-  }
-};
-
-const dataForSeoAuth = () => `Basic ${Buffer.from(`${env.dataForSeoLogin}:${env.dataForSeoPassword}`).toString('base64')}`;
 export const dataForSeoProvider = {
-  async createSerpTask(input: { keyword: string; locationCode: number; languageCode: string; tag: string }): Promise<string> {
-    assertDataForSeoConfigured();
-    const response = await externalFetch('https://api.dataforseo.com/v3/serp/google/organic/task_post', { method: 'POST', headers: { authorization: dataForSeoAuth(), 'content-type': 'application/json' }, body: JSON.stringify([{ keyword: input.keyword, location_code: input.locationCode, language_code: input.languageCode, tag: input.tag, depth: 10 }]) });
-    const result = await responseJson(response);
-    const task = result.tasks?.[0]?.result?.[0];
-    if (!task?.id) throw new ExternalServiceError(result.tasks?.[0]?.status_message || 'DataForSEO 未返回任务 ID');
-    return task.id;
-  },
-  async getSerpTask(taskId: string): Promise<{ ready: boolean; payload?: unknown }> {
-    assertDataForSeoConfigured();
-    const response = await externalFetch(`https://api.dataforseo.com/v3/serp/google/organic/task_get/advanced/${encodeURIComponent(taskId)}`, { headers: { authorization: dataForSeoAuth() } });
-    const result = await responseJson(response);
-    const task = result.tasks?.[0];
-    if (task?.status_code === 20000) return { ready: true, payload: task.result };
-    if (task?.status_code === 20100 || task?.status_code === 40602) return { ready: false };
-    throw new ExternalServiceError(task?.status_message || 'DataForSEO 任务失败');
+  async scanKeyword(input: { keyword: string; locationCode: number; languageCode: string }): Promise<KeywordMetrics> {
+    const common = { location_code: input.locationCode, language_code: input.languageCode };
+    const [volumeTask, difficultyTask, serpTask, allintitleTask] = await Promise.all([
+      dataForSeoLive('keywords_data/google_ads/search_volume/live', { ...common, keywords: [input.keyword] }),
+      dataForSeoLive('dataforseo_labs/google/bulk_keyword_difficulty/live', { ...common, keywords: [input.keyword] }),
+      dataForSeoLive('serp/google/organic/live/advanced', { ...common, keyword: input.keyword, depth: 20 }),
+      dataForSeoLive('serp/google/organic/live/advanced', { ...common, keyword: `allintitle:${input.keyword}`, depth: 10 })
+    ]);
+    const searchVolume = Number(volumeTask.result?.[0]?.items?.[0]?.search_volume);
+    const keywordDifficulty = Number(difficultyTask.result?.[0]?.items?.[0]?.keyword_difficulty);
+    const allintitleCount = Number(allintitleTask.result?.[0]?.se_results_count);
+    if (![searchVolume, keywordDifficulty, allintitleCount].every(Number.isFinite)) {
+      throw new ExternalServiceError('DataForSEO 未返回完整的搜索量、KD 或 allintitle 数据');
+    }
+    return { keyword: input.keyword, searchVolume, keywordDifficulty, allintitleCount, serp: serpTask.result?.[0], fetchedAt: new Date().toISOString() };
   }
 };
 
 export const tronGridProvider = {
-  async verifyTransfer(input: { txHash: string; recipientAddress: string; expectedAmountMicros: bigint }): Promise<Record<string, unknown>> {
-    if (!env.tronGridApiKey) throw new ValidationError('TRON Grid API Key 尚未配置');
+  async verifyTransfer(input: { txHash: string; recipientAddress: string; expectedAmountMicros: bigint; notBefore: Date; notAfter: Date }) {
+    if (!env.tronGridApiKey) throw new ValidationError('TronGrid 尚未配置');
     const url = new URL(`https://api.trongrid.io/v1/accounts/${input.recipientAddress}/transactions/trc20`);
     url.searchParams.set('only_confirmed', 'true');
     url.searchParams.set('contract_address', env.trc20UsdtContract);
+    url.searchParams.set('min_timestamp', String(input.notBefore.getTime()));
+    url.searchParams.set('max_timestamp', String(input.notAfter.getTime()));
     url.searchParams.set('limit', '200');
-    const response = await externalFetch(url, { headers: { 'TRON-PRO-API-KEY': env.tronGridApiKey } });
-    const result = await responseJson(response);
-    const transfer = (result.data || []).find((item: any) => item.transaction_id?.toLowerCase() === input.txHash.toLowerCase());
-    if (!transfer) throw new ExternalServiceError('未在已固化 TRC20 转账中找到该交易，请稍后重试');
-    if (transfer.to !== input.recipientAddress || transfer.token_info?.address !== env.trc20UsdtContract || BigInt(transfer.value) !== input.expectedAmountMicros) throw new ValidationError('交易的收款地址、USDT 合约或金额与充值意图不一致');
-    return { transactionId: transfer.transaction_id, from: transfer.from, to: transfer.to, valueMicros: transfer.value, contract: transfer.token_info?.address, blockTimestamp: transfer.block_timestamp, confirmed: true };
+    const result = await json(await externalFetch(url, { headers: { 'TRON-PRO-API-KEY': env.tronGridApiKey } }));
+    const transfer = (result.data || []).find((item: Record<string, any>) => String(item.transaction_id).toLowerCase() === input.txHash.toLowerCase());
+    if (!transfer) throw new ExternalServiceError('已固化区块中尚未找到该 TRC20 交易');
+    const timestamp = Number(transfer.block_timestamp);
+    if (transfer.to !== input.recipientAddress || transfer.token_info?.address !== env.trc20UsdtContract) throw new ValidationError('交易收款地址或 USDT 合约不匹配');
+    if (BigInt(transfer.value) !== input.expectedAmountMicros) throw new ValidationError('链上金额与应付的六位小数金额不一致');
+    if (timestamp < input.notBefore.getTime() || timestamp > input.notAfter.getTime()) throw new ValidationError('交易时间不在充值意图有效窗口内');
+    return { transactionId: transfer.transaction_id, from: transfer.from, to: transfer.to, valueMicros: String(transfer.value), contract: transfer.token_info.address, blockTimestamp: timestamp, confirmed: true };
   }
 };
 
-type WordPressCredentials = { username: string; applicationPassword: string };
-
-export const wordPressProvider = {
-  async publish(input: { domain: string; credentials: Buffer; title: string; html: string }): Promise<string> {
-    const baseUrl = await resolvePublicHttpsOrigin(input.domain);
-    const credentials = decryptSecret<WordPressCredentials>(input.credentials);
-    const authorization = `Basic ${Buffer.from(`${credentials.username}:${credentials.applicationPassword}`).toString('base64')}`;
-    const response = await externalFetch(`${baseUrl}/wp-json/wp/v2/posts`, { method: 'POST', headers: { authorization, 'content-type': 'application/json' }, body: JSON.stringify({ title: input.title, content: input.html, status: 'publish' }), signal: AbortSignal.timeout(12_000) });
-    const result = await responseJson(response);
-    if (!result.link) throw new ExternalServiceError('WordPress 未返回文章链接');
-    return result.link;
+export const gscProvider = {
+  authorizationUrl(state: string): string {
+    if (!env.gscClientId || !env.gscClientSecret) throw new ValidationError('GSC OAuth 尚未配置');
+    const params = new URLSearchParams({ client_id: env.gscClientId, redirect_uri: `${env.appBaseUrl}/api/integrations/gsc/callback`, response_type: 'code', access_type: 'offline', prompt: 'consent', scope: 'https://www.googleapis.com/auth/webmasters.readonly', state });
+    return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
   },
-  encryptCredentials(credentials: WordPressCredentials): Buffer {
-    if (!credentials.username || !credentials.applicationPassword) throw new ValidationError('必须提供 WordPress 用户名和应用密码');
-    return encryptSecret(credentials);
+
+  async exchangeCode(code: string): Promise<{ refreshToken: string; scope: string }> {
+    if (!env.gscClientId || !env.gscClientSecret) throw new ValidationError('GSC OAuth 尚未配置');
+    const token = await json(await externalFetch('https://oauth2.googleapis.com/token', {
+      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code, client_id: env.gscClientId, client_secret: env.gscClientSecret, redirect_uri: `${env.appBaseUrl}/api/integrations/gsc/callback`, grant_type: 'authorization_code' })
+    }));
+    if (!token.refresh_token) throw new ExternalServiceError('Google 未返回 refresh_token，请重新授权离线访问');
+    return { refreshToken: String(token.refresh_token), scope: String(token.scope || 'https://www.googleapis.com/auth/webmasters.readonly') };
+  },
+
+  async sync(input: { refreshToken: string; propertyId: string; startDate: string; endDate: string }) {
+    if (!env.gscClientId || !env.gscClientSecret) throw new ValidationError('GSC OAuth 尚未配置');
+    const token = await json(await externalFetch('https://oauth2.googleapis.com/token', {
+      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: env.gscClientId, client_secret: env.gscClientSecret, refresh_token: input.refreshToken, grant_type: 'refresh_token' })
+    }));
+    const result = await json(await externalFetch(`https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(input.propertyId)}/searchAnalytics/query`, {
+      method: 'POST', headers: { authorization: `Bearer ${token.access_token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ startDate: input.startDate, endDate: input.endDate, dimensions: ['query', 'page', 'country', 'device'], rowLimit: 25_000, type: 'web' })
+    }));
+    return { rows: result.rows || [] };
   }
 };

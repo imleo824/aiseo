@@ -1,135 +1,190 @@
-import { Prisma, LedgerEntryType, PaymentStatus, CreditHoldStatus } from '@prisma/client';
+import { CreditHoldStatus, LedgerEntryType, PaymentStatus, Prisma } from '@prisma/client';
 import { ConflictError, InsufficientCreditsError, NotFoundError, ValidationError } from '../domain/errors';
 import { env } from './env';
-import { prisma } from './prisma';
-import type { PaymentIntentResponse } from './contracts';
+import { workerPrisma, type TransactionClient } from './prisma';
 
 const USDT_MICROS = 1_000_000n;
 const TX_HASH_PATTERN = /^[a-fA-F0-9]{64}$/;
 
-export const parseUsdtMicros = (amount: unknown): bigint => {
-  const normalized = String(amount ?? '').trim();
-  if (!/^\d+(\.\d{1,6})?$/.test(normalized)) throw new ValidationError('USDT 金额最多支持 6 位小数');
-  const [whole, fraction = ''] = normalized.split('.');
-  const value = BigInt(whole) * USDT_MICROS + BigInt(fraction.padEnd(6, '0'));
-  if (value <= 0n || value > 100_000n * USDT_MICROS) throw new ValidationError('USDT 金额不在允许范围内');
-  return value;
-};
-
-export const formatUsdtMicros = (amount: bigint): string => {
-  const whole = amount / USDT_MICROS;
-  const fraction = (amount % USDT_MICROS).toString().padStart(6, '0').replace(/0+$/, '');
+export const formatMicros = (amount: bigint, scale = USDT_MICROS): string => {
+  const whole = amount / scale;
+  const fraction = (amount % scale).toString().padStart(6, '0').replace(/0+$/, '');
   return fraction ? `${whole}.${fraction}` : whole.toString();
 };
 
-const toPaymentResponse = (payment: { id: string; network: string; recipientAddress: string; expectedAmountMicros: bigint; credits: number; status: PaymentStatus; expiresAt: Date }): PaymentIntentResponse => ({
+// The transfer amount is an identifier as well as an amount. Never trim its
+// six fractional digits in customer-facing payment instructions.
+export const formatMicrosFixed = (amount: bigint, scale = USDT_MICROS): string => {
+  const whole = amount / scale;
+  const fraction = (amount % scale).toString().padStart(6, '0');
+  return `${whole}.${fraction}`;
+};
+
+const paymentResponse = (payment: {
+  id: string;
+  packageId: string;
+  recipientAddress: string;
+  baseAmountMicros: bigint;
+  expectedAmountMicros: bigint;
+  creditMicros: bigint;
+  status: PaymentStatus;
+  expiresAt: Date;
+}) => ({
   id: payment.id,
-  network: 'TRC20',
+  packageId: payment.packageId,
+  network: 'TRC20' as const,
   recipientAddress: payment.recipientAddress,
-  expectedAmountUsdt: formatUsdtMicros(payment.expectedAmountMicros),
-  credits: payment.credits,
+  baseAmountUsdt: formatMicros(payment.baseAmountMicros),
+  expectedAmountUsdt: formatMicrosFixed(payment.expectedAmountMicros),
+  creditMicros: payment.creditMicros.toString(),
   status: payment.status,
   expiresAt: payment.expiresAt.toISOString()
 });
 
 export const billingService = {
-  async createPaymentIntent(organizationId: string, amount: unknown): Promise<PaymentIntentResponse> {
+  async createPaymentIntent(tx: TransactionClient, organizationId: string, packageId: string) {
     if (!env.trc20RecipientAddress) throw new ValidationError('平台尚未配置 TRC20 收款地址');
-    const expectedAmountMicros = parseUsdtMicros(amount);
-    if (expectedAmountMicros % USDT_MICROS !== 0n) {
-      throw new ValidationError('当前积分套餐仅支持整数 USDT 金额');
+    const paymentPackage = await tx.paymentPackage.findFirst({ where: { id: packageId, active: true } });
+    if (!paymentPackage) throw new NotFoundError('充值套餐不存在或已停用');
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('aiseo-payment-amount-allocation'))`;
+    const active = await tx.paymentIntent.findMany({
+      where: {
+        status: { in: [PaymentStatus.AWAITING_TRANSFER, PaymentStatus.VERIFYING, PaymentStatus.CONFIRMED] },
+        baseAmountMicros: paymentPackage.baseAmountMicros
+      },
+      select: { expectedAmountMicros: true }
+    });
+    const used = new Set(active.map(({ expectedAmountMicros }) => expectedAmountMicros.toString()));
+    let expectedAmountMicros: bigint | undefined;
+    for (let suffix = 1n; suffix < USDT_MICROS; suffix += 1n) {
+      const candidate = paymentPackage.baseAmountMicros + suffix;
+      if (!used.has(candidate.toString())) {
+        expectedAmountMicros = candidate;
+        break;
+      }
     }
-    const credits = Number(expectedAmountMicros / USDT_MICROS) * 100;
-    const payment = await prisma.paymentIntent.create({
+    if (!expectedAmountMicros) throw new ConflictError('当前充值意图过多，请稍后再试');
+    const payment = await tx.paymentIntent.create({
       data: {
         organizationId,
+        packageId: paymentPackage.id,
+        tokenContract: env.trc20UsdtContract,
         recipientAddress: env.trc20RecipientAddress,
+        baseAmountMicros: paymentPackage.baseAmountMicros,
         expectedAmountMicros,
-        credits,
-        status: PaymentStatus.AWAITING_CONFIRMATION,
-        expiresAt: new Date(Date.now() + env.paymentIntentMinutes * 60 * 1000)
+        creditMicros: paymentPackage.creditMicros,
+        expiresAt: new Date(Date.now() + env.paymentIntentMinutes * 60_000)
       }
     });
-    await prisma.auditEvent.create({ data: { organizationId, action: 'PAYMENT_INTENT_CREATED', targetType: 'payment_intent', targetId: payment.id, metadata: { credits } } });
-    return toPaymentResponse(payment);
+    await tx.auditEvent.create({
+      data: { organizationId, action: 'PAYMENT_INTENT_CREATED', targetType: 'payment_intent', targetId: payment.id }
+    });
+    return paymentResponse(payment);
   },
 
-  async attachTransactionHash(organizationId: string, paymentId: string, txHash: string): Promise<void> {
+  async submitTransaction(tx: TransactionClient, organizationId: string, paymentIntentId: string, txHash: string) {
     if (!TX_HASH_PATTERN.test(txHash)) throw new ValidationError('TRC20 交易哈希格式无效');
-    const payment = await prisma.paymentIntent.findFirst({ where: { id: paymentId, organizationId } });
+    const payment = await tx.paymentIntent.findFirst({ where: { id: paymentIntentId, organizationId } });
     if (!payment) throw new NotFoundError('充值意图不存在');
     if (payment.expiresAt <= new Date()) {
-      await prisma.paymentIntent.update({ where: { id: paymentId }, data: { status: PaymentStatus.EXPIRED } });
-      throw new ValidationError('充值意图已过期，请重新创建');
+      await tx.paymentIntent.update({ where: { id: payment.id }, data: { status: PaymentStatus.EXPIRED } });
+      throw new ConflictError('充值意图已过期');
     }
-    if (payment.status === PaymentStatus.CREDITED) return;
+    if (payment.status === PaymentStatus.CREDITED) return paymentResponse(payment);
     try {
-      await prisma.paymentIntent.update({ where: { id: paymentId }, data: { txHash: txHash.toLowerCase(), status: PaymentStatus.AWAITING_CONFIRMATION } });
+      const updated = await tx.paymentIntent.update({
+        where: { id: payment.id },
+        data: { txHash: txHash.toLowerCase(), status: PaymentStatus.VERIFYING, submittedAt: new Date() }
+      });
+      return paymentResponse(updated);
     } catch (error: any) {
-      if (error?.code === 'P2002') throw new ConflictError('该链上交易已被其他充值意图使用');
+      if (error?.code === 'P2002') throw new ConflictError('该交易哈希已被使用');
       throw error;
     }
   },
 
-  async creditVerifiedPayment(paymentId: string, verification: Prisma.InputJsonValue): Promise<{ credited: boolean; balance: number }> {
+  async creditConfirmedPayment(paymentIntentId: string, verification: Prisma.InputJsonValue): Promise<{ credited: boolean; balanceMicros: string }> {
     try {
-      return await prisma.$transaction(async (tx) => {
-        const payment = await tx.paymentIntent.findUnique({ where: { id: paymentId } });
-        if (!payment) throw new NotFoundError('充值意图不存在');
+      return await workerPrisma.$transaction(async (tx) => {
+        const paymentRows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM public.payment_intents WHERE id = ${paymentIntentId}::uuid FOR UPDATE
+        `;
+        if (!paymentRows.length) throw new NotFoundError('充值意图不存在');
+        const payment = await tx.paymentIntent.findUniqueOrThrow({ where: { id: paymentIntentId } });
         if (payment.status === PaymentStatus.CREDITED) {
           const organization = await tx.organization.findUniqueOrThrow({ where: { id: payment.organizationId } });
-          return { credited: false, balance: organization.creditBalance };
+          return { credited: false, balanceMicros: organization.creditBalanceMicros.toString() };
         }
-        if (payment.status === PaymentStatus.EXPIRED || payment.status === PaymentStatus.REJECTED) throw new ConflictError('该充值意图不可再入账');
-        const organization = await tx.organization.update({ where: { id: payment.organizationId }, data: { creditBalance: { increment: payment.credits } } });
+        if (payment.status !== PaymentStatus.VERIFYING && payment.status !== PaymentStatus.CONFIRMED) {
+          throw new ConflictError('充值意图状态不允许入账');
+        }
+        const organization = await tx.organization.update({
+          where: { id: payment.organizationId },
+          data: { creditBalanceMicros: { increment: payment.creditMicros } }
+        });
         await tx.ledgerEntry.create({
           data: {
             organizationId: payment.organizationId,
-            type: LedgerEntryType.CREDIT,
-            amount: payment.credits,
-            balanceAfter: organization.creditBalance,
-            reason: '已核验的 TRC20 USDT 充值',
-            paymentIntentId: payment.id,
+            type: LedgerEntryType.PURCHASE,
+            amountMicros: payment.creditMicros,
+            balanceAfterMicros: organization.creditBalanceMicros,
+            reason: '已核验 TRC20 USDT 充值',
             idempotencyKey: `payment-credit:${payment.id}`,
+            paymentIntentId: payment.id,
             metadata: verification
           }
         });
-        await tx.paymentIntent.update({ where: { id: payment.id }, data: { status: PaymentStatus.CREDITED, verification, verifiedAt: new Date(), creditedAt: new Date() } });
-        await tx.auditEvent.create({ data: { organizationId: payment.organizationId, action: 'PAYMENT_CREDITED', targetType: 'payment_intent', targetId: payment.id, metadata: verification } });
-        return { credited: true, balance: organization.creditBalance };
+        await tx.paymentIntent.update({
+          where: { id: payment.id },
+          data: { status: PaymentStatus.CREDITED, verification, confirmedAt: new Date(), creditedAt: new Date() }
+        });
+        await tx.auditEvent.create({
+          data: { organizationId: payment.organizationId, action: 'PAYMENT_CREDITED', targetType: 'payment_intent', targetId: payment.id, metadata: verification }
+        });
+        return { credited: true, balanceMicros: organization.creditBalanceMicros.toString() };
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error: any) {
       if (error?.code === 'P2002') {
-        const payment = await prisma.paymentIntent.findUniqueOrThrow({ where: { id: paymentId }, include: { organization: true } });
-        return { credited: false, balance: payment.organization.creditBalance };
+        const payment = await workerPrisma.paymentIntent.findUniqueOrThrow({ where: { id: paymentIntentId }, include: { organization: true } });
+        return { credited: false, balanceMicros: payment.organization.creditBalanceMicros.toString() };
       }
       throw error;
     }
   },
 
-  async reserveCredits(organizationId: string, jobRunId: string, amount: number, reason: string): Promise<void> {
-    if (!Number.isInteger(amount) || amount <= 0) throw new ValidationError('预占积分必须为正整数');
-    await prisma.$transaction(async (tx) => {
-      const organization = await tx.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { creditBalance: true } });
-      const holds = await tx.creditHold.aggregate({ where: { organizationId, status: CreditHoldStatus.HELD }, _sum: { amount: true } });
-      if (organization.creditBalance - (holds._sum.amount || 0) < amount) throw new InsufficientCreditsError('可用积分不足，无法创建 SEO 数据任务');
-      await tx.creditHold.create({ data: { organizationId, jobRunId, amount, reason } });
-      await tx.auditEvent.create({ data: { organizationId, action: 'CREDIT_HELD', targetType: 'job_run', targetId: jobRunId, metadata: { amount, reason } } });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  async reserveCredits(tx: TransactionClient, organizationId: string, jobRunId: string, amountMicros: bigint, reason: string): Promise<void> {
+    if (amountMicros <= 0n) throw new ValidationError('信用占用金额必须为正数');
+    const organization = await tx.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { creditBalanceMicros: true } });
+    const holds = await tx.creditHold.aggregate({ where: { organizationId, status: CreditHoldStatus.HELD }, _sum: { amountMicros: true } });
+    const held = holds._sum.amountMicros || 0n;
+    if (organization.creditBalanceMicros - held < amountMicros) throw new InsufficientCreditsError('可用积分不足');
+    await tx.creditHold.create({ data: { organizationId, jobRunId, amountMicros, reason } });
   },
 
-  async settleCreditHold(jobRunId: string): Promise<void> {
-    await prisma.$transaction(async (tx) => {
-      const hold = await tx.creditHold.findUnique({ where: { jobRunId } });
-      if (!hold || hold.status === CreditHoldStatus.SETTLED) return;
-      if (hold.status !== CreditHoldStatus.HELD) throw new ConflictError('积分预占已释放，不能结算');
-      const organization = await tx.organization.update({ where: { id: hold.organizationId }, data: { creditBalance: { decrement: hold.amount } } });
-      await tx.ledgerEntry.create({ data: { organizationId: hold.organizationId, type: LedgerEntryType.CONSUMPTION, amount: -hold.amount, balanceAfter: organization.creditBalance, reason: hold.reason, idempotencyKey: `hold-settlement:${hold.id}`, metadata: { jobRunId } } });
-      await tx.creditHold.update({ where: { id: hold.id }, data: { status: CreditHoldStatus.SETTLED, settledAt: new Date() } });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  async settleCreditHold(tx: TransactionClient, jobRunId: string, resultType: string, resultId: string): Promise<void> {
+    const hold = await tx.creditHold.findUnique({ where: { jobRunId } });
+    if (!hold || hold.status === CreditHoldStatus.SETTLED) return;
+    if (hold.status !== CreditHoldStatus.HELD) throw new ConflictError('已释放的信用占用不能结算');
+    const organization = await tx.organization.update({
+      where: { id: hold.organizationId },
+      data: { creditBalanceMicros: { decrement: hold.amountMicros } }
+    });
+    await tx.ledgerEntry.create({
+      data: {
+        organizationId: hold.organizationId,
+        type: LedgerEntryType.CONSUMPTION,
+        amountMicros: -hold.amountMicros,
+        balanceAfterMicros: organization.creditBalanceMicros,
+        reason: hold.reason,
+        idempotencyKey: `hold-settlement:${hold.id}`,
+        metadata: { jobRunId }
+      }
+    });
+    await tx.usageRecord.create({ data: { organizationId: hold.organizationId, jobRunId, action: hold.reason, amountMicros: hold.amountMicros, resultType, resultId } });
+    await tx.creditHold.update({ where: { id: hold.id }, data: { status: CreditHoldStatus.SETTLED, settledAt: new Date() } });
   },
 
-  async releaseCreditHold(jobRunId: string): Promise<void> {
-    await prisma.creditHold.updateMany({ where: { jobRunId, status: CreditHoldStatus.HELD }, data: { status: CreditHoldStatus.RELEASED, releasedAt: new Date() } });
+  async releaseCreditHold(tx: TransactionClient, jobRunId: string): Promise<void> {
+    await tx.creditHold.updateMany({ where: { jobRunId, status: CreditHoldStatus.HELD }, data: { status: CreditHoldStatus.RELEASED, releasedAt: new Date() } });
   }
 };

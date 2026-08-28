@@ -1,9 +1,14 @@
 import { lazy, Suspense } from 'react';
+import { useAuth } from './auth/AuthProvider';
+import { AuthScreen } from './components/auth/AuthScreen';
+import { WorkspaceProvider } from './workspace/WorkspaceContext';
 
-const WorkspaceApp = lazy(() => import('./LegacyApp'));
+const WorkspaceShell = lazy(() => import('./workspace/WorkspaceShell'));
 
 export default function App() {
-  return <Suspense fallback={<div className="min-h-screen grid place-items-center bg-slate-950 text-slate-100">正在加载工作区…</div>}>
-    <WorkspaceApp />
-  </Suspense>;
+  const { user, loading } = useAuth();
+  if (loading) return <div className="screen-center">正在校验会话…</div>;
+  if (!user) return <AuthScreen />;
+  if (!user.email_confirmed_at) return <main className="screen-center p-6"><div className="panel max-w-lg"><h1 className="page-title">请验证邮箱</h1><p className="muted mt-2">邮箱验证完成前不能创建组织或使用付费资源。</p></div></main>;
+  return <WorkspaceProvider><Suspense fallback={<div className="screen-center">正在加载工作区…</div>}><WorkspaceShell /></Suspense></WorkspaceProvider>;
 }

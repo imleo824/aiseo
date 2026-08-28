@@ -25,8 +25,14 @@ const isValidTronBase58 = (value: string): boolean => /^T[1-9A-HJ-NP-Za-km-z]{33
 
 export const env = Object.freeze({
   runtime,
-  databaseUrl: raw('DATABASE_URL'),
+  databaseUrl: raw('DATABASE_APP_URL') || raw('DATABASE_URL'),
+  workerDatabaseUrl: raw('DATABASE_WORKER_URL') || raw('DATABASE_URL'),
   redisUrl: raw('REDIS_URL'),
+  supabaseUrl: raw('SUPABASE_URL'),
+  supabasePublishableKey: raw('SUPABASE_PUBLISHABLE_KEY'),
+  supabaseServiceRoleKey: raw('SUPABASE_SERVICE_ROLE_KEY'),
+  turnstileSecretKey: raw('TURNSTILE_SECRET_KEY'),
+  sentryDsn: raw('SENTRY_DSN'),
   appEncryptionKey: raw('APP_ENCRYPTION_KEY'),
   appBaseUrl: inferredAppBaseUrl(),
   gscClientId: process.env.GSC_CLIENT_ID || '',
@@ -37,21 +43,26 @@ export const env = Object.freeze({
   trc20RecipientAddress: process.env.TRC20_RECIPIENT_ADDRESS || '',
   trc20UsdtContract: process.env.TRC20_USDT_CONTRACT || 'TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj',
   paymentIntentMinutes: asPositiveInt('PAYMENT_INTENT_MINUTES', 30),
-  dataForSeoCreditCost: asPositiveInt('DATAFORSEO_SERP_CREDIT_COST', 5),
-  sessionHours: asPositiveInt('SESSION_HOURS', 24),
   gscStateSecret: process.env.GSC_STATE_SECRET || process.env.APP_ENCRYPTION_KEY || '',
   encryptionKeyFingerprint: createHash('sha256').update(process.env.APP_ENCRYPTION_KEY || '').digest('hex').slice(0, 12)
 });
 
 export const isValidEncryptionKey = (): boolean => Buffer.from(env.appEncryptionKey, 'base64').length === 32;
-export const isDatabaseBackedRuntimeUnavailable = (): boolean => env.runtime === 'production' && (!env.databaseUrl || !env.redisUrl || !isValidEncryptionKey());
+export const isDatabaseBackedRuntimeUnavailable = (): boolean => env.runtime === 'production' && (
+  !raw('DATABASE_APP_URL') || !raw('DATABASE_WORKER_URL') || !env.redisUrl
+  || !env.supabaseUrl || !env.supabasePublishableKey || !isValidEncryptionKey()
+);
 
 export const productionConfigurationStatus = () => ({
   appBaseUrl: env.appBaseUrl,
   runtime: {
     database: Boolean(env.databaseUrl),
+    workerDatabase: Boolean(env.workerDatabaseUrl),
     redis: Boolean(env.redisUrl),
     encryptionKey: isValidEncryptionKey(),
+    supabaseAuth: Boolean(env.supabaseUrl && env.supabasePublishableKey),
+    turnstile: Boolean(env.turnstileSecretKey),
+    sentry: Boolean(env.sentryDsn),
     databaseBackedApi: !isDatabaseBackedRuntimeUnavailable()
   },
   providers: {
@@ -64,8 +75,12 @@ export const productionConfigurationStatus = () => ({
 export const productionConfigurationWarnings = (): string[] => {
   if (env.runtime !== 'production') return [];
   const warnings: string[] = [];
-  if (!env.databaseUrl) warnings.push('DATABASE_URL is not set; Supabase persistence is unavailable.');
+  if (!raw('DATABASE_APP_URL')) warnings.push('DATABASE_APP_URL is not set; the Web service cannot enforce the dedicated non-BYPASSRLS role.');
+  if (!raw('DATABASE_WORKER_URL')) warnings.push('DATABASE_WORKER_URL is not set; the Worker cannot use its dedicated non-BYPASSRLS role.');
   if (!env.redisUrl) warnings.push('REDIS_URL is not set; asynchronous jobs are disabled.');
+  if (!env.supabaseUrl || !env.supabasePublishableKey) warnings.push('Supabase Auth is not configured; authenticated API access is unavailable.');
+  if (!env.turnstileSecretKey) warnings.push('TURNSTILE_SECRET_KEY is not set; public registration must remain closed.');
+  if (!env.sentryDsn) warnings.push('SENTRY_DSN is not set; production error and performance monitoring is unavailable.');
   if (!env.appEncryptionKey) warnings.push('APP_ENCRYPTION_KEY is not set; credential encryption is disabled.');
   if (!raw('APP_BASE_URL') && !raw('RAILWAY_PUBLIC_DOMAIN')) warnings.push('APP_BASE_URL is not set; OAuth callbacks will default to localhost.');
   if (!env.gscClientId || !env.gscClientSecret) warnings.push('GSC OAuth is not configured; GSC connection endpoints will fail closed.');
@@ -85,4 +100,13 @@ export const assertProductionConfiguration = (): void => {
   if (env.trc20UsdtContract && !isValidTronBase58(env.trc20UsdtContract)) {
     throw new Error('TRC20_USDT_CONTRACT must be a valid base58 TRON contract address');
   }
+  if (!raw('DATABASE_APP_URL') || !raw('DATABASE_WORKER_URL')) {
+    throw new Error('DATABASE_APP_URL and DATABASE_WORKER_URL are required in production');
+  }
+  if (!env.supabaseUrl || !env.supabasePublishableKey) {
+    throw new Error('SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are required in production');
+  }
+  if (!env.supabaseServiceRoleKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY is required in production');
+  if (!env.turnstileSecretKey) throw new Error('TURNSTILE_SECRET_KEY is required in production');
+  if (!env.sentryDsn) throw new Error('SENTRY_DSN is required in production');
 };
