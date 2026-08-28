@@ -893,7 +893,9 @@ RETURNS boolean
 LANGUAGE sql
 STABLE
 SET search_path = ''
-AS $$ SELECT current_user = 'app_worker' $$;
+-- Production connects directly as app_worker. Membership support remains for
+-- a future credential rotation that uses a member login role.
+AS $$ SELECT current_user = 'app_worker' OR pg_has_role(session_user, 'app_worker', 'member') $$;
 
 CREATE OR REPLACE FUNCTION private.is_platform_admin()
 RETURNS boolean
@@ -1139,7 +1141,12 @@ CREATE POLICY action_prices_admin_write ON public.action_prices
 ALTER TABLE public.worker_heartbeats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.worker_heartbeats FORCE ROW LEVEL SECURITY;
 CREATE POLICY worker_heartbeats_worker ON public.worker_heartbeats
-  USING (current_user IN ('app_backend', 'app_worker') OR private.is_platform_admin())
+  USING (
+    current_user = 'app_backend'
+    OR pg_has_role(session_user, 'app_backend', 'member')
+    OR private.is_worker()
+    OR private.is_platform_admin()
+  )
   WITH CHECK (private.is_worker() OR private.is_platform_admin());
 
 ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
