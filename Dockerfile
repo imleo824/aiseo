@@ -1,5 +1,18 @@
 FROM node:22-alpine AS build
 WORKDIR /app
+# Railway injects service variables into Docker builds only when declared as
+# build arguments. These values are intentionally public: Vite embeds them in
+# the browser bundle. Do not add server-only secrets here.
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_PUBLISHABLE_KEY
+ARG VITE_SENTRY_DSN
+ARG VITE_SENTRY_TRACES_SAMPLE_RATE
+ARG VITE_RELEASE
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
+    VITE_SUPABASE_PUBLISHABLE_KEY=$VITE_SUPABASE_PUBLISHABLE_KEY \
+    VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
+    VITE_SENTRY_TRACES_SAMPLE_RATE=$VITE_SENTRY_TRACES_SAMPLE_RATE \
+    VITE_RELEASE=$VITE_RELEASE
 RUN apk add --no-cache openssl
 COPY package.json package-lock.json ./
 RUN npm ci
