@@ -3,9 +3,11 @@ import { createClient } from '@supabase/supabase-js';
 const url = import.meta.env.VITE_SUPABASE_URL;
 const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-if (!url || !publishableKey) throw new Error('VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY are required');
+export const missingSupabaseBrowserConfiguration = !url || !publishableKey;
 
-export const supabase = createClient(url, publishableKey, {
+// Keep module evaluation safe so a deployment configuration error presents an
+// actionable screen instead of a blank page before React can mount.
+export const supabase = createClient(url || 'https://configuration-required.invalid', publishableKey || 'configuration-required', {
   auth: {
     flowType: 'pkce',
     persistSession: true,
