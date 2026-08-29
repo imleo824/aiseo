@@ -1,3 +1,4 @@
+import './instrument';
 import express from 'express';
 import path from 'path';
 import { createApp } from './app';

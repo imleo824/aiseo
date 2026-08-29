@@ -10,8 +10,6 @@ import { getQueueConnection } from './queue';
 import { prisma } from './prisma';
 import { EXPECTED_MIGRATION_VERSION, inspectDatabaseSecurity } from './databaseSecurity';
 
-if (process.env.SENTRY_DSN) Sentry.init({ dsn: process.env.SENTRY_DSN, environment: env.runtime, release: process.env.RAILWAY_GIT_COMMIT_SHA, tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0.1), sendDefaultPii: false });
-
 const securityHeaders = (_request: Request, response: Response, next: NextFunction): void => {
   const supabaseOrigin = (() => { try { return env.supabaseUrl ? new URL(env.supabaseUrl).origin : ''; } catch { return ''; } })();
   response.setHeader('X-Content-Type-Options', 'nosniff');

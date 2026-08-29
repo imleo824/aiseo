@@ -1,3 +1,4 @@
+import './server/production/instrument';
 import { createServer as createViteServer } from 'vite';
 import { createApp } from './server/production/app';
 import { closeQueue } from './server/production/queue';
