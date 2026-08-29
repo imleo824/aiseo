@@ -7,12 +7,14 @@ import { contentAi } from './contentAi';
 import { decryptSecret } from './crypto';
 import { dataForSeoProvider, gscProvider, tronGridProvider } from './providers';
 import { closeQueue, getProductionQueue, getQueueConnection, PRODUCTION_QUEUE, productionJobOptions } from './queue';
-import { disconnectDatabase, workerPrisma } from './prisma';
+import { assertProductionConfiguration, productionConfigurationWarnings } from './env';
+import { disconnectWorkerDatabase, workerPrisma } from './workerPrisma';
 import { wordPressService } from './wordpress';
 import { logger } from '../utils/logger';
-import { deleteAuthUser } from './auth';
+import { deleteAuthUser } from './authAdmin';
 import { jobService } from './jobService';
 import { resolvePublicHttpsOrigin } from '../utils/networkSafety';
+import { assertDatabaseSecurity } from './databaseSecurity';
 
 type QueuePayload = { jobRunId?: string; system?: boolean };
 const workerId = `${process.env.RAILWAY_REPLICA_ID || process.env.HOSTNAME || 'local'}:${process.pid}:${randomUUID().slice(0, 8)}`;
@@ -251,7 +253,7 @@ const processPayment = async (runId: string): Promise<{ deferred: boolean; resul
   try {
     const verification = await tronGridProvider.verifyTransfer({ txHash: payment.txHash, recipientAddress: payment.recipientAddress, expectedAmountMicros: payment.expectedAmountMicros, notBefore: payment.createdAt, notAfter: payment.expiresAt });
     await workerPrisma.paymentIntent.update({ where: { id: payment.id }, data: { status: PaymentStatus.CONFIRMED, confirmedAt: new Date(), verification } });
-    await billingService.creditConfirmedPayment(payment.id, verification as Prisma.InputJsonValue);
+    await billingService.creditConfirmedPayment(workerPrisma, payment.id, verification as Prisma.InputJsonValue);
     return { deferred: false, resultId: payment.id };
   } catch (error) {
     if (new Date(Date.now() + 30_000) < payment.expiresAt) {
@@ -303,13 +305,16 @@ export const createProductionWorker = () => new Worker<QueuePayload>(PRODUCTION_
 }, { connection: getQueueConnection(), concurrency: Number(process.env.WORKER_CONCURRENCY || 5), lockDuration: 120_000 });
 
 const start = async (): Promise<void> => {
+  assertProductionConfiguration('worker');
+  productionConfigurationWarnings('worker').forEach((warning) => logger.warn('CONFIGURATION', warning));
+  await assertDatabaseSecurity(workerPrisma, 'app_worker');
   const queue = getProductionQueue();
   await queue.upsertJobScheduler('database-reconciliation', { every: 10_000 }, { name: JobType.AUTOMATION_RECONCILE, data: { system: true }, opts: { removeOnComplete: 10, removeOnFail: 100 } });
   await reconcile();
   const worker = createProductionWorker();
   worker.on('completed', (job) => logger.info('WORKER', `Job ${job.id} completed`));
   worker.on('failed', (job, error) => { logger.error('WORKER', `Job ${job?.id} failed: ${error.message}`); Sentry.captureException(error, { tags: { queue: PRODUCTION_QUEUE, jobId: String(job?.id || '') } }); });
-  const shutdown = async (): Promise<void> => { await worker.close(); await closeQueue(); await disconnectDatabase(); process.exit(0); };
+  const shutdown = async (): Promise<void> => { await worker.close(); await closeQueue(); await disconnectWorkerDatabase(); process.exit(0); };
   process.once('SIGTERM', () => void shutdown());
   process.once('SIGINT', () => void shutdown());
 };

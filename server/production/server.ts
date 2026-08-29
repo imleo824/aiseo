@@ -3,12 +3,12 @@ import path from 'path';
 import { createApp } from './app';
 import { assertProductionConfiguration, productionConfigurationWarnings } from './env';
 import { closeQueue } from './queue';
-import { disconnectDatabase } from './prisma';
+import { disconnectWebDatabase } from './prisma';
 import { logger } from '../utils/logger';
 
 const start = async (): Promise<void> => {
-  assertProductionConfiguration();
-  productionConfigurationWarnings().forEach((warning) => logger.warn('CONFIGURATION', warning));
+  assertProductionConfiguration('web');
+  productionConfigurationWarnings('web').forEach((warning) => logger.warn('CONFIGURATION', warning));
   const app = createApp();
   const distPath = path.join(process.cwd(), 'dist');
   app.use(express.static(distPath, { index: false, fallthrough: true }));
@@ -23,7 +23,7 @@ const start = async (): Promise<void> => {
     shuttingDown = true;
     logger.info('SERVER_SHUTDOWN', `Received ${signal}`);
     server.close(() => {
-      void Promise.all([closeQueue(), disconnectDatabase()]).finally(() => process.exit(0));
+      void Promise.all([closeQueue(), disconnectWebDatabase()]).finally(() => process.exit(0));
     });
   };
   process.once('SIGTERM', () => shutdown('SIGTERM'));

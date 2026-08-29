@@ -8,8 +8,8 @@ import { env } from './env';
 import { errorHandler } from './http';
 import { getQueueConnection } from './queue';
 import { prisma } from './prisma';
+import { EXPECTED_MIGRATION_VERSION, inspectDatabaseSecurity } from './databaseSecurity';
 
-const migrationVersion = '20260827141119';
 if (process.env.SENTRY_DSN) Sentry.init({ dsn: process.env.SENTRY_DSN, environment: env.runtime, release: process.env.RAILWAY_GIT_COMMIT_SHA, tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0.1), sendDefaultPii: false });
 
 const securityHeaders = (_request: Request, response: Response, next: NextFunction): void => {
@@ -46,22 +46,19 @@ export const createApp = () => {
   app.get('/api/health/ready', async (request, response) => {
     const checks: Record<string, { ok: boolean; detail?: string }> = {};
     try {
-      await prisma.$queryRaw`SELECT 1`;
-      checks.database = { ok: true };
+      const status = await inspectDatabaseSecurity(prisma);
+      const secure = status.role === 'app_backend' && !status.bypassRls && status.ownedBusinessTables === 0;
+      checks.database = { ok: secure, detail: secure ? status.role : `role=${status.role}, bypassRls=${status.bypassRls}, ownedTables=${status.ownedBusinessTables}` };
+      checks.migration = { ok: status.migrationVersion === EXPECTED_MIGRATION_VERSION, detail: status.migrationVersion };
     } catch (error) {
       checks.database = { ok: false, detail: error instanceof Error ? error.message : String(error) };
+      checks.migration = { ok: false, detail: 'database security inspection failed' };
     }
     try {
       const pong = await getQueueConnection().ping();
       checks.redis = { ok: pong === 'PONG' };
     } catch (error) {
       checks.redis = { ok: false, detail: error instanceof Error ? error.message : String(error) };
-    }
-    try {
-      const rows = await prisma.$queryRaw<Array<{ version: string }>>`SELECT version FROM supabase_migrations.schema_migrations ORDER BY version DESC LIMIT 1`;
-      checks.migration = { ok: rows[0]?.version === migrationVersion, detail: rows[0]?.version };
-    } catch (error) {
-      checks.migration = { ok: false, detail: error instanceof Error ? error.message : String(error) };
     }
     try {
       const heartbeat = await prisma.workerHeartbeat.findFirst({ orderBy: { heartbeatAt: 'desc' } });

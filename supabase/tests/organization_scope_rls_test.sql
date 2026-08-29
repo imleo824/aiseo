@@ -1,5 +1,5 @@
 begin;
-select plan(16);
+select plan(29);
 
 select is(
   (select count(*) from pg_class
@@ -27,6 +27,18 @@ select ok(not has_table_privilege('anon', 'public.sites', 'select,insert,update,
 select ok(not has_table_privilege('authenticated', 'public.sites', 'select,insert,update,delete'), 'authenticated has no business-table privileges');
 select ok(not (select rolbypassrls from pg_roles where rolname = 'app_backend'), 'Web role cannot bypass RLS');
 select ok(not (select rolbypassrls from pg_roles where rolname = 'app_worker'), 'Worker role cannot bypass RLS');
+select ok(not (select rolcanlogin from pg_roles where rolname = 'app_backend'), 'migration never stores or enables the Web login credential');
+select ok(not (select rolcanlogin from pg_roles where rolname = 'app_worker'), 'migration never stores or enables the Worker login credential');
+select ok(not has_schema_privilege('anon', 'public', 'usage'), 'anon cannot access the business schema');
+select ok(not has_schema_privilege('authenticated', 'public', 'usage'), 'authenticated cannot access the business schema');
+select ok(not has_schema_privilege('service_role', 'public', 'usage'), 'Auth service role cannot access the business schema through Data API');
+select ok(not has_table_privilege('service_role', 'public.sites', 'select,insert,update,delete'), 'Auth service role has no business-table privileges');
+select ok(has_function_privilege('app_backend', 'private.is_active_auth_session(uuid)', 'execute'), 'Web may validate a sensitive Auth session');
+select ok(not has_function_privilege('anon', 'private.is_active_auth_session(uuid)', 'execute'), 'anon cannot inspect Auth sessions');
+select ok(not has_table_privilege('app_backend', 'public.job_runs', 'update'), 'Web cannot forge job execution status');
+select ok(not has_table_privilege('app_backend', 'public.payment_intents', 'delete'), 'Web cannot delete payment records');
+select ok(not has_table_privilege('app_worker', 'public.profiles', 'update'), 'Worker cannot mutate profile authorization state');
+select ok(not has_table_privilege('app_worker', 'public.payment_intents', 'insert'), 'Worker cannot manufacture payment intents');
 
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
 values
@@ -49,6 +61,17 @@ set local role app_backend;
 insert into public.sites (id, organization_id, domain, name, updated_at)
 values ('00000000-0000-0000-0000-0000000000a3', (select organization_id from rls_context where label = 'a'), 'org-a.example.test', 'Org A site', now());
 select is((select count(*) from public.sites), 1::bigint, 'owner can select own organization rows');
+reset role;
+
+insert into auth.users (instance_id, id, aud, role, email, encrypted_password, created_at, updated_at)
+values ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-0000000000c3', 'authenticated', 'authenticated', 'unverified@example.test', crypt('StrongPassword1', gen_salt('bf')), now(), now());
+select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000c3', true);
+set local role app_backend;
+select throws_like(
+  $$select private.bootstrap_organization('Unverified Organization')$$,
+  '%verified email is required%',
+  'database bootstrap rejects an unverified Auth email'
+);
 reset role;
 
 select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000b2', true);
@@ -91,7 +114,7 @@ select set_config('app.organization_id', (select organization_id::text from rls_
 set local role app_backend;
 select throws_like(
   $$update public.profiles set platform_role = 'PLATFORM_ADMIN' where id = '00000000-0000-0000-0000-0000000000b2'$$,
-  '%audited bootstrap/admin action%',
+  '%permission denied%',
   'user cannot self-promote to platform administrator'
 );
 reset role;

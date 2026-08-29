@@ -5,8 +5,9 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 # Prisma generation validates the URL format but does not connect during build.
-ENV DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/postgres?schema=public
-RUN npm run build
+# Keep this value scoped to the build command so no runtime image or service can
+# accidentally treat it as a database credential.
+RUN DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build?schema=public npm run build
 
 FROM node:22-alpine AS runtime
 WORKDIR /app

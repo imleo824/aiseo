@@ -2,6 +2,7 @@ import { createClient, type User } from '@supabase/supabase-js';
 import type { NextFunction, Request, Response } from 'express';
 import { ForbiddenError, UnauthorizedError } from '../domain/errors';
 import { env } from './env';
+import { withRequestScope } from './prisma';
 
 declare global {
   namespace Express {
@@ -13,7 +14,6 @@ declare global {
 }
 
 let authClient: ReturnType<typeof createClient> | undefined;
-let adminClient: ReturnType<typeof createClient> | undefined;
 
 const getAuthClient = () => {
   if (!env.supabaseUrl || !env.supabasePublishableKey) {
@@ -50,19 +50,29 @@ export const requireAuth = (request: Request, _response: Response, next: NextFun
 // request-local state or a cached profile lookup.
 export const revalidateSensitiveSession = async (request: Request): Promise<User> => {
   request.authUser = undefined;
-  return authenticate(request);
+  const user = await authenticate(request);
+  const payloadSegment = request.accessToken?.split('.')[1];
+  let sessionId = '';
+  try {
+    const claims = JSON.parse(Buffer.from(payloadSegment || '', 'base64url').toString('utf8')) as { session_id?: unknown };
+    sessionId = typeof claims.session_id === 'string' ? claims.session_id : '';
+  } catch {
+    throw new UnauthorizedError('会话声明无效');
+  }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(sessionId)) throw new UnauthorizedError('会话缺少有效 session_id');
+  const rows = await withRequestScope({ profileId: user.id }, (tx) => tx.$queryRaw<Array<{ active: boolean }>>`
+    SELECT private.is_active_auth_session(${sessionId}::uuid) AS active
+  `);
+  if (!rows[0]?.active) throw new UnauthorizedError('会话已撤销，请重新登录');
+  return user;
 };
 
 export const revokeAllSessions = async (accessToken: string): Promise<void> => {
-  if (!env.supabaseUrl || !env.supabaseServiceRoleKey) throw new Error('Supabase service role is required for global session revocation');
-  adminClient ??= createClient(env.supabaseUrl, env.supabaseServiceRoleKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
-  const { error } = await adminClient.auth.admin.signOut(accessToken, 'global');
-  if (error) throw new Error(`Failed to revoke Supabase sessions: ${error.message}`);
-};
-
-export const deleteAuthUser = async (profileId: string): Promise<void> => {
-  if (!env.supabaseUrl || !env.supabaseServiceRoleKey) throw new Error('Supabase service role is required for account erasure');
-  adminClient ??= createClient(env.supabaseUrl, env.supabaseServiceRoleKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
-  const { error } = await adminClient.auth.admin.deleteUser(profileId, false);
-  if (error) throw new Error(`Failed to delete Supabase Auth user: ${error.message}`);
+  if (!env.supabaseUrl || !env.supabasePublishableKey) throw new Error('Supabase Auth is not configured');
+  const response = await fetch(`${env.supabaseUrl.replace(/\/$/, '')}/auth/v1/logout?scope=global`, {
+    method: 'POST',
+    headers: { apikey: env.supabasePublishableKey, authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(10_000)
+  });
+  if (!response.ok) throw new Error(`Failed to revoke Supabase sessions: HTTP ${response.status}`);
 };

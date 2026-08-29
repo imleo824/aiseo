@@ -2,13 +2,8 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { env } from './env';
 
 export const prisma = new PrismaClient({
-  datasources: env.databaseUrl ? { db: { url: env.databaseUrl } } : undefined,
+  datasources: { db: { url: env.databaseUrl } },
   log: env.runtime === 'development' ? ['warn', 'error'] : ['error']
-});
-
-export const workerPrisma = new PrismaClient({
-  datasources: env.workerDatabaseUrl ? { db: { url: env.workerDatabaseUrl } } : undefined,
-  log: ['error']
 });
 
 export type ScopedIdentity = { organizationId?: string; profileId: string };
@@ -28,4 +23,4 @@ export const withSerializableScope = async <T>(identity: ScopedIdentity, operati
     return operation(tx as TransactionClient);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
-export const disconnectDatabase = () => Promise.all([prisma.$disconnect(), workerPrisma.$disconnect()]).then(() => undefined);
+export const disconnectWebDatabase = () => prisma.$disconnect();

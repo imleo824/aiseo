@@ -18,4 +18,4 @@ There is no JSON database, in-memory session store, browser-accessible business 
 3. Run `npm ci`, `npm run lint`, `npm test`, `npm run db:drift`, and `npm run build`.
 4. Start Web with `npm run dev` and Worker with `npm run dev:worker`.
 
-Production deployment and release gates are in `RUNBOOK`. Legal drafts are served from `public/legal`; they require jurisdiction-specific counsel approval before public payment collection.
+Production deployment and release gates are in `RUNBOOK`; the complete Auth, RLS, connection-role and pooling design is in `SUPABASE_PRODUCTION.md`. Legal drafts are served from `public/legal`; they require jurisdiction-specific counsel approval before public payment collection.

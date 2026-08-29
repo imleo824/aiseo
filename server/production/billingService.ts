@@ -1,7 +1,7 @@
-import { CreditHoldStatus, LedgerEntryType, PaymentStatus, Prisma } from '@prisma/client';
+import { CreditHoldStatus, LedgerEntryType, PaymentStatus, Prisma, type PrismaClient } from '@prisma/client';
 import { ConflictError, InsufficientCreditsError, NotFoundError, ValidationError } from '../domain/errors';
 import { env } from './env';
-import { workerPrisma, type TransactionClient } from './prisma';
+import type { TransactionClient } from './prisma';
 
 const USDT_MICROS = 1_000_000n;
 const TX_HASH_PATTERN = /^[a-fA-F0-9]{64}$/;
@@ -103,9 +103,9 @@ export const billingService = {
     }
   },
 
-  async creditConfirmedPayment(paymentIntentId: string, verification: Prisma.InputJsonValue): Promise<{ credited: boolean; balanceMicros: string }> {
+  async creditConfirmedPayment(database: PrismaClient, paymentIntentId: string, verification: Prisma.InputJsonValue): Promise<{ credited: boolean; balanceMicros: string }> {
     try {
-      return await workerPrisma.$transaction(async (tx) => {
+      return await database.$transaction(async (tx) => {
         const paymentRows = await tx.$queryRaw<Array<{ id: string }>>`
           SELECT id FROM public.payment_intents WHERE id = ${paymentIntentId}::uuid FOR UPDATE
         `;
@@ -145,7 +145,7 @@ export const billingService = {
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error: any) {
       if (error?.code === 'P2002') {
-        const payment = await workerPrisma.paymentIntent.findUniqueOrThrow({ where: { id: paymentIntentId }, include: { organization: true } });
+        const payment = await database.paymentIntent.findUniqueOrThrow({ where: { id: paymentIntentId }, include: { organization: true } });
         return { credited: false, balanceMicros: payment.organization.creditBalanceMicros.toString() };
       }
       throw error;
