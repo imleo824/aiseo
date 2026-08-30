@@ -19,7 +19,6 @@ import { wordPressService } from './wordpress';
 const roleRank: Record<OrganizationRole, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2, OWNER: 3 };
 const idSchema = z.string().uuid();
 const languageSchema = z.enum(['zh-CN', 'en-US']);
-const organizationSchema = z.object({ name: z.string().trim().min(2).max(120) });
 const siteSchema = z.object({ name: z.string().trim().min(1).max(120), domain: z.string().trim().min(3).max(253), language: languageSchema.default('zh-CN') });
 const credentialSchema = z.object({ username: z.string().trim().min(1).max(200), applicationPassword: z.string().min(8).max(300) });
 const memberSchema = z.object({ profileId: z.string().uuid(), role: z.enum(['ADMIN', 'EDITOR', 'VIEWER']) });
@@ -105,6 +104,7 @@ apiRouter.use(requireAuth);
 apiRouter.get('/me', asyncRoute(async (request, response) => {
   const profileId = userId(request);
   const result = await withRequestScope({ profileId }, async (tx) => {
+    await tx.$executeRaw`SELECT private.ensure_personal_workspace()`;
     const [profile, memberships] = await Promise.all([
       tx.profile.findUniqueOrThrow({ where: { id: profileId } }),
       tx.organizationMember.findMany({ where: { profileId }, include: { organization: true }, orderBy: { createdAt: 'asc' } })
@@ -155,17 +155,6 @@ apiRouter.delete('/me', asyncRoute(async (request, response) => {
   await withRequestScope({ profileId }, async (tx) => { await tx.$executeRaw`SELECT private.request_account_deletion()`; });
   await revokeAllSessions(request.accessToken);
   sendData(response, { deletionRequested: true, purgeAfter: new Date(Date.now() + 30 * 86_400_000).toISOString() });
-}));
-
-apiRouter.post('/bootstrap', asyncRoute(async (request, response) => {
-  await revalidateSensitiveSession(request);
-  const profileId = userId(request);
-  const input = parseBody(organizationSchema, request);
-  const organization = await withRequestScope({ profileId }, async (tx) => {
-    const rows = await tx.$queryRaw<Array<{ bootstrap_organization: string }>>`SELECT private.bootstrap_organization(${input.name})`;
-    return tx.organization.findUniqueOrThrow({ where: { id: rows[0].bootstrap_organization } });
-  });
-  sendData(response, { organization }, 201);
 }));
 
 apiRouter.get('/organizations', asyncRoute(async (request, response) => {

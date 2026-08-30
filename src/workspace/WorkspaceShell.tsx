@@ -15,7 +15,7 @@ const tabs = [
 
 export default function WorkspaceShell() {
   const { signOut } = useAuth();
-  const { me, organization, setOrganizationId } = useWorkspace();
+  const { me } = useWorkspace();
   const [tab, setTab] = useState<string>('overview');
   const availableTabs = me.profile.platformRole === 'PLATFORM_ADMIN' ? [...tabs, ['admin', '平台管理'] as const] : tabs;
   const page = tab === 'sites' ? <SitesPage /> : tab === 'content' ? <ContentPage /> : tab === 'billing' ? <BillingPage /> : tab === 'admin' ? <AdminPage /> : <OverviewPage />;
@@ -23,7 +23,6 @@ export default function WorkspaceShell() {
     <header className="border-b border-slate-800 bg-slate-950/90 sticky top-0 z-10 backdrop-blur">
       <div className="mx-auto max-w-7xl px-5 py-4 flex flex-wrap items-center gap-4">
         <div className="mr-auto"><p className="font-black tracking-wide text-cyan-400">AISEO</p><p className="text-xs text-slate-500">Production workspace</p></div>
-        <select className="field !mt-0 !w-auto" value={organization.id} onChange={(event) => setOrganizationId(event.target.value)}>{me.organizations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
         <span className="text-sm text-slate-400">{me.profile.email}</span>
         <button className="secondary" onClick={() => void signOut()}>全局退出</button>
       </div>
