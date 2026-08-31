@@ -2,8 +2,6 @@ import React from 'react';
 import { NavItem, WordPressSite, AutomatedTask, TenantAccount } from '../types/seo';
 import {
   Zap,
-  Bot,
-  Target,
   Layers,
   Activity,
   Menu
@@ -23,29 +21,15 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   onSelectNav,
   onOpenMobileDrawer,
   sites = [],
-  tasks = [],
   account
 }) => {
   const safeSites = sites || [];
-  const safeTasks = tasks || [];
-  const activeTasksCount = safeTasks.filter(t => t.status === 'ACTIVE').length;
 
   const mainNavItems: { id: NavItem; label: string; icon: React.ReactNode; badge?: string }[] = [
     {
       id: 'DASHBOARD',
-      label: '手动执行',
+      label: '持续增长',
       icon: <Zap className="w-5 h-5" />,
-    },
-    {
-      id: 'AUTOPILOT_TASKS',
-      label: '自动执行',
-      icon: <Bot className="w-5 h-5" />,
-      badge: activeTasksCount > 0 ? `${activeTasksCount}` : undefined
-    },
-    {
-      id: 'KEYWORD_RADAR',
-      label: '我的词库',
-      icon: <Target className="w-5 h-5" />,
     },
     {
       id: 'SITE_MANAGEMENT',

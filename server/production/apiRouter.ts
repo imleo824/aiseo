@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
-import { DraftStatus, JobType, OrganizationRole, Prisma, PublishPolicy, ReviewDecision, SiteConnectionStatus } from '@prisma/client';
+import { DraftStatus, GrowthCycleTrigger, GrowthStateStatus, JobType, OrganizationRole, Prisma, PublishPolicy, ReviewDecision, SiteConnectionStatus } from '@prisma/client';
 import { Router, type Request } from 'express';
 import sanitizeHtml from 'sanitize-html';
 import { z } from 'zod';
@@ -15,6 +15,8 @@ import { currentEncryptionKeyVersion, encryptSecret } from './crypto';
 import { env } from './env';
 import { gscProvider } from './providers';
 import { wordPressService } from './wordpress';
+import { growthService } from './growthService';
+import { gscComparisonWindow, readGscRows } from './growthEngine';
 
 const roleRank: Record<OrganizationRole, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2, OWNER: 3 };
 const idSchema = z.string().uuid();
@@ -93,11 +95,20 @@ apiRouter.get('/integrations/gsc/callback', asyncRoute(async (request, response)
   });
   const credentials = await gscProvider.exchangeCode(code);
   await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
-    await tx.integrationConnection.upsert({ where: { siteId_provider: { siteId: state.siteId, provider: 'GSC' } }, create: { organizationId: state.organizationId, siteId: state.siteId, provider: 'GSC', propertyId: state.propertyId, encryptedCredentials: encryptSecret(credentials), keyVersion: currentEncryptionKeyVersion(), status: SiteConnectionStatus.VERIFYING }, update: { propertyId: state.propertyId, encryptedCredentials: encryptSecret(credentials), keyVersion: currentEncryptionKeyVersion(), status: SiteConnectionStatus.VERIFYING, lastErrorCode: null, lastErrorMessage: null } });
+    const connection = await tx.integrationConnection.upsert({ where: { siteId_provider: { siteId: state.siteId, provider: 'GSC' } }, create: { organizationId: state.organizationId, siteId: state.siteId, provider: 'GSC', propertyId: state.propertyId, encryptedCredentials: encryptSecret(credentials), keyVersion: currentEncryptionKeyVersion(), status: SiteConnectionStatus.VERIFYING }, update: { propertyId: state.propertyId, encryptedCredentials: encryptSecret(credentials), keyVersion: currentEncryptionKeyVersion(), status: SiteConnectionStatus.VERIFYING, lastErrorCode: null, lastErrorMessage: null } });
+    const end = new Date(Date.now() - 3 * 86_400_000);
+    const start = new Date(end.getTime() - 27 * 86_400_000);
+    const date = (value: Date) => value.toISOString().slice(0, 10);
+    await jobService.create(tx, {
+      organizationId: state.organizationId,
+      type: JobType.GSC_SYNC,
+      idempotencyKey: `gsc-initial:${connection.id}:${date(end)}`,
+      payload: { connectionId: connection.id, siteId: state.siteId, startDate: date(start), endDate: date(end) }
+    });
     await tx.idempotencyKey.deleteMany({ where: { organizationId: state.organizationId, profileId: state.profileId, key: state.nonce } });
-    await tx.auditEvent.create({ data: { organizationId: state.organizationId, actorId: state.profileId, action: 'GSC_CONNECTED', targetType: 'site', targetId: state.siteId, metadata: { propertyId: state.propertyId } } });
+    await tx.auditEvent.create({ data: { organizationId: state.organizationId, actorId: state.profileId, action: 'GSC_AUTHORIZED', targetType: 'site', targetId: state.siteId, metadata: { propertyId: state.propertyId, initialSyncQueued: true } } });
   });
-  response.redirect('/?gsc=connected');
+  response.redirect('/?gsc=syncing');
 }));
 
 apiRouter.use(requireAuth);
@@ -343,6 +354,8 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/gsc/sync', asyncRou
   const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request);
   const input = parseBody(z.object({ startDate: z.string().date(), endDate: z.string().date() }), request);
   if (input.startDate > input.endDate) throw new ValidationError('GSC 开始日期不能晚于结束日期');
+  const comparisonWindow = gscComparisonWindow(input.startDate, input.endDate);
+  if (!comparisonWindow || comparisonWindow.periodDays < 7 || comparisonWindow.periodDays > 90) throw new ValidationError('GSC 同步窗口必须为 7 到 90 天');
   const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {
@@ -365,6 +378,136 @@ apiRouter.delete('/organizations/:organizationId/sites/:siteId/gsc', asyncRoute(
     await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'GSC_DISCONNECTED', targetType: 'site', targetId: siteId } });
   });
   sendData(response, { disconnected: true });
+}));
+
+apiRouter.post('/organizations/:organizationId/sites/:siteId/growth/start', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request);
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { siteId }, execute: async () => {
+      const [site, connection, knowledgeCount, latestSnapshot] = await Promise.all([
+        tx.site.findFirst({ where: { id: siteId, organizationId: orgId } }),
+        tx.integrationConnection.findFirst({ where: { organizationId: orgId, siteId, provider: 'GSC' } }),
+        tx.knowledgeSource.count({ where: { organizationId: orgId, status: 'LIVE', OR: [{ siteId }, { siteId: null }] } }),
+        tx.dataSnapshot.findFirst({ where: { organizationId: orgId, siteId, source: 'GSC', status: 'LIVE', comparisonSnapshotId: { not: null } }, orderBy: [{ periodEnd: 'desc' }, { fetchedAt: 'desc' }] })
+      ]);
+      if (!site) throw new NotFoundError('站点不存在');
+      // Discovery and learning can safely run in observe-only mode before a
+      // publishing executor exists. WordPress becomes an execution gate, not
+      // an artificial prerequisite for collecting reality.
+      if (!connection?.propertyId || connection.status !== SiteConnectionStatus.CONNECTED) throw new ConflictError('开始增长前必须完成 GSC 授权与连接验证');
+      if (!knowledgeCount) throw new ConflictError('开始增长前必须提供至少一个真实业务知识来源');
+
+      const state = await tx.siteGrowthState.upsert({
+        where: { siteId },
+        create: { organizationId: orgId, siteId, status: latestSnapshot ? GrowthStateStatus.ACTIVE : GrowthStateStatus.BASELINING },
+        update: { status: latestSnapshot ? GrowthStateStatus.ACTIVE : GrowthStateStatus.BASELINING, pausedAt: null, blockedReason: null }
+      });
+
+      let cycle = null;
+      let job;
+      let phase: 'ANALYZING_REALITY' | 'SYNCING_REALITY';
+      if (latestSnapshot) {
+        const created = await growthService.createCycle(tx, { organizationId: orgId, siteId, trigger: GrowthCycleTrigger.MANUAL_START, idempotencyKey: `growth:${siteId}:${latestSnapshot.id}`, inputWatermark: latestSnapshot.fetchedAt });
+        await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_GROWTH_STARTED', targetType: 'site', targetId: siteId, metadata: { cycleId: created.cycle.id, sourceSnapshotId: latestSnapshot.id } } });
+        cycle = created.cycle;
+        job = created.job;
+        phase = 'ANALYZING_REALITY';
+      } else {
+        const end = new Date(Date.now() - 3 * 86_400_000);
+        const start = new Date(end.getTime() - 27 * 86_400_000);
+        const date = (value: Date) => value.toISOString().slice(0, 10);
+        job = await jobService.create(tx, {
+          organizationId: orgId,
+          type: JobType.GSC_SYNC,
+          idempotencyKey: `growth-baseline:${siteId}:${date(end)}`,
+          payload: { connectionId: connection.id, siteId, growthBaseline: true, startDate: date(start), endDate: date(end) }
+        });
+        await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_GROWTH_BASELINE_REQUESTED', targetType: 'site', targetId: siteId, metadata: { syncJobId: job.id } } });
+        phase = 'SYNCING_REALITY';
+      }
+      return { statusCode: 202, data: { state, cycle, job, phase } };
+    } });
+  });
+  sendData(response, outcome.data, outcome.statusCode);
+}));
+
+apiRouter.post('/organizations/:organizationId/sites/:siteId/growth/pause', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request);
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { siteId }, execute: async () => {
+      const state = await growthService.pause(tx, orgId, siteId);
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_GROWTH_PAUSED', targetType: 'site', targetId: siteId } });
+      return { statusCode: 200, data: { state } };
+    } });
+  });
+  sendData(response, outcome.data, outcome.statusCode);
+}));
+
+apiRouter.get('/organizations/:organizationId/sites/:siteId/growth', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId);
+  const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
+    const [site, knowledgeCount, state, cycles, opportunities, actions, snapshotPair, observations] = await Promise.all([
+      tx.site.findFirst({
+        where: { id: siteId, organizationId: orgId },
+        select: {
+          wordpressStatus: true,
+          wordpressVerifiedAt: true,
+          integrations: { where: { provider: 'GSC' }, select: { status: true, propertyId: true }, take: 1 }
+        }
+      }),
+      tx.knowledgeSource.count({ where: { organizationId: orgId, status: 'LIVE', OR: [{ siteId }, { siteId: null }] } }),
+      tx.siteGrowthState.findUnique({ where: { siteId } }),
+      tx.growthCycle.findMany({ where: { organizationId: orgId, siteId }, orderBy: { createdAt: 'desc' }, take: 20 }),
+      tx.opportunity.findMany({ where: { organizationId: orgId, siteId, status: 'OPEN', expectedValueMicros: { not: null } }, orderBy: { expectedValueMicros: 'desc' }, take: 20 }),
+      tx.growthAction.findMany({ where: { organizationId: orgId, siteId }, include: { decision: true }, orderBy: { createdAt: 'desc' }, take: 20 }),
+      tx.dataSnapshot.findFirst({
+        where: { organizationId: orgId, siteId, source: 'GSC', status: 'LIVE', comparisonSnapshotId: { not: null } },
+        include: { comparisonSnapshot: true },
+        orderBy: [{ periodEnd: 'desc' }, { fetchedAt: 'desc' }]
+      }),
+      tx.growthObservation.findMany({ where: { organizationId: orgId, siteId, status: 'EVALUATED' }, orderBy: { observedAt: 'desc' }, take: 100 })
+    ]);
+    if (!site) throw new NotFoundError('站点不存在');
+    const gscConnection = site.integrations[0];
+    const gscReady = gscConnection?.status === SiteConnectionStatus.CONNECTED && Boolean(gscConnection.propertyId);
+    const wordpressReady = site.wordpressStatus === SiteConnectionStatus.CONNECTED && Boolean(site.wordpressVerifiedAt);
+    const knowledgeReady = knowledgeCount > 0;
+    const currentRows = readGscRows(snapshotPair?.payload);
+    const previousRows = readGscRows(snapshotPair?.comparisonSnapshot?.payload);
+    const currentClicks = currentRows.reduce((sum, row) => sum + row.clicks, 0);
+    const previousClicks = previousRows.reduce((sum, row) => sum + row.clicks, 0);
+    const attributedLiftMicros = observations.reduce((sum, item) => item.outcome === 'WIN' && item.estimatedLiftMicros ? sum + item.estimatedLiftMicros : sum, 0n);
+    return {
+      state,
+      cycles,
+      opportunities,
+      actions,
+      readiness: {
+        canStart: gscReady && knowledgeReady,
+        gscReady,
+        knowledgeReady,
+        wordpressReady,
+        executionMode: wordpressReady ? 'REVIEW_GATED' : 'OBSERVE_ONLY',
+        blockers: [
+          ...(!gscReady ? ['GSC_CONNECTION_REQUIRED'] : []),
+          ...(!knowledgeReady ? ['KNOWLEDGE_SOURCE_REQUIRED'] : [])
+        ]
+      },
+      metrics: {
+        organicClicks: currentRows.length ? currentClicks : null,
+        previousOrganicClicks: previousRows.length ? previousClicks : null,
+        organicClickChangePct: previousRows.length && previousClicks > 0 ? (currentClicks - previousClicks) / previousClicks * 100 : null,
+        attributedLiftMicros: observations.length ? attributedLiftMicros : null,
+        attributionStatus: observations.length ? 'AVAILABLE' : 'INSUFFICIENT_OBSERVATION',
+        source: snapshotPair ? 'GSC' : 'UNAVAILABLE',
+        collectedAt: snapshotPair?.fetchedAt || null
+      }
+    };
+  });
+  sendData(response, result);
 }));
 
 apiRouter.get('/organizations/:organizationId/knowledge-sources', asyncRoute(async (request, response) => {
@@ -425,6 +568,7 @@ apiRouter.post('/organizations/:organizationId/content-runs', asyncRoute(async (
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {
       const opportunity = await tx.opportunity.findFirst({ where: { id: input.opportunityId, organizationId: orgId, siteId: input.siteId }, include: { snapshot: true } });
       if (!opportunity || opportunity.snapshot.status !== 'LIVE') throw new ValidationError('机会或真实 SEO 快照不可用');
+      if (!opportunity.keyword) throw new ValidationError('该增长机会不是新内容机会，不能进入内容生成流程');
       const sources = await tx.knowledgeSource.findMany({ where: { id: { in: input.knowledgeSourceIds }, organizationId: orgId, status: 'LIVE', OR: [{ siteId: input.siteId }, { siteId: null }] } });
       if (sources.length !== input.knowledgeSourceIds.length) throw new ValidationError('知识来源缺失、不可用或跨组织');
       const job = await jobService.create(tx, { organizationId: orgId, type: JobType.CONTENT_GENERATION, idempotencyKey: key, payload: { ...input, seoSnapshotId: opportunity.snapshotId, keyword: opportunity.keyword }, priceAction: 'CONTENT_GENERATION' });

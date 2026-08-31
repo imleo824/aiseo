@@ -1,5 +1,6 @@
 import { ExternalServiceError, ValidationError } from '../domain/errors';
 import { resolvePublicHttpsOrigin } from '../utils/networkSafety';
+import { createHash } from 'crypto';
 import { decryptSecret, encryptSecret } from './crypto';
 
 export type WordPressCredentials = { username: string; applicationPassword: string };
@@ -12,13 +13,32 @@ const authorization = (credentials: WordPressCredentials): string => {
   return `Basic ${Buffer.from(`${credentials.username.trim()}:${password}`).toString('base64')}`;
 };
 
-const requestJson = async (url: string, init: RequestInit): Promise<Record<string, any>> => {
+const requestJson = async <T>(url: string, init: RequestInit): Promise<T> => {
   const response = await fetch(url, { ...init, signal: AbortSignal.timeout(12_000) });
-  const body = await response.json().catch(() => ({}));
+  const body: unknown = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new ExternalServiceError(`WordPress 请求失败 (${response.status}): ${body.message || response.statusText}`);
+    const message = typeof body === 'object' && body !== null && 'message' in body ? String(body.message) : response.statusText;
+    throw new ExternalServiceError(`WordPress 请求失败 (${response.status}): ${message}`);
   }
-  return body;
+  return body as T;
+};
+
+type WordPressEditableResource = {
+  id?: number;
+  link?: string;
+  slug?: string;
+  status?: string;
+  modified_gmt?: string;
+  title?: { raw?: string; rendered?: string };
+  content?: { raw?: string; rendered?: string };
+};
+
+const comparableUrl = (value: string): string => {
+  const url = new URL(value);
+  url.hash = '';
+  url.search = '';
+  url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+  return url.toString();
 };
 
 export const wordPressService = {
@@ -36,8 +56,8 @@ export const wordPressService = {
     const credentials = this.decrypt(encrypted);
     const headers = { authorization: authorization(credentials), accept: 'application/json' };
     const [root, currentUser] = await Promise.all([
-      requestJson(`${origin}/wp-json`, { headers }),
-      requestJson(`${origin}/wp-json/wp/v2/users/me?context=edit`, { headers })
+      requestJson<Record<string, unknown>>(`${origin}/wp-json`, { headers }),
+      requestJson<{ name?: string; slug?: string; capabilities?: { publish_posts?: boolean } }>(`${origin}/wp-json/wp/v2/users/me?context=edit`, { headers })
     ]);
     if (currentUser.capabilities?.publish_posts !== true) {
       throw new ValidationError('WordPress 账号已认证，但不具备 publish_posts 权限');
@@ -48,13 +68,55 @@ export const wordPressService = {
     };
   },
 
+  async inspectTarget(input: { domain: string; encrypted: Uint8Array; targetUrl: string }): Promise<{
+    postId: string;
+    resourceType: 'posts' | 'pages';
+    url: string;
+    status: string;
+    modifiedAt?: string;
+    title: string;
+    contentChecksum: string;
+    contentLength: number;
+  }> {
+    const origin = await resolvePublicHttpsOrigin(input.domain);
+    const target = new URL(input.targetUrl);
+    if (target.protocol !== 'https:' || target.origin !== origin) throw new ValidationError('增长动作目标必须是已验证 WordPress 站点内的 HTTPS URL');
+    const slug = decodeURIComponent(target.pathname.split('/').filter(Boolean).at(-1) || '');
+    if (!slug) throw new ValidationError('首页或无 slug 页面不能通过自动执行器修改');
+    const credentials = this.decrypt(input.encrypted);
+    const headers = { authorization: authorization(credentials), accept: 'application/json' };
+    const fields = '_fields=id,link,slug,status,modified_gmt,title,content';
+    const [posts, pages] = await Promise.all([
+      requestJson<WordPressEditableResource[]>(`${origin}/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug)}&context=edit&status=any&${fields}`, { headers }),
+      requestJson<WordPressEditableResource[]>(`${origin}/wp-json/wp/v2/pages?slug=${encodeURIComponent(slug)}&context=edit&status=any&${fields}`, { headers })
+    ]);
+    const candidates = [
+      ...posts.map((resource) => ({ resource, resourceType: 'posts' as const })),
+      ...pages.map((resource) => ({ resource, resourceType: 'pages' as const }))
+    ];
+    const matched = candidates.find(({ resource }) => resource.link && comparableUrl(resource.link) === comparableUrl(input.targetUrl));
+    if (!matched?.resource.id || !matched.resource.link) throw new ValidationError('WordPress REST API 中未找到与目标 URL 精确匹配的可编辑内容');
+    const title = String(matched.resource.title?.raw || matched.resource.title?.rendered || '').trim();
+    const content = String(matched.resource.content?.raw || matched.resource.content?.rendered || '');
+    return {
+      postId: String(matched.resource.id),
+      resourceType: matched.resourceType,
+      url: matched.resource.link,
+      status: String(matched.resource.status || 'unknown'),
+      modifiedAt: matched.resource.modified_gmt,
+      title,
+      contentChecksum: createHash('sha256').update(content).digest('hex'),
+      contentLength: Buffer.byteLength(content, 'utf8')
+    };
+  },
+
   async publish(input: { domain: string; encrypted: Uint8Array; title: string; slug: string; html: string }): Promise<{ postId: string; url: string }> {
     const origin = await resolvePublicHttpsOrigin(input.domain);
     const credentials = this.decrypt(input.encrypted);
     const auth = authorization(credentials);
-    const existing = await requestJson(`${origin}/wp-json/wp/v2/posts?slug=${encodeURIComponent(input.slug)}&context=edit&status=any`, { headers: { authorization: auth, accept: 'application/json' } });
+    const existing = await requestJson<WordPressEditableResource[]>(`${origin}/wp-json/wp/v2/posts?slug=${encodeURIComponent(input.slug)}&context=edit&status=any`, { headers: { authorization: auth, accept: 'application/json' } });
     if (Array.isArray(existing) && existing[0]?.id && existing[0]?.link) return { postId: String(existing[0].id), url: String(existing[0].link) };
-    const body = await requestJson(`${origin}/wp-json/wp/v2/posts`, {
+    const body = await requestJson<{ id?: number; link?: string }>(`${origin}/wp-json/wp/v2/posts`, {
       method: 'POST',
       headers: { authorization: auth, 'content-type': 'application/json' },
       body: JSON.stringify({ title: input.title, slug: input.slug, content: input.html, status: 'publish' })

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'crypto';
-import { DataSource, DataStatus, DraftStatus, JobStatus, JobType, PaymentStatus, Prisma, PublishAttemptStatus, PublishPolicy, SiteConnectionStatus } from '@prisma/client';
+import { DataSource, DataStatus, DraftStatus, GrowthActionStatus, GrowthCycleStatus, GrowthCycleTrigger, GrowthStage, GrowthStateStatus, JobStatus, JobType, PaymentStatus, Prisma, PublishAttemptStatus, PublishPolicy, SiteConnectionStatus } from '@prisma/client';
 import { Job, Worker } from 'bullmq';
 import * as Sentry from '@sentry/node';
 import { billingService } from './billingService';
@@ -15,6 +15,8 @@ import { deleteAuthUser } from './authAdmin';
 import { jobService } from './jobService';
 import { resolvePublicHttpsOrigin } from '../utils/networkSafety';
 import { assertDatabaseSecurity } from './databaseSecurity';
+import { addDays, autonomyDecision, discoverGscOpportunities, gscComparisonWindow, GROWTH_SCORE_VERSION, planMinimumEffectiveAction, readGscRows } from './growthEngine';
+import { growthService } from './growthService';
 
 type QueuePayload = { jobRunId?: string; system?: boolean };
 const workerId = `${process.env.RAILWAY_REPLICA_ID || process.env.HOSTNAME || 'local'}:${process.pid}:${randomUUID().slice(0, 8)}`;
@@ -41,6 +43,11 @@ const reconcile = async (): Promise<void> => {
     const organizationIds = (await workerPrisma.organizationMember.findMany({ where: { profileId: profile.id }, select: { organizationId: true } })).map(({ organizationId }) => organizationId);
     const pseudonym = createHash('sha256').update(profile.id).digest('hex').slice(0, 16);
     await workerPrisma.$transaction(async (tx) => {
+      await tx.growthObservation.deleteMany({ where: { organizationId: { in: organizationIds } } });
+      await tx.growthAction.deleteMany({ where: { organizationId: { in: organizationIds } } });
+      await tx.growthDecision.deleteMany({ where: { organizationId: { in: organizationIds } } });
+      await tx.growthCycle.deleteMany({ where: { organizationId: { in: organizationIds } } });
+      await tx.siteGrowthState.deleteMany({ where: { organizationId: { in: organizationIds } } });
       await tx.contentDraft.deleteMany({ where: { organizationId: { in: organizationIds } } });
       await tx.opportunity.deleteMany({ where: { organizationId: { in: organizationIds } } });
       await tx.keywordScan.deleteMany({ where: { organizationId: { in: organizationIds } } });
@@ -107,6 +114,37 @@ const reconcile = async (): Promise<void> => {
     return created;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
+  // Growth is state/data driven. A due state only creates a cycle when a new
+  // immutable GSC snapshot exists; a timer alone never fabricates work.
+  await workerPrisma.$transaction(async (tx) => {
+    const dueStates = await tx.siteGrowthState.findMany({
+      where: { status: { in: [GrowthStateStatus.ACTIVE, GrowthStateStatus.OBSERVING] }, nextDecisionAt: { lte: new Date() } },
+      orderBy: { nextDecisionAt: 'asc' }, take: 50
+    });
+    for (const state of dueStates) {
+      const latest = await tx.dataSnapshot.findFirst({ where: { organizationId: state.organizationId, siteId: state.siteId, source: DataSource.GSC, status: DataStatus.LIVE, comparisonSnapshotId: { not: null } }, orderBy: [{ periodEnd: 'desc' }, { fetchedAt: 'desc' }] });
+      if (!latest || (state.lastDataWatermark && latest.fetchedAt <= state.lastDataWatermark)) {
+        const connection = await tx.integrationConnection.findFirst({ where: { organizationId: state.organizationId, siteId: state.siteId, provider: 'GSC', status: SiteConnectionStatus.CONNECTED } });
+        if (!connection?.propertyId) {
+          await tx.siteGrowthState.update({ where: { id: state.id }, data: { status: GrowthStateStatus.BLOCKED, blockedReason: 'GSC_CONNECTION_REQUIRED', nextDecisionAt: null } });
+          continue;
+        }
+        const end = new Date(Date.now() - 3 * 86_400_000);
+        const start = new Date(end.getTime() - 27 * 86_400_000);
+        const date = (value: Date) => value.toISOString().slice(0, 10);
+        await jobService.create(tx, {
+          organizationId: state.organizationId,
+          type: JobType.GSC_SYNC,
+          idempotencyKey: `growth-refresh:${state.siteId}:${date(end)}`,
+          payload: { connectionId: connection.id, siteId: state.siteId, growthRefresh: true, startDate: date(start), endDate: date(end) }
+        });
+        await tx.siteGrowthState.update({ where: { id: state.id }, data: { nextDecisionAt: addDays(new Date(), 1), blockedReason: null } });
+        continue;
+      }
+      await growthService.createCycle(tx, { organizationId: state.organizationId, siteId: state.siteId, trigger: GrowthCycleTrigger.DATA_CHANGE, idempotencyKey: `growth:${state.siteId}:${latest.id}`, inputWatermark: latest.fetchedAt });
+    }
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
   const queued = await workerPrisma.jobRun.findMany({ where: { status: JobStatus.QUEUED, availableAt: { lte: new Date() } }, orderBy: { createdAt: 'asc' }, take: 500 });
   for (const run of queued) {
     const queueJob = await queue.add(run.type, { jobRunId: run.id }, productionJobOptions(run.id));
@@ -127,6 +165,19 @@ const markFailed = async (runId: string, error: unknown): Promise<void> => {
       const payload = run.payload as { draftId?: string };
       if (payload.draftId) await tx.contentDraft.updateMany({ where: { id: payload.draftId }, data: { status: DraftStatus.PUBLISH_FAILED } });
     }
+    if (finalAttempt && run.type === JobType.GROWTH_CYCLE) {
+      const payload = run.payload as { cycleId?: string; siteId?: string };
+      if (payload.cycleId) await tx.growthCycle.updateMany({ where: { id: payload.cycleId, organizationId: run.organizationId }, data: { status: GrowthCycleStatus.FAILED, errorCode: 'GROWTH_CYCLE_FAILED', errorMessage: message, finishedAt: new Date() } });
+      if (payload.siteId) await tx.siteGrowthState.updateMany({ where: { siteId: payload.siteId, organizationId: run.organizationId }, data: { status: GrowthStateStatus.BLOCKED, blockedReason: message, nextDecisionAt: null } });
+    }
+    if (finalAttempt && run.type === JobType.GROWTH_ACTION_EXECUTE) {
+      const payload = run.payload as { actionId?: string };
+      if (payload.actionId) await tx.growthAction.updateMany({ where: { id: payload.actionId, organizationId: run.organizationId }, data: { status: GrowthActionStatus.FAILED, afterSnapshot: { errorCode: 'GROWTH_ACTION_FAILED', message } } });
+    }
+    if (finalAttempt && run.type === JobType.GSC_SYNC) {
+      const payload = run.payload as { connectionId?: string };
+      if (payload.connectionId) await tx.integrationConnection.updateMany({ where: { id: payload.connectionId, organizationId: run.organizationId }, data: { status: SiteConnectionStatus.FAILED, lastErrorCode: 'GSC_SYNC_FAILED', lastErrorMessage: message } });
+    }
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 };
 
@@ -139,7 +190,7 @@ const processKeywordScan = async (runId: string): Promise<string> => {
     const snapshot = await tx.dataSnapshot.create({ data: { organizationId: run.organizationId, siteId: payload.siteId, source: DataSource.DATAFORSEO, status: DataStatus.LIVE, formulaVersion: 'seo-metrics-1', fetchedAt: new Date(metrics.fetchedAt), payload: metrics as Prisma.InputJsonValue } });
     const volume = BigInt(Math.max(1, metrics.searchVolume));
     const roi = BigInt(Math.max(0, 100 - metrics.keywordDifficulty)) * volume * 1_000_000n / BigInt(metrics.allintitleCount + 1);
-    const opportunity = await tx.opportunity.create({ data: { organizationId: run.organizationId, siteId: payload.siteId, keywordScanId: payload.keywordScanId, snapshotId: snapshot.id, type: 'KGR', keyword: metrics.keyword, searchVolume: metrics.searchVolume, keywordDifficulty: metrics.keywordDifficulty, allintitleCount: metrics.allintitleCount, kgrNumerator: BigInt(metrics.allintitleCount), kgrDenominator: volume, roiScoreMicros: roi, formulaVersion: 'kgr-roi-1' } });
+    const opportunity = await tx.opportunity.create({ data: { organizationId: run.organizationId, siteId: payload.siteId, keywordScanId: payload.keywordScanId, snapshotId: snapshot.id, type: 'KGR', title: metrics.keyword, keyword: metrics.keyword, searchVolume: metrics.searchVolume, keywordDifficulty: metrics.keywordDifficulty, allintitleCount: metrics.allintitleCount, kgrNumerator: BigInt(metrics.allintitleCount), kgrDenominator: volume, roiScoreMicros: roi, formulaVersion: 'kgr-roi-1', evidence: { source: 'DATAFORSEO', snapshotId: snapshot.id } } });
     await tx.keywordScan.update({ where: { id: payload.keywordScanId }, data: { snapshotId: snapshot.id, status: JobStatus.SUCCEEDED, resultCount: 1, completedAt: new Date() } });
     await billingService.settleCreditHold(tx, runId, 'opportunity', opportunity.id);
     if (payload.automationTaskId) {
@@ -154,6 +205,136 @@ const processKeywordScan = async (runId: string): Promise<string> => {
     }
     return opportunity.id;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+};
+
+const processGrowthCycle = async (runId: string): Promise<string> => {
+  const run = await workerPrisma.jobRun.findUniqueOrThrow({ where: { id: runId } });
+  const payload = run.payload as { cycleId?: string; siteId?: string };
+  if (!payload.cycleId || !payload.siteId) throw new Error('增长周期参数不完整');
+  const [cycle, state, site, currentSnapshot, knowledge] = await Promise.all([
+    workerPrisma.growthCycle.findFirst({ where: { id: payload.cycleId, organizationId: run.organizationId, siteId: payload.siteId } }),
+    workerPrisma.siteGrowthState.findFirst({ where: { organizationId: run.organizationId, siteId: payload.siteId } }),
+    workerPrisma.site.findFirst({ where: { id: payload.siteId, organizationId: run.organizationId } }),
+    workerPrisma.dataSnapshot.findFirst({
+      where: { organizationId: run.organizationId, siteId: payload.siteId, source: DataSource.GSC, status: DataStatus.LIVE, comparisonSnapshotId: { not: null } },
+      include: { comparisonSnapshot: true },
+      orderBy: [{ periodEnd: 'desc' }, { fetchedAt: 'desc' }]
+    }),
+    workerPrisma.knowledgeSource.findMany({ where: { organizationId: run.organizationId, status: DataStatus.LIVE, OR: [{ siteId: payload.siteId }, { siteId: null }] }, select: { id: true, title: true, summary: true, content: true }, take: 100 })
+  ]);
+  if (!cycle || !state || !site) throw new Error('增长周期、站点或长期状态不存在');
+  if (state.status === GrowthStateStatus.PAUSED) throw new Error('站点增长已暂停');
+  if (!currentSnapshot?.comparisonSnapshot) throw new Error('缺少成对的真实 GSC 比较快照，增长周期已失败关闭');
+  const currentRows = readGscRows(currentSnapshot.payload);
+  if (!currentRows.length) throw new Error('GSC 快照没有可验证的查询与页面指标');
+  if (!knowledge.length) throw new Error('缺少客户业务知识，不能计算有效流量机会');
+
+  await workerPrisma.growthCycle.update({ where: { id: cycle.id }, data: { status: GrowthCycleStatus.RUNNING, stage: GrowthStage.OPPORTUNITY, startedAt: new Date(), inputWatermark: currentSnapshot.fetchedAt } });
+  const businessCorpus = knowledge.map((item) => `${item.title}\n${item.summary || ''}\n${item.content}`).join('\n');
+  const candidates = discoverGscOpportunities({ current: currentRows, previous: readGscRows(currentSnapshot.comparisonSnapshot.payload), businessCorpus }).slice(0, 500);
+  const corpusChecksum = createHash('sha256').update(businessCorpus).digest('hex');
+
+  await workerPrisma.$transaction(async (tx) => {
+    const persisted = [];
+    for (const candidate of candidates) {
+      persisted.push(await tx.opportunity.upsert({
+        where: { siteId_sourceKey: { siteId: site.id, sourceKey: candidate.sourceKey } },
+        create: {
+          organizationId: run.organizationId, siteId: site.id, snapshotId: currentSnapshot.id,
+          sourceKey: candidate.sourceKey, type: candidate.type, title: candidate.title, targetUrl: candidate.targetUrl, keyword: candidate.keyword,
+          evidence: candidate.evidence as Prisma.InputJsonValue, trafficPotentialMicros: candidate.trafficPotentialMicros,
+          businessRelevanceMicros: candidate.businessRelevanceMicros, successProbabilityMicros: candidate.successProbabilityMicros,
+          confidenceMicros: candidate.confidenceMicros, executionCostMicros: candidate.executionCostMicros,
+          riskPenaltyMicros: candidate.riskPenaltyMicros, expectedValueMicros: candidate.expectedValueMicros,
+          timeToImpactDays: candidate.timeToImpactDays, formulaVersion: candidate.formulaVersion
+        },
+        update: {
+          snapshotId: currentSnapshot.id, status: 'OPEN', title: candidate.title, targetUrl: candidate.targetUrl, keyword: candidate.keyword,
+          evidence: candidate.evidence as Prisma.InputJsonValue, trafficPotentialMicros: candidate.trafficPotentialMicros,
+          businessRelevanceMicros: candidate.businessRelevanceMicros, successProbabilityMicros: candidate.successProbabilityMicros,
+          confidenceMicros: candidate.confidenceMicros, executionCostMicros: candidate.executionCostMicros,
+          riskPenaltyMicros: candidate.riskPenaltyMicros, expectedValueMicros: candidate.expectedValueMicros,
+          timeToImpactDays: candidate.timeToImpactDays, formulaVersion: candidate.formulaVersion
+        }
+      }));
+    }
+
+    let selectedCount = 0;
+    let reviewCount = 0;
+    let rejectedCount = 0;
+    for (const [index, opportunity] of persisted.slice(0, 10).entries()) {
+      const candidate = candidates[index];
+      const plan = planMinimumEffectiveAction(candidate);
+      const cooling = await tx.growthAction.findFirst({
+        where: { siteId: site.id, targetUrl: candidate.targetUrl, cooldownUntil: { gt: new Date() }, status: { in: [GrowthActionStatus.EXECUTING, GrowthActionStatus.VERIFYING, GrowthActionStatus.OBSERVING, GrowthActionStatus.SUCCEEDED] } },
+        select: { id: true, cooldownUntil: true }
+      });
+      const decision = await tx.growthDecision.create({
+        data: {
+          organizationId: run.organizationId, siteId: site.id, cycleId: cycle.id, opportunityId: opportunity.id,
+          status: cooling ? 'DEFERRED' : 'SELECTED', rank: index + 1, scoreMicros: opportunity.expectedValueMicros || 0n,
+          scoreVersion: GROWTH_SCORE_VERSION, selectedActionType: plan.type,
+          rationale: { evidenceOnly: true, opportunityType: candidate.type, formulaVersion: candidate.formulaVersion, coolingActionId: cooling?.id, cooldownUntil: cooling?.cooldownUntil?.toISOString() } as Prisma.InputJsonValue
+        }
+      });
+      if (cooling) continue;
+      const hasVerifiedDiagnosticExecutor = site.wordpressStatus === SiteConnectionStatus.CONNECTED
+        && Boolean(site.wordpressVerifiedAt)
+        && Boolean(site.wordpressCredentials);
+      // Mutation execution remains disabled until the action plan contains an
+      // exact proposed value, a before-snapshot and a verified rollback path.
+      const autonomy = autonomyDecision({ action: plan, autonomyLevel: state.autonomyLevel, hasVerifiedMutationExecutor: false, hasVerifiedDiagnosticExecutor });
+      const actionStatus = autonomy === 'REJECT' ? GrowthActionStatus.CANCELLED : autonomy === 'REQUIRE_REVIEW' ? GrowthActionStatus.REVIEW_REQUIRED : GrowthActionStatus.APPROVED;
+      const action = await tx.growthAction.create({
+        data: {
+          organizationId: run.organizationId, siteId: site.id, cycleId: cycle.id, decisionId: decision.id, opportunityId: opportunity.id,
+          type: plan.type, status: actionStatus, riskLevel: plan.riskLevel, autonomyDecision: autonomy,
+          targetUrl: candidate.targetUrl, reversible: plan.reversible, expectedValueMicros: opportunity.expectedValueMicros,
+          plan: { ...plan.plan, blockedBy: autonomy === 'REJECT' ? (plan.type === 'DIAGNOSE_ONLY' ? 'VERIFIED_WORDPRESS_READ_EXECUTOR_REQUIRED' : 'VERIFIED_ATOMIC_WORDPRESS_MUTATION_REQUIRED') : undefined } as Prisma.InputJsonValue,
+          cooldownUntil: addDays(new Date(), plan.observationDays)
+        }
+      });
+      if (autonomy === 'AUTO_EXECUTE') {
+        await jobService.create(tx, { organizationId: run.organizationId, type: JobType.GROWTH_ACTION_EXECUTE, idempotencyKey: `growth-action:${action.id}`, payload: { actionId: action.id } });
+        selectedCount += 1;
+      } else if (autonomy === 'REQUIRE_REVIEW') reviewCount += 1;
+      else rejectedCount += 1;
+    }
+
+    const now = new Date();
+    await tx.siteGrowthState.update({ where: { id: state.id }, data: {
+      status: GrowthStateStatus.ACTIVE, stateVersion: { increment: 1 },
+      businessProfile: { evidence: 'CUSTOMER_KNOWLEDGE', sourceIds: knowledge.map(({ id }) => id), corpusChecksum, generatedFacts: false },
+      baselineCompletedAt: state.baselineCompletedAt || now, lastCycleAt: now, lastDataWatermark: currentSnapshot.fetchedAt,
+      nextDecisionAt: addDays(now, 1), blockedReason: null
+    } });
+    await tx.growthCycle.update({ where: { id: cycle.id }, data: {
+      status: GrowthCycleStatus.SUCCEEDED, stage: GrowthStage.DECISION, finishedAt: now,
+      summary: { source: 'GSC', sourceSnapshotId: currentSnapshot.id, previousSnapshotId: currentSnapshot.comparisonSnapshot.id, comparisonType: 'ADJACENT_NON_OVERLAPPING_PERIODS', realityRows: currentRows.length, qualifiedOpportunities: candidates.length, selectedActions: selectedCount, reviewRequired: reviewCount, rejectedActions: rejectedCount, attributionClaimed: false } as Prisma.InputJsonValue
+    } });
+    await tx.auditEvent.create({ data: { organizationId: run.organizationId, action: 'GROWTH_CYCLE_COMPLETED', targetType: 'growth_cycle', targetId: cycle.id, metadata: { sourceSnapshotId: currentSnapshot.id, comparisonSnapshotId: currentSnapshot.comparisonSnapshot.id, opportunityCount: candidates.length, selectedCount, reviewCount, rejectedCount } } });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  return cycle.id;
+};
+
+const processGrowthAction = async (runId: string): Promise<string> => {
+  const run = await workerPrisma.jobRun.findUniqueOrThrow({ where: { id: runId } });
+  const actionId = (run.payload as { actionId?: string }).actionId;
+  if (!actionId) throw new Error('增长动作缺少 actionId');
+  const action = await workerPrisma.growthAction.findFirst({ where: { id: actionId, organizationId: run.organizationId }, include: { opportunity: true, site: true } });
+  if (!action || action.status !== GrowthActionStatus.APPROVED) throw new Error('增长动作不存在或未通过执行门禁');
+  if (action.type !== 'DIAGNOSE_ONLY') throw new Error('动作缺少精确变更值、前置快照或回滚路径，禁止执行站点变更');
+  if (!action.targetUrl || !action.site.wordpressCredentials || action.site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !action.site.wordpressVerifiedAt) throw new Error('WordPress 诊断执行器不可用');
+  const diagnosis = await wordPressService.inspectTarget({ domain: action.site.domain, encrypted: action.site.wordpressCredentials, targetUrl: action.targetUrl });
+  await workerPrisma.$transaction(async (tx) => {
+    await tx.growthAction.update({ where: { id: action.id }, data: {
+      status: GrowthActionStatus.SUCCEEDED, executedAt: new Date(), verifiedAt: new Date(),
+      beforeSnapshot: diagnosis,
+      afterSnapshot: { outcome: 'PAGE_DIGITAL_TWIN_CAPTURED', mutationPerformed: false, source: 'WORDPRESS_REST_EDIT_CONTEXT', sourceOpportunityId: action.opportunityId }
+    } });
+    await tx.auditEvent.create({ data: { organizationId: run.organizationId, action: 'GROWTH_PAGE_DIAGNOSED', targetType: 'growth_action', targetId: action.id, metadata: { mutationPerformed: false, source: 'WORDPRESS_REST_EDIT_CONTEXT', postId: diagnosis.postId, contentChecksum: diagnosis.contentChecksum } } });
+  });
+  return action.id;
 };
 
 const processContentGeneration = async (runId: string): Promise<string> => {
@@ -280,18 +461,49 @@ export const createProductionWorker = () => new Worker<QueuePayload>(PRODUCTION_
     switch (run.type) {
       case JobType.DATAFORSEO_KEYWORD_SCAN: resultId = await processKeywordScan(runId); break;
       case JobType.CONTENT_GENERATION: resultId = await processContentGeneration(runId); break;
+      case JobType.GROWTH_CYCLE: resultId = await processGrowthCycle(runId); break;
+      case JobType.GROWTH_ACTION_EXECUTE: resultId = await processGrowthAction(runId); break;
+      case JobType.GROWTH_MEASURE: throw new Error('没有到期且具备充分数据的观察动作');
       case JobType.WORDPRESS_PUBLISH: resultId = await processWordPressPublish(runId); break;
       case JobType.WORDPRESS_ROLLBACK: resultId = await processWordPressRollback(runId); break;
       case JobType.INDEXING_MONITOR: resultId = await processIndexingMonitor(runId); break;
       case JobType.PAYMENT_VERIFY: ({ resultId, deferred } = await processPayment(runId)); break;
       case JobType.GSC_SYNC: {
-        const payload = run.payload as { connectionId?: string; startDate?: string; endDate?: string };
+        const payload = run.payload as { connectionId?: string; siteId?: string; growthBaseline?: boolean; growthRefresh?: boolean; startDate?: string; endDate?: string };
         const connection = payload.connectionId ? await workerPrisma.integrationConnection.findUnique({ where: { id: payload.connectionId } }) : null;
         if (!connection?.propertyId || !payload.startDate || !payload.endDate) throw new Error('GSC 同步参数不完整');
         const credentials = decryptSecret<{ refreshToken: string }>(Buffer.from(connection.encryptedCredentials));
-        const result = await gscProvider.sync({ refreshToken: credentials.refreshToken, propertyId: connection.propertyId, startDate: payload.startDate, endDate: payload.endDate });
-        const snapshot = await workerPrisma.dataSnapshot.create({ data: { organizationId: connection.organizationId, siteId: connection.siteId, source: DataSource.GSC, status: DataStatus.LIVE, fetchedAt: new Date(), availableFrom: new Date(payload.endDate), payload: result as Prisma.InputJsonValue } });
-        await workerPrisma.integrationConnection.update({ where: { id: connection.id }, data: { status: 'CONNECTED', lastSyncedAt: new Date(), lastErrorCode: null, lastErrorMessage: null } });
+        const comparisonWindow = gscComparisonWindow(payload.startDate, payload.endDate);
+        if (!comparisonWindow || comparisonWindow.periodDays < 7 || comparisonWindow.periodDays > 90) throw new Error('GSC 同步窗口必须为 7 到 90 天');
+        const [currentResult, previousResult] = await Promise.all([
+          gscProvider.sync({ refreshToken: credentials.refreshToken, propertyId: connection.propertyId, startDate: payload.startDate, endDate: payload.endDate }),
+          gscProvider.sync({ refreshToken: credentials.refreshToken, propertyId: connection.propertyId, startDate: comparisonWindow.previous.startDate, endDate: comparisonWindow.previous.endDate })
+        ]);
+        const snapshot = await workerPrisma.$transaction(async (tx) => {
+          const previous = await tx.dataSnapshot.create({ data: {
+            organizationId: connection.organizationId, siteId: connection.siteId, source: DataSource.GSC, status: DataStatus.LIVE,
+            fetchedAt: new Date(), availableFrom: new Date(`${comparisonWindow.previous.endDate}T00:00:00Z`),
+            periodStart: new Date(`${comparisonWindow.previous.startDate}T00:00:00Z`), periodEnd: new Date(`${comparisonWindow.previous.endDate}T00:00:00Z`),
+            payload: { period: comparisonWindow.previous, rows: previousResult.rows || [] }
+          } });
+          const current = await tx.dataSnapshot.create({ data: {
+            organizationId: connection.organizationId, siteId: connection.siteId, source: DataSource.GSC, status: DataStatus.LIVE,
+            fetchedAt: new Date(), availableFrom: new Date(`${comparisonWindow.current.endDate}T00:00:00Z`),
+            periodStart: new Date(`${comparisonWindow.current.startDate}T00:00:00Z`), periodEnd: new Date(`${comparisonWindow.current.endDate}T00:00:00Z`),
+            comparisonSnapshotId: previous.id,
+            payload: { period: comparisonWindow.current, comparisonSnapshotId: previous.id, rows: currentResult.rows || [] }
+          } });
+          await tx.integrationConnection.update({ where: { id: connection.id }, data: { status: 'CONNECTED', lastSyncedAt: new Date(), lastErrorCode: null, lastErrorMessage: null } });
+          return current;
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+        const growthState = await workerPrisma.siteGrowthState.findUnique({ where: { siteId: connection.siteId } });
+        if (payload.growthBaseline || payload.growthRefresh || growthState?.status === GrowthStateStatus.BASELINING) {
+          await workerPrisma.$transaction(async (tx) => {
+            await growthService.createCycle(tx, { organizationId: connection.organizationId, siteId: connection.siteId, trigger: GrowthCycleTrigger.DATA_CHANGE, idempotencyKey: `growth:${connection.siteId}:${snapshot.id}`, inputWatermark: snapshot.fetchedAt });
+          }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+        } else if (growthState && growthState.status !== GrowthStateStatus.PAUSED && (!growthState.lastDataWatermark || snapshot.fetchedAt > growthState.lastDataWatermark)) {
+          await workerPrisma.siteGrowthState.update({ where: { id: growthState.id }, data: { nextDecisionAt: new Date() } });
+        }
         resultId = snapshot.id;
         break;
       }

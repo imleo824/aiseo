@@ -4,15 +4,12 @@ import {
   Zap,
   Layers,
   Activity,
-  Sparkles,
-  Bot,
   X,
   Wallet,
   User,
   LogOut,
   Settings,
   LogIn,
-  Target,
   Cpu,
   ShieldCheck
 } from 'lucide-react';
@@ -31,7 +28,6 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({
   sites,
-  tasks = [],
   activeNav,
   onSelectNav,
   isOpenMobile = false,
@@ -41,32 +37,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLogout
 }) => {
   const safeSites = sites || [];
-  const safeTasks = tasks || [];
-  const activeTasksCount = safeTasks.filter(t => t.status === 'ACTIVE').length;
 
   const navGroups: {
     title: string;
     items: { id: NavItem; label: string; icon: React.ReactNode; badge?: string }[];
   }[] = [
     {
-      title: '内容自动化',
+      title: '搜索增长',
       items: [
         {
           id: 'DASHBOARD',
-          label: '手动执行',
+          label: '持续增长',
           icon: <Zap className="w-4 h-4" />
-        },
-        {
-          id: 'AUTOPILOT_TASKS',
-          label: '自动执行',
-          icon: <Bot className="w-4 h-4" />,
-          badge: safeTasks.length > 0 ? `${activeTasksCount}` : undefined
-        },
-        {
-          id: 'KEYWORD_RADAR',
-          label: '我的词库',
-          icon: <Target className="w-4 h-4" />
-        },
+        }
       ]
     },
     {
@@ -148,7 +131,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200">PRO</span>
               </div>
               <div className="text-[11px] text-slate-500 font-medium">
-                全自动内容生产与发布系统
+                真实数据驱动的搜索增长系统
               </div>
             </div>
           </div>

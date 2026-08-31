@@ -14,7 +14,7 @@ import {
 } from "../types/seo";
 import { api as productionApi } from '../lib/api';
 import { supabase } from '../lib/supabase';
-import type { Draft, JobRun, KnowledgeSource as ProductionKnowledgeSource, Ledger, Me, Opportunity as ProductionOpportunity, Site as ProductionSite } from '../types/api';
+import type { Draft, GrowthStatus, JobRun, KnowledgeSource as ProductionKnowledgeSource, Ledger, Me, Opportunity as ProductionOpportunity, Site as ProductionSite } from '../types/api';
 
 type ProductionTask = {
   id: string; siteId: string; name: string; scheduleType: 'DAILY' | 'INTERVAL' | 'WEEKLY';
@@ -32,7 +32,7 @@ const toLegacySite = (site: ProductionSite): WordPressSite => ({
   siteType: 'WORDPRESS',
   siteLanguage: site.language,
   pagesCount: 0,
-  connectorStatus: site.wordpressStatus === 'CONNECTED' ? 'CONNECTED' : site.wordpressStatus === 'VERIFYING' ? 'CHECKING' : site.wordpressStatus === 'ERROR' ? 'ERROR' : 'DISCONNECTED',
+  connectorStatus: site.wordpressStatus === 'CONNECTED' ? 'CONNECTED' : site.wordpressStatus === 'VERIFYING' ? 'CHECKING' : site.wordpressStatus === 'FAILED' ? 'ERROR' : 'DISCONNECTED',
   wpUsername: site.wordpressUser,
   pluginInstalled: site.wordpressStatus === 'CONNECTED',
   whitelistedCategories: [],
@@ -99,25 +99,25 @@ const toLegacyTask = (task: ProductionTask, sites: WordPressSite[]): AutomatedTa
 const toLegacyOpportunity = (item: ProductionOpportunity): Opportunity => ({
   id: item.id,
   siteId: item.siteId,
-  title: item.keyword,
+  title: item.keyword || item.title,
   type: 'NEW_CONTENT',
   language: 'zh-CN',
-  targetKeyword: item.keyword,
+  targetKeyword: item.keyword || item.title,
   category: '关键词机会',
-  riskLevel: item.keywordDifficulty >= 70 ? 'HIGH' : item.keywordDifficulty >= 40 ? 'MEDIUM' : 'LOW',
-  estimatedMonthlyVisitsGain: item.searchVolume,
+  riskLevel: (item.keywordDifficulty ?? 0) >= 70 ? 'HIGH' : (item.keywordDifficulty ?? 0) >= 40 ? 'MEDIUM' : 'LOW',
+  estimatedMonthlyVisitsGain: item.searchVolume ?? 0,
   demandEvidence: {
     sourceType: 'CONTENT_GAP',
-    queryOrTopic: item.keyword,
-    monthlyImpressions: item.searchVolume,
-    evidenceDescription: `DataForSEO snapshot · KD ${item.keywordDifficulty} · allintitle ${item.allintitleCount}`,
+    queryOrTopic: item.keyword || item.title,
+    monthlyImpressions: item.searchVolume ?? 0,
+    evidenceDescription: `DataForSEO snapshot · KD ${item.keywordDifficulty ?? '未采集'} · allintitle ${item.allintitleCount ?? '未采集'}`,
     reliabilityConfidence: 1
   },
   scoreBreakdown: {
     totalScore: Number(BigInt(item.roiScoreMicros || '0')) / 1_000_000,
     businessValue: 0,
-    searchDemand: item.searchVolume,
-    winProbability: Math.max(0, 100 - item.keywordDifficulty),
+    searchDemand: item.searchVolume ?? 0,
+    winProbability: item.keywordDifficulty == null ? 0 : Math.max(0, 100 - item.keywordDifficulty),
     currentRanking: 0,
     engagementPotential: 0,
     googleBaiduReuse: 0,
@@ -380,7 +380,25 @@ export class ApiService {
   public async getOpportunities(siteId: string) {
     const { organizationId } = await this.resolveWorkspace();
     const items = (await productionApi.get<ProductionOpportunity[]>(`/organizations/${organizationId}/opportunities?limit=100`)).data;
-    return { opportunities: items.filter((item) => item.siteId === siteId).map(toLegacyOpportunity) };
+    // The legacy keyword view only understands DataForSEO keyword records.
+    // Growth-state opportunities use a separate evidence-first projection and
+    // must not be coerced into fake keyword metrics.
+    return { opportunities: items.filter((item) => item.siteId === siteId && item.keyword && item.searchVolume != null && item.keywordDifficulty != null).map(toLegacyOpportunity) };
+  }
+
+  public async getGrowthStatus(siteId: string): Promise<GrowthStatus> {
+    const { organizationId } = await this.resolveWorkspace();
+    return (await productionApi.get<GrowthStatus>(`/organizations/${organizationId}/sites/${siteId}/growth`)).data;
+  }
+
+  public async startGrowth(siteId: string) {
+    const { organizationId } = await this.resolveWorkspace();
+    return (await productionApi.post<{ phase: 'ANALYZING_REALITY' | 'SYNCING_REALITY'; job: JobRun }>(`/organizations/${organizationId}/sites/${siteId}/growth/start`, {})).data;
+  }
+
+  public async pauseGrowth(siteId: string) {
+    const { organizationId } = await this.resolveWorkspace();
+    return (await productionApi.post<{ state: GrowthStatus['state'] }>(`/organizations/${organizationId}/sites/${siteId}/growth/pause`, {})).data;
   }
 
   public async scanOpportunities(siteId: string, keyword?: string) {

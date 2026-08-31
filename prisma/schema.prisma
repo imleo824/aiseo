@@ -40,6 +40,9 @@ enum JobType {
   GSC_SYNC
   DATAFORSEO_KEYWORD_SCAN
   CONTENT_GENERATION
+  GROWTH_CYCLE
+  GROWTH_ACTION_EXECUTE
+  GROWTH_MEASURE
   WORDPRESS_PUBLISH
   WORDPRESS_ROLLBACK
   PAYMENT_VERIFY
@@ -79,6 +82,18 @@ enum OpportunityType {
   KGR
   CONTENT_GAP
   EXISTING_PAGE
+  RANK_11_20
+  HIGH_IMPRESSION_LOW_CTR
+  CONTENT_DECAY
+  INDEX_GAP
+  TOPIC_GAP
+  TECHNICAL_BLOCK
+  INTERNAL_LINK_GAP
+  CANNIBALIZATION
+  COMPETITOR_GAP
+  AI_CITATION_GAP
+  AI_MENTION_GAP
+  NEW_DEMAND
 }
 
 enum OpportunityStatus {
@@ -153,6 +168,103 @@ enum NotificationStatus {
   ARCHIVED
 }
 
+enum GrowthStateStatus {
+  NEEDS_BASELINE
+  BASELINING
+  ACTIVE
+  OBSERVING
+  PAUSED
+  BLOCKED
+}
+
+enum GrowthAutonomyLevel {
+  OBSERVE_ONLY
+  GUIDED
+  AUTONOMOUS
+}
+
+enum GrowthCycleTrigger {
+  MANUAL_START
+  DATA_CHANGE
+  OBSERVATION_DUE
+  SCHEDULED_REFRESH
+  RECOVERY
+}
+
+enum GrowthCycleStatus {
+  QUEUED
+  RUNNING
+  OBSERVING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum GrowthStage {
+  REALITY
+  OPPORTUNITY
+  DECISION
+  EXECUTION
+  LEARNING
+}
+
+enum GrowthDecisionStatus {
+  PROPOSED
+  SELECTED
+  DEFERRED
+  REJECTED
+  EXECUTED
+}
+
+enum GrowthActionType {
+  UPDATE_TITLE
+  ADD_INTERNAL_LINKS
+  CONTENT_REFRESH
+  ADD_CONTENT_SECTION
+  FIX_INDEXABILITY
+  CREATE_CONTENT
+  DIAGNOSE_ONLY
+}
+
+enum GrowthActionStatus {
+  PLANNED
+  REVIEW_REQUIRED
+  APPROVED
+  EXECUTING
+  VERIFYING
+  OBSERVING
+  SUCCEEDED
+  FAILED
+  ROLLED_BACK
+  CANCELLED
+}
+
+enum GrowthRiskLevel {
+  A
+  B
+  C
+  D
+}
+
+enum GrowthAutonomyDecision {
+  AUTO_EXECUTE
+  REQUIRE_REVIEW
+  REJECT
+}
+
+enum GrowthObservationStatus {
+  WAITING
+  ENOUGH_DATA
+  EVALUATED
+}
+
+enum GrowthOutcome {
+  WIN
+  NEUTRAL
+  LOSS
+  INCONCLUSIVE
+}
+
 model Profile {
   id                  String               @id @db.Uuid
   email               String               @unique
@@ -173,39 +285,44 @@ model Profile {
 }
 
 model Organization {
-  id                    String               @id @default(uuid()) @db.Uuid
-  name                  String
-  creditBalanceMicros   BigInt               @default(0) @map("credit_balance_micros")
-  disabledAt            DateTime?            @map("disabled_at")
-  createdAt             DateTime             @default(now()) @map("created_at")
-  updatedAt             DateTime             @updatedAt @map("updated_at")
-  members               OrganizationMember[]
-  sites                 Site[]
-  integrations          IntegrationConnection[]
-  knowledgeSources      KnowledgeSource[]
-  dataSnapshots         DataSnapshot[]
-  keywordScans          KeywordScan[]
-  opportunities         Opportunity[]
-  automationTasks       AutomationTask[]
-  jobs                  JobRun[]
-  drafts                ContentDraft[]
-  publishAttempts       PublishAttempt[]
-  payments              PaymentIntent[]
-  ledgerEntries         LedgerEntry[]
-  creditHolds           CreditHold[]
-  usageRecords          UsageRecord[]
-  auditEvents           AuditEvent[]
-  idempotencyKeys       IdempotencyKey[]
-  termsAcceptances      TermsAcceptance[]
-  notifications         Notification[]
-  indexingObservations  IndexingObservation[]
+  id                   String                  @id @default(uuid()) @db.Uuid
+  name                 String
+  creditBalanceMicros  BigInt                  @default(0) @map("credit_balance_micros")
+  disabledAt           DateTime?               @map("disabled_at")
+  createdAt            DateTime                @default(now()) @map("created_at")
+  updatedAt            DateTime                @updatedAt @map("updated_at")
+  members              OrganizationMember[]
+  sites                Site[]
+  integrations         IntegrationConnection[]
+  knowledgeSources     KnowledgeSource[]
+  dataSnapshots        DataSnapshot[]
+  keywordScans         KeywordScan[]
+  opportunities        Opportunity[]
+  automationTasks      AutomationTask[]
+  jobs                 JobRun[]
+  drafts               ContentDraft[]
+  publishAttempts      PublishAttempt[]
+  payments             PaymentIntent[]
+  ledgerEntries        LedgerEntry[]
+  creditHolds          CreditHold[]
+  usageRecords         UsageRecord[]
+  auditEvents          AuditEvent[]
+  idempotencyKeys      IdempotencyKey[]
+  termsAcceptances     TermsAcceptance[]
+  notifications        Notification[]
+  indexingObservations IndexingObservation[]
+  growthStates         SiteGrowthState[]
+  growthCycles         GrowthCycle[]
+  growthDecisions      GrowthDecision[]
+  growthActions        GrowthAction[]
+  growthObservations   GrowthObservation[]
 
   @@map("organizations")
 }
 
 model OrganizationMember {
-  organizationId String           @db.Uuid @map("organization_id")
-  profileId      String           @db.Uuid @map("profile_id")
+  organizationId String           @map("organization_id") @db.Uuid
+  profileId      String           @map("profile_id") @db.Uuid
   role           OrganizationRole
   createdAt      DateTime         @default(now()) @map("created_at")
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -217,31 +334,36 @@ model OrganizationMember {
 }
 
 model Site {
-  id                             String               @id @default(uuid()) @db.Uuid
-  organizationId                 String               @db.Uuid @map("organization_id")
-  domain                         String
-  name                           String
-  language                       String               @default("zh-CN")
-  wordpressCredentials           Bytes?               @map("wordpress_credentials")
-  wordpressCredentialKeyVersion Int?                 @map("wordpress_credential_key_version")
-  wordpressStatus                SiteConnectionStatus @default(NOT_CONFIGURED) @map("wordpress_status")
-  wordpressUser                  String?              @map("wordpress_user")
-  wordpressVerifiedAt            DateTime?            @map("wordpress_verified_at")
-  publishPolicy                  PublishPolicy        @default(MANUAL_REVIEW) @map("publish_policy")
-  manualPublishSuccesses         Int                  @default(0) @map("manual_publish_successes")
-  autoPublishTermsAcceptedAt     DateTime?            @map("auto_publish_terms_accepted_at")
-  autoPublishEnabledAt           DateTime?            @map("auto_publish_enabled_at")
-  createdAt                      DateTime             @default(now()) @map("created_at")
-  updatedAt                      DateTime             @updatedAt @map("updated_at")
-  organization                   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  integrations                   IntegrationConnection[]
-  knowledgeSources               KnowledgeSource[]
-  dataSnapshots                  DataSnapshot[]
-  keywordScans                   KeywordScan[]
-  opportunities                  Opportunity[]
-  automationTasks                AutomationTask[]
-  drafts                         ContentDraft[]
-  indexingObservations           IndexingObservation[]
+  id                            String                  @id @default(uuid()) @db.Uuid
+  organizationId                String                  @map("organization_id") @db.Uuid
+  domain                        String
+  name                          String
+  language                      String                  @default("zh-CN")
+  wordpressCredentials          Bytes?                  @map("wordpress_credentials")
+  wordpressCredentialKeyVersion Int?                    @map("wordpress_credential_key_version")
+  wordpressStatus               SiteConnectionStatus    @default(NOT_CONFIGURED) @map("wordpress_status")
+  wordpressUser                 String?                 @map("wordpress_user")
+  wordpressVerifiedAt           DateTime?               @map("wordpress_verified_at")
+  publishPolicy                 PublishPolicy           @default(MANUAL_REVIEW) @map("publish_policy")
+  manualPublishSuccesses        Int                     @default(0) @map("manual_publish_successes")
+  autoPublishTermsAcceptedAt    DateTime?               @map("auto_publish_terms_accepted_at")
+  autoPublishEnabledAt          DateTime?               @map("auto_publish_enabled_at")
+  createdAt                     DateTime                @default(now()) @map("created_at")
+  updatedAt                     DateTime                @updatedAt @map("updated_at")
+  organization                  Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  integrations                  IntegrationConnection[]
+  knowledgeSources              KnowledgeSource[]
+  dataSnapshots                 DataSnapshot[]
+  keywordScans                  KeywordScan[]
+  opportunities                 Opportunity[]
+  automationTasks               AutomationTask[]
+  drafts                        ContentDraft[]
+  indexingObservations          IndexingObservation[]
+  growthState                   SiteGrowthState?
+  growthCycles                  GrowthCycle[]
+  growthDecisions               GrowthDecision[]
+  growthActions                 GrowthAction[]
+  growthObservations            GrowthObservation[]
 
   @@unique([organizationId, domain])
   @@index([organizationId, createdAt])
@@ -250,20 +372,20 @@ model Site {
 
 model IntegrationConnection {
   id                   String               @id @default(uuid()) @db.Uuid
-  organizationId       String               @db.Uuid @map("organization_id")
-  siteId               String               @db.Uuid @map("site_id")
+  organizationId       String               @map("organization_id") @db.Uuid
+  siteId               String               @map("site_id") @db.Uuid
   provider             IntegrationProvider
-  encryptedCredentials Bytes                 @map("encrypted_credentials")
-  keyVersion           Int                   @map("key_version")
-  propertyId           String?               @map("property_id")
+  encryptedCredentials Bytes                @map("encrypted_credentials")
+  keyVersion           Int                  @map("key_version")
+  propertyId           String?              @map("property_id")
   status               SiteConnectionStatus @default(VERIFYING)
-  lastSyncedAt         DateTime?             @map("last_synced_at")
-  lastErrorCode        String?               @map("last_error_code")
-  lastErrorMessage     String?               @map("last_error_message")
-  createdAt            DateTime              @default(now()) @map("created_at")
-  updatedAt            DateTime              @updatedAt @map("updated_at")
-  site                 Site                  @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lastSyncedAt         DateTime?            @map("last_synced_at")
+  lastErrorCode        String?              @map("last_error_code")
+  lastErrorMessage     String?              @map("last_error_message")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+  site                 Site                 @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  organization         Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([siteId, provider])
   @@index([organizationId, provider, status])
@@ -272,8 +394,8 @@ model IntegrationConnection {
 
 model KnowledgeSource {
   id             String              @id @default(uuid()) @db.Uuid
-  organizationId String              @db.Uuid @map("organization_id")
-  siteId         String?             @db.Uuid @map("site_id")
+  organizationId String              @map("organization_id") @db.Uuid
+  siteId         String?             @map("site_id") @db.Uuid
   type           KnowledgeSourceType
   title          String
   sourceUrl      String?             @map("source_url")
@@ -290,86 +412,256 @@ model KnowledgeSource {
 
   @@unique([organizationId, checksum])
   @@index([organizationId, siteId, status, createdAt])
+  @@index([siteId])
   @@map("knowledge_sources")
 }
 
 model DataSnapshot {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @db.Uuid @map("organization_id")
-  siteId         String?      @db.Uuid @map("site_id")
-  source         DataSource
-  status         DataStatus
-  formulaVersion String?      @map("formula_version")
-  providerTaskId String?      @map("provider_task_id")
-  fetchedAt      DateTime     @default(now()) @map("fetched_at")
-  availableFrom  DateTime?    @map("available_from")
-  payload        Json
-  createdAt      DateTime     @default(now()) @map("created_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site           Site?        @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  keywordScans   KeywordScan[]
-  opportunities  Opportunity[]
-  drafts         ContentDraft[]              @relation("DraftSeoSnapshot")
+  id                   String         @id @default(uuid()) @db.Uuid
+  organizationId       String         @map("organization_id") @db.Uuid
+  siteId               String?        @map("site_id") @db.Uuid
+  source               DataSource
+  status               DataStatus
+  formulaVersion       String?        @map("formula_version")
+  providerTaskId       String?        @map("provider_task_id")
+  fetchedAt            DateTime       @default(now()) @map("fetched_at")
+  availableFrom        DateTime?      @map("available_from")
+  periodStart          DateTime?      @map("period_start") @db.Date
+  periodEnd            DateTime?      @map("period_end") @db.Date
+  comparisonSnapshotId String?        @map("comparison_snapshot_id") @db.Uuid
+  payload              Json
+  createdAt            DateTime       @default(now()) @map("created_at")
+  organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site                 Site?          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  keywordScans         KeywordScan[]
+  opportunities        Opportunity[]
+  drafts               ContentDraft[] @relation("DraftSeoSnapshot")
+  comparisonSnapshot   DataSnapshot?  @relation("SnapshotComparison", fields: [comparisonSnapshotId], references: [id], onDelete: SetNull)
+  comparisonFor        DataSnapshot[] @relation("SnapshotComparison")
 
   @@index([organizationId, source, fetchedAt])
   @@index([siteId, source, fetchedAt])
+  @@index([siteId, source, periodEnd])
+  @@index([comparisonSnapshotId])
   @@index([providerTaskId])
   @@map("data_snapshots")
 }
 
 model KeywordScan {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @db.Uuid @map("organization_id")
-  siteId         String       @db.Uuid @map("site_id")
-  snapshotId     String?      @db.Uuid @map("snapshot_id")
-  seedKeyword    String       @map("seed_keyword")
-  languageCode   String       @map("language_code")
-  locationCode   Int          @map("location_code")
-  status         JobStatus    @default(QUEUED)
-  resultCount    Int          @default(0) @map("result_count")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  completedAt    DateTime?    @map("completed_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site           Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  siteId         String        @map("site_id") @db.Uuid
+  snapshotId     String?       @map("snapshot_id") @db.Uuid
+  seedKeyword    String        @map("seed_keyword")
+  languageCode   String        @map("language_code")
+  locationCode   Int           @map("location_code")
+  status         JobStatus     @default(QUEUED)
+  resultCount    Int           @default(0) @map("result_count")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  completedAt    DateTime?     @map("completed_at")
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site           Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
   snapshot       DataSnapshot? @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
   opportunities  Opportunity[]
 
   @@index([organizationId, siteId, createdAt])
+  @@index([siteId])
+  @@index([snapshotId])
   @@map("keyword_scans")
 }
 
 model Opportunity {
-  id               String            @id @default(uuid()) @db.Uuid
-  organizationId   String            @db.Uuid @map("organization_id")
-  siteId           String            @db.Uuid @map("site_id")
-  keywordScanId    String?           @db.Uuid @map("keyword_scan_id")
-  snapshotId       String            @db.Uuid @map("snapshot_id")
-  type             OpportunityType
-  status           OpportunityStatus @default(OPEN)
-  keyword          String
-  searchVolume     Int               @map("search_volume")
-  keywordDifficulty Int              @map("keyword_difficulty")
-  allintitleCount  Int               @map("allintitle_count")
-  kgrNumerator     BigInt            @map("kgr_numerator")
-  kgrDenominator   BigInt            @map("kgr_denominator")
-  roiScoreMicros   BigInt            @map("roi_score_micros")
-  formulaVersion   String            @map("formula_version")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site             Site              @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  keywordScan      KeywordScan?      @relation(fields: [keywordScanId], references: [id], onDelete: SetNull)
-  snapshot         DataSnapshot      @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
-  drafts           ContentDraft[]
+  id                       String            @id @default(uuid()) @db.Uuid
+  organizationId           String            @map("organization_id") @db.Uuid
+  siteId                   String            @map("site_id") @db.Uuid
+  keywordScanId            String?           @map("keyword_scan_id") @db.Uuid
+  snapshotId               String            @map("snapshot_id") @db.Uuid
+  type                     OpportunityType
+  status                   OpportunityStatus @default(OPEN)
+  sourceKey                String?           @map("source_key")
+  title                    String
+  targetUrl                String?           @map("target_url")
+  keyword                  String?
+  searchVolume             Int?              @map("search_volume")
+  keywordDifficulty        Int?              @map("keyword_difficulty")
+  allintitleCount          Int?              @map("allintitle_count")
+  kgrNumerator             BigInt?           @map("kgr_numerator")
+  kgrDenominator           BigInt?           @map("kgr_denominator")
+  roiScoreMicros           BigInt?           @map("roi_score_micros")
+  evidence                 Json              @default("{}")
+  trafficPotentialMicros   BigInt?           @map("traffic_potential_micros")
+  businessRelevanceMicros  BigInt?           @map("business_relevance_micros")
+  successProbabilityMicros BigInt?           @map("success_probability_micros")
+  confidenceMicros         BigInt?           @map("confidence_micros")
+  executionCostMicros      BigInt?           @map("execution_cost_micros")
+  riskPenaltyMicros        BigInt?           @map("risk_penalty_micros")
+  expectedValueMicros      BigInt?           @map("expected_value_micros")
+  timeToImpactDays         Int?              @map("time_to_impact_days")
+  formulaVersion           String            @map("formula_version")
+  createdAt                DateTime          @default(now()) @map("created_at")
+  updatedAt                DateTime          @updatedAt @map("updated_at")
+  organization             Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site                     Site              @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  keywordScan              KeywordScan?      @relation(fields: [keywordScanId], references: [id], onDelete: SetNull)
+  snapshot                 DataSnapshot      @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+  drafts                   ContentDraft[]
+  decisions                GrowthDecision[]
+  actions                  GrowthAction[]
 
+  @@unique([siteId, sourceKey])
   @@index([organizationId, siteId, status, createdAt])
+  @@index([siteId, status, expectedValueMicros])
+  @@index([keywordScanId])
+  @@index([snapshotId])
   @@map("opportunities")
+}
+
+model SiteGrowthState {
+  id                  String              @id @default(uuid()) @db.Uuid
+  organizationId      String              @map("organization_id") @db.Uuid
+  siteId              String              @unique @map("site_id") @db.Uuid
+  status              GrowthStateStatus   @default(NEEDS_BASELINE)
+  autonomyLevel       GrowthAutonomyLevel @default(OBSERVE_ONLY) @map("autonomy_level")
+  stateVersion        BigInt              @default(0) @map("state_version")
+  businessProfile     Json?               @map("business_profile")
+  protectedPaths      Json                @default("[]") @map("protected_paths")
+  baselineCompletedAt DateTime?           @map("baseline_completed_at")
+  lastCycleAt         DateTime?           @map("last_cycle_at")
+  nextDecisionAt      DateTime?           @map("next_decision_at")
+  lastDataWatermark   DateTime?           @map("last_data_watermark")
+  pausedAt            DateTime?           @map("paused_at")
+  blockedReason       String?             @map("blocked_reason")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site                Site                @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status, nextDecisionAt])
+  @@map("site_growth_states")
+}
+
+model GrowthCycle {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  siteId         String             @map("site_id") @db.Uuid
+  jobRunId       String?            @unique @map("job_run_id") @db.Uuid
+  trigger        GrowthCycleTrigger
+  status         GrowthCycleStatus  @default(QUEUED)
+  stage          GrowthStage        @default(REALITY)
+  stateVersion   BigInt             @map("state_version")
+  inputWatermark DateTime?          @map("input_watermark")
+  summary        Json?
+  errorCode      String?            @map("error_code")
+  errorMessage   String?            @map("error_message")
+  startedAt      DateTime?          @map("started_at")
+  finishedAt     DateTime?          @map("finished_at")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site           Site               @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  jobRun         JobRun?            @relation(fields: [jobRunId], references: [id], onDelete: SetNull)
+  decisions      GrowthDecision[]
+  actions        GrowthAction[]
+
+  @@index([organizationId, siteId, createdAt])
+  @@index([siteId, status, createdAt])
+  @@map("growth_cycles")
+}
+
+model GrowthDecision {
+  id                 String               @id @default(uuid()) @db.Uuid
+  organizationId     String               @map("organization_id") @db.Uuid
+  siteId             String               @map("site_id") @db.Uuid
+  cycleId            String               @map("cycle_id") @db.Uuid
+  opportunityId      String               @map("opportunity_id") @db.Uuid
+  status             GrowthDecisionStatus @default(PROPOSED)
+  rank               Int
+  scoreMicros        BigInt               @map("score_micros")
+  scoreVersion       String               @map("score_version")
+  rationale          Json
+  selectedActionType GrowthActionType?    @map("selected_action_type")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site               Site                 @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  cycle              GrowthCycle          @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  opportunity        Opportunity          @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  action             GrowthAction?
+
+  @@unique([cycleId, opportunityId])
+  @@index([organizationId, siteId, status, rank])
+  @@index([siteId])
+  @@index([opportunityId])
+  @@map("growth_decisions")
+}
+
+model GrowthAction {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  organizationId      String                 @map("organization_id") @db.Uuid
+  siteId              String                 @map("site_id") @db.Uuid
+  cycleId             String                 @map("cycle_id") @db.Uuid
+  decisionId          String                 @unique @map("decision_id") @db.Uuid
+  opportunityId       String                 @map("opportunity_id") @db.Uuid
+  type                GrowthActionType
+  status              GrowthActionStatus     @default(PLANNED)
+  riskLevel           GrowthRiskLevel        @map("risk_level")
+  autonomyDecision    GrowthAutonomyDecision @map("autonomy_decision")
+  targetUrl           String?                @map("target_url")
+  reversible          Boolean                @default(false)
+  plan                Json
+  beforeSnapshot      Json?                  @map("before_snapshot")
+  afterSnapshot       Json?                  @map("after_snapshot")
+  expectedValueMicros BigInt?                @map("expected_value_micros")
+  observationStartsAt DateTime?              @map("observation_starts_at")
+  observeUntil        DateTime?              @map("observe_until")
+  cooldownUntil       DateTime?              @map("cooldown_until")
+  executedAt          DateTime?              @map("executed_at")
+  verifiedAt          DateTime?              @map("verified_at")
+  rolledBackAt        DateTime?              @map("rolled_back_at")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site                Site                   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  cycle               GrowthCycle            @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  decision            GrowthDecision         @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  opportunity         Opportunity            @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  observations        GrowthObservation[]
+
+  @@index([organizationId, siteId, status, observeUntil])
+  @@index([siteId, targetUrl, cooldownUntil])
+  @@index([cycleId])
+  @@index([opportunityId])
+  @@map("growth_actions")
+}
+
+model GrowthObservation {
+  id                  String                  @id @default(uuid()) @db.Uuid
+  organizationId      String                  @map("organization_id") @db.Uuid
+  siteId              String                  @map("site_id") @db.Uuid
+  actionId            String                  @map("action_id") @db.Uuid
+  status              GrowthObservationStatus @default(WAITING)
+  sourceSnapshotId    String?                 @map("source_snapshot_id") @db.Uuid
+  baseline            Json
+  measurement         Json?
+  controlMeasurement  Json?                   @map("control_measurement")
+  estimatedLiftMicros BigInt?                 @map("estimated_lift_micros")
+  confidenceMicros    BigInt?                 @map("confidence_micros")
+  outcome             GrowthOutcome?
+  observedAt          DateTime                @default(now()) @map("observed_at")
+  evaluatedAt         DateTime?               @map("evaluated_at")
+  organization        Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site                Site                    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  action              GrowthAction            @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, siteId, status, observedAt])
+  @@index([siteId])
+  @@index([actionId, observedAt])
+  @@map("growth_observations")
 }
 
 model AutomationTask {
   id             String           @id @default(uuid()) @db.Uuid
-  organizationId String           @db.Uuid @map("organization_id")
-  siteId         String           @db.Uuid @map("site_id")
+  organizationId String           @map("organization_id") @db.Uuid
+  siteId         String           @map("site_id") @db.Uuid
   name           String
   status         AutomationStatus @default(PAUSED)
   scheduleType   ScheduleType     @map("schedule_type")
@@ -385,29 +677,31 @@ model AutomationTask {
 
   @@index([status, nextRunAt])
   @@index([organizationId, siteId])
+  @@index([siteId])
   @@map("automation_tasks")
 }
 
 model JobRun {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @db.Uuid @map("organization_id")
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
   type           JobType
-  status         JobStatus    @default(QUEUED)
-  idempotencyKey String?      @map("idempotency_key")
-  queueJobId     String?      @unique @map("queue_job_id")
-  attempts       Int          @default(0)
+  status         JobStatus       @default(QUEUED)
+  idempotencyKey String?         @map("idempotency_key")
+  queueJobId     String?         @unique @map("queue_job_id")
+  attempts       Int             @default(0)
   payload        Json
   result         Json?
-  errorCode      String?      @map("error_code")
-  errorMessage   String?      @map("error_message")
-  startedAt      DateTime?    @map("started_at")
-  heartbeatAt    DateTime?    @map("heartbeat_at")
-  availableAt    DateTime     @default(now()) @map("available_at")
-  finishedAt     DateTime?    @map("finished_at")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  errorCode      String?         @map("error_code")
+  errorMessage   String?         @map("error_message")
+  startedAt      DateTime?       @map("started_at")
+  heartbeatAt    DateTime?       @map("heartbeat_at")
+  availableAt    DateTime        @default(now()) @map("available_at")
+  finishedAt     DateTime?       @map("finished_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   creditHold     CreditHold?
   publishAttempt PublishAttempt?
+  growthCycle    GrowthCycle?
   usageRecords   UsageRecord[]
 
   @@unique([organizationId, type, idempotencyKey])
@@ -418,38 +712,41 @@ model JobRun {
 }
 
 model ContentDraft {
-  id                 String       @id @default(uuid()) @db.Uuid
-  organizationId     String       @db.Uuid @map("organization_id")
-  siteId             String       @db.Uuid @map("site_id")
-  opportunityId      String?      @db.Uuid @map("opportunity_id")
-  seoSnapshotId      String       @db.Uuid @map("seo_snapshot_id")
-  status             DraftStatus  @default(GENERATING)
-  title              String
-  slug               String
-  html                String
-  qualityReport       Json         @map("quality_report")
-  dataProvenance      Json         @map("data_provenance")
-  knowledgeSourceIds  String[]     @db.Uuid @map("knowledge_source_ids")
-  publishedUrl        String?      @map("published_url")
-  remotePostId        String?      @map("remote_post_id")
-  createdAt           DateTime     @default(now()) @map("created_at")
-  updatedAt           DateTime     @updatedAt @map("updated_at")
-  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site               Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  opportunity        Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
-  seoSnapshot        DataSnapshot @relation("DraftSeoSnapshot", fields: [seoSnapshotId], references: [id], onDelete: Restrict)
-  reviews            DraftReview[]
-  publishAttempts    PublishAttempt[]
+  id                   String                @id @default(uuid()) @db.Uuid
+  organizationId       String                @map("organization_id") @db.Uuid
+  siteId               String                @map("site_id") @db.Uuid
+  opportunityId        String?               @map("opportunity_id") @db.Uuid
+  seoSnapshotId        String                @map("seo_snapshot_id") @db.Uuid
+  status               DraftStatus           @default(GENERATING)
+  title                String
+  slug                 String
+  html                 String
+  qualityReport        Json                  @map("quality_report")
+  dataProvenance       Json                  @map("data_provenance")
+  knowledgeSourceIds   String[]              @map("knowledge_source_ids") @db.Uuid
+  publishedUrl         String?               @map("published_url")
+  remotePostId         String?               @map("remote_post_id")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site                 Site                  @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  opportunity          Opportunity?          @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  seoSnapshot          DataSnapshot          @relation("DraftSeoSnapshot", fields: [seoSnapshotId], references: [id], onDelete: Restrict)
+  reviews              DraftReview[]
+  publishAttempts      PublishAttempt[]
   indexingObservations IndexingObservation[]
 
   @@index([organizationId, siteId, status, createdAt])
+  @@index([siteId])
+  @@index([opportunityId])
+  @@index([seoSnapshotId])
   @@map("content_drafts")
 }
 
 model DraftReview {
   id         String         @id @default(uuid()) @db.Uuid
-  draftId    String         @db.Uuid @map("draft_id")
-  reviewerId String         @db.Uuid @map("reviewer_id")
+  draftId    String         @map("draft_id") @db.Uuid
+  reviewerId String         @map("reviewer_id") @db.Uuid
   decision   ReviewDecision
   comment    String?
   createdAt  DateTime       @default(now()) @map("created_at")
@@ -457,14 +754,15 @@ model DraftReview {
   reviewer   Profile        @relation(fields: [reviewerId], references: [id], onDelete: Restrict)
 
   @@index([draftId, createdAt])
+  @@index([reviewerId])
   @@map("draft_reviews")
 }
 
 model PublishAttempt {
   id             String               @id @default(uuid()) @db.Uuid
-  organizationId String               @db.Uuid @map("organization_id")
-  draftId        String               @db.Uuid @map("draft_id")
-  jobRunId       String?              @unique @db.Uuid @map("job_run_id")
+  organizationId String               @map("organization_id") @db.Uuid
+  draftId        String               @map("draft_id") @db.Uuid
+  jobRunId       String?              @unique @map("job_run_id") @db.Uuid
   status         PublishAttemptStatus @default(QUEUED)
   attemptNumber  Int                  @map("attempt_number")
   remotePostId   String?              @map("remote_post_id")
@@ -484,103 +782,106 @@ model PublishAttempt {
 }
 
 model IndexingObservation {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @db.Uuid @map("organization_id")
-  siteId         String       @db.Uuid @map("site_id")
-  draftId        String?      @db.Uuid @map("draft_id")
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  siteId         String        @map("site_id") @db.Uuid
+  draftId        String?       @map("draft_id") @db.Uuid
   url            String
   source         String
   indexed        Boolean?
   status         DataStatus
-  observedAt     DateTime     @map("observed_at")
-  availableFrom  DateTime?    @map("available_from")
+  observedAt     DateTime      @map("observed_at")
+  availableFrom  DateTime?     @map("available_from")
   payload        Json?
-  createdAt      DateTime     @default(now()) @map("created_at")
-  site           Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  site           Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
   draft          ContentDraft? @relation(fields: [draftId], references: [id], onDelete: SetNull)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, siteId, observedAt])
   @@index([draftId, observedAt])
+  @@index([siteId])
   @@map("indexing_observations")
 }
 
 model PaymentPackage {
-  id               String   @id
+  id               String          @id
   name             String
-  baseAmountMicros BigInt   @map("base_amount_micros")
-  creditMicros     BigInt   @map("credit_micros")
-  active           Boolean  @default(true)
-  sortOrder        Int      @default(0) @map("sort_order")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  baseAmountMicros BigInt          @map("base_amount_micros")
+  creditMicros     BigInt          @map("credit_micros")
+  active           Boolean         @default(true)
+  sortOrder        Int             @default(0) @map("sort_order")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
   paymentIntents   PaymentIntent[]
 
   @@map("payment_packages")
 }
 
 model ActionPrice {
-  action            String   @id
-  name              String
-  creditMicros      BigInt   @map("credit_micros")
-  description       String
-  active            Boolean  @default(true)
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  action       String   @id
+  name         String
+  creditMicros BigInt   @map("credit_micros")
+  description  String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   @@map("action_prices")
 }
 
 model PaymentIntent {
-  id                   String        @id @default(uuid()) @db.Uuid
-  organizationId       String        @db.Uuid @map("organization_id")
-  packageId            String        @map("package_id")
-  network              String        @default("TRC20")
-  tokenContract        String        @map("token_contract")
-  recipientAddress     String        @map("recipient_address")
-  baseAmountMicros     BigInt        @map("base_amount_micros")
-  expectedAmountMicros BigInt        @map("expected_amount_micros")
-  creditMicros         BigInt        @map("credit_micros")
-  txHash               String?       @unique @map("tx_hash")
-  status               PaymentStatus @default(AWAITING_TRANSFER)
+  id                   String         @id @default(uuid()) @db.Uuid
+  organizationId       String         @map("organization_id") @db.Uuid
+  packageId            String         @map("package_id")
+  network              String         @default("TRC20")
+  tokenContract        String         @map("token_contract")
+  recipientAddress     String         @map("recipient_address")
+  baseAmountMicros     BigInt         @map("base_amount_micros")
+  expectedAmountMicros BigInt         @map("expected_amount_micros")
+  creditMicros         BigInt         @map("credit_micros")
+  txHash               String?        @unique @map("tx_hash")
+  status               PaymentStatus  @default(AWAITING_TRANSFER)
   verification         Json?
-  expiresAt            DateTime      @map("expires_at")
-  submittedAt          DateTime?     @map("submitted_at")
-  confirmedAt          DateTime?     @map("confirmed_at")
-  creditedAt           DateTime?     @map("credited_at")
-  createdAt            DateTime      @default(now()) @map("created_at")
-  updatedAt            DateTime      @updatedAt @map("updated_at")
-  organization         Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expiresAt            DateTime       @map("expires_at")
+  submittedAt          DateTime?      @map("submitted_at")
+  confirmedAt          DateTime?      @map("confirmed_at")
+  creditedAt           DateTime?      @map("credited_at")
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+  organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   package              PaymentPackage @relation(fields: [packageId], references: [id], onDelete: Restrict)
   ledgerEntries        LedgerEntry[]
 
   @@index([organizationId, status, createdAt])
   @@index([status, expiresAt])
+  @@index([packageId])
   @@map("payment_intents")
 }
 
 model LedgerEntry {
-  id             String          @id @default(uuid()) @db.Uuid
-  organizationId String          @db.Uuid @map("organization_id")
-  type           LedgerEntryType
-  amountMicros   BigInt          @map("amount_micros")
-  balanceAfterMicros BigInt      @map("balance_after_micros")
-  reason         String
-  idempotencyKey String          @unique @map("idempotency_key")
-  paymentIntentId String?        @db.Uuid @map("payment_intent_id")
-  metadata       Json?
-  createdAt      DateTime        @default(now()) @map("created_at")
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  paymentIntent  PaymentIntent?  @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
+  id                 String          @id @default(uuid()) @db.Uuid
+  organizationId     String          @map("organization_id") @db.Uuid
+  type               LedgerEntryType
+  amountMicros       BigInt          @map("amount_micros")
+  balanceAfterMicros BigInt          @map("balance_after_micros")
+  reason             String
+  idempotencyKey     String          @unique @map("idempotency_key")
+  paymentIntentId    String?         @map("payment_intent_id") @db.Uuid
+  metadata           Json?
+  createdAt          DateTime        @default(now()) @map("created_at")
+  organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  paymentIntent      PaymentIntent?  @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
 
   @@index([organizationId, createdAt])
+  @@index([paymentIntentId])
   @@map("ledger_entries")
 }
 
 model CreditHold {
   id             String           @id @default(uuid()) @db.Uuid
-  organizationId String           @db.Uuid @map("organization_id")
-  jobRunId       String           @unique @db.Uuid @map("job_run_id")
+  organizationId String           @map("organization_id") @db.Uuid
+  jobRunId       String           @unique @map("job_run_id") @db.Uuid
   amountMicros   BigInt           @map("amount_micros")
   status         CreditHoldStatus @default(HELD)
   reason         String
@@ -596,8 +897,8 @@ model CreditHold {
 
 model UsageRecord {
   id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @db.Uuid @map("organization_id")
-  jobRunId       String?      @db.Uuid @map("job_run_id")
+  organizationId String       @map("organization_id") @db.Uuid
+  jobRunId       String?      @map("job_run_id") @db.Uuid
   action         String
   amountMicros   BigInt       @map("amount_micros")
   resultType     String?      @map("result_type")
@@ -607,40 +908,42 @@ model UsageRecord {
   jobRun         JobRun?      @relation(fields: [jobRunId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, createdAt])
+  @@index([jobRunId])
   @@map("usage_records")
 }
 
 model IdempotencyKey {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String?  @db.Uuid @map("organization_id")
-  profileId      String   @db.Uuid @map("profile_id")
-  key            String   @db.Uuid
-  requestHash    String   @map("request_hash")
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String?       @map("organization_id") @db.Uuid
+  profileId      String        @map("profile_id") @db.Uuid
+  key            String        @db.Uuid
+  requestHash    String        @map("request_hash")
   response       Json?
-  statusCode     Int?     @map("status_code")
-  createdAt      DateTime @default(now()) @map("created_at")
-  expiresAt      DateTime @map("expires_at")
+  statusCode     Int?          @map("status_code")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  expiresAt      DateTime      @map("expires_at")
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  profile        Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile        Profile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@unique([profileId, organizationId, key])
   @@index([expiresAt])
+  @@index([organizationId])
   @@map("idempotency_keys")
 }
 
 model AuditEvent {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String?  @db.Uuid @map("organization_id")
-  actorId        String?  @db.Uuid @map("actor_id")
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String?       @map("organization_id") @db.Uuid
+  actorId        String?       @map("actor_id") @db.Uuid
   action         String
-  targetType     String   @map("target_type")
-  targetId       String?  @map("target_id")
-  traceId        String?  @map("trace_id")
-  ipHash         String?  @map("ip_hash")
+  targetType     String        @map("target_type")
+  targetId       String?       @map("target_id")
+  traceId        String?       @map("trace_id")
+  ipHash         String?       @map("ip_hash")
   metadata       Json?
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  actor          Profile? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actor          Profile?      @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, createdAt])
   @@index([actorId, createdAt])
@@ -648,24 +951,25 @@ model AuditEvent {
 }
 
 model TermsAcceptance {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String?  @db.Uuid @map("organization_id")
-  profileId      String   @db.Uuid @map("profile_id")
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String?       @map("organization_id") @db.Uuid
+  profileId      String        @map("profile_id") @db.Uuid
   document       String
   version        String
-  acceptedAt     DateTime @default(now()) @map("accepted_at")
-  ipHash         String?  @map("ip_hash")
+  acceptedAt     DateTime      @default(now()) @map("accepted_at")
+  ipHash         String?       @map("ip_hash")
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  profile        Profile  @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  profile        Profile       @relation(fields: [profileId], references: [id], onDelete: Restrict)
 
   @@unique([profileId, organizationId, document, version])
+  @@index([organizationId])
   @@map("terms_acceptances")
 }
 
 model Notification {
   id             String             @id @default(uuid()) @db.Uuid
-  organizationId String             @db.Uuid @map("organization_id")
-  profileId      String?            @db.Uuid @map("profile_id")
+  organizationId String             @map("organization_id") @db.Uuid
+  profileId      String?            @map("profile_id") @db.Uuid
   type           String
   title          String
   message        String
@@ -677,15 +981,16 @@ model Notification {
   profile        Profile?           @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, profileId, status, createdAt])
+  @@index([profileId])
   @@map("notifications")
 }
 
 model WorkerHeartbeat {
-  workerId        String   @id @map("worker_id")
-  queues          String[]
-  processVersion  String   @map("process_version")
-  heartbeatAt     DateTime @map("heartbeat_at")
-  startedAt       DateTime @map("started_at")
+  workerId       String   @id @map("worker_id")
+  queues         String[]
+  processVersion String   @map("process_version")
+  heartbeatAt    DateTime @map("heartbeat_at")
+  startedAt      DateTime @map("started_at")
 
   @@index([heartbeatAt])
   @@map("worker_heartbeats")

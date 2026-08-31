@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react';
 import { NavItem, Language } from './types/seo';
 import { Sidebar } from './components/Sidebar';
-import { MainDashboard } from './components/MainDashboard';
+import { GrowthControlDashboard } from './components/GrowthControlDashboard';
 import { OnboardingModal } from './components/OnboardingModal';
 import { RechargeModal } from './components/RechargeModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -13,11 +13,9 @@ import {
 } from 'lucide-react';
 import { useTenantData } from './hooks/useTenantData';
 
-const ProAutopilotTasksTab = lazy(() => import('./components/ProAutopilotTasksTab').then(({ ProAutopilotTasksTab }) => ({ default: ProAutopilotTasksTab })));
 const ProAuditLedgerTab = lazy(() => import('./components/ProAuditLedgerTab').then(({ ProAuditLedgerTab }) => ({ default: ProAuditLedgerTab })));
 const ProSiteManagementTab = lazy(() => import('./components/ProSiteManagementTab').then(({ ProSiteManagementTab }) => ({ default: ProSiteManagementTab })));
 const ProCreditLedgerTab = lazy(() => import('./components/ProCreditLedgerTab').then(({ ProCreditLedgerTab }) => ({ default: ProCreditLedgerTab })));
-const ProKeywordRadarTab = lazy(() => import('./components/ProKeywordRadarTab').then(({ ProKeywordRadarTab }) => ({ default: ProKeywordRadarTab })));
 const ProPricingConfigTab = lazy(() => import('./components/ProPricingConfigTab').then(({ ProPricingConfigTab }) => ({ default: ProPricingConfigTab })));
 const ProTenantManagementTab = lazy(() => import('./components/ProTenantManagementTab').then(({ ProTenantManagementTab }) => ({ default: ProTenantManagementTab })));
 const ProSystemPaymentTab = lazy(() => import('./components/ProSystemPaymentTab').then(({ ProSystemPaymentTab }) => ({ default: ProSystemPaymentTab })));
@@ -45,7 +43,6 @@ export default function LegacyApp() {
 
   const {
     sites,
-    tasks,
     drafts,
     account,
     transactions,
@@ -60,18 +57,8 @@ export default function LegacyApp() {
     switch (activeNav) {
       case 'DASHBOARD':
         return {
-          title: '手动执行',
-          desc: '选站点并输入主题，手动生成与发布'
-        };
-      case 'KEYWORD_RADAR':
-        return {
-          title: '我的词库',
-          desc: 'KGR 黄金词算法、SERP 漏洞扫描与高 ROI 关键词智能挖掘'
-        };
-      case 'AUTOPILOT_TASKS':
-        return {
-          title: '自动执行',
-          desc: '定时任务规划、周期自动化发布与无人值守托管'
+          title: '持续增长',
+          desc: '从真实搜索数据到可验证增量的自动闭环'
         };
       case 'SITE_MANAGEMENT':
         return {
@@ -144,7 +131,6 @@ export default function LegacyApp() {
       {/* SIDEBAR (Desktop sticky + Mobile slide-over) */}
       <Sidebar
         sites={sites}
-        tasks={tasks}
         activeNav={activeNav}
         onSelectNav={setActiveNav}
         isOpenMobile={isMobileMenuOpen}
@@ -216,45 +202,12 @@ export default function LegacyApp() {
         <main className="flex-1 p-3 sm:p-5 lg:p-8 pb-24 md:pb-10 w-full max-w-7xl mx-auto">
           <Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">正在加载工作区…</div>}>
           {activeNav === 'DASHBOARD' && (
-            <MainDashboard
+            <GrowthControlDashboard
               sites={sites}
-              drafts={drafts}
-              onTriggerScan={actions.handleTriggerScan}
-              onRollback={actions.handleRollback}
-              onRunCruise={actions.handleRunCruise}
-              onAnalyzeCompetitor={actions.handleAnalyzeCompetitorAttack}
+              onGetGrowthStatus={actions.handleGetGrowthStatus}
+              onStartGrowth={actions.handleStartGrowth}
+              onPauseGrowth={actions.handlePauseGrowth}
               onOpenOnboarding={() => setIsOnboardingOpen(true)}
-            />
-          )}
-
-          {activeNav === 'KEYWORD_RADAR' && (
-            <ProKeywordRadarTab
-              sites={sites}
-              onLaunchCruiseWithKeyword={async (keyword, siteId) => {
-                setActiveNav('DASHBOARD');
-                const targetSiteIds = siteId ? [siteId] : (sites.length > 0 ? [sites[0].id] : []);
-                return await actions.handleRunCruise(
-                  targetSiteIds,
-                  (msg) => console.log(msg),
-                  () => {},
-                  keyword
-                );
-              }}
-              onAddAutopilotTask={async (taskData) => {
-                await actions.handleCreateTask(taskData);
-                setActiveNav('AUTOPILOT_TASKS');
-              }}
-            />
-          )}
-
-          {activeNav === 'AUTOPILOT_TASKS' && (
-            <ProAutopilotTasksTab
-              sites={sites}
-              tasks={tasks}
-              onCreateTask={actions.handleCreateTask}
-              onToggleTask={actions.handleToggleTask}
-              onDeleteTask={actions.handleDeleteTask}
-              onRunTaskNow={actions.handleRunTaskNow}
             />
           )}
 
@@ -332,7 +285,6 @@ export default function LegacyApp() {
         onSelectNav={setActiveNav}
         onOpenMobileDrawer={() => setIsMobileMenuOpen(true)}
         sites={sites}
-        tasks={tasks}
         account={account}
       />
 

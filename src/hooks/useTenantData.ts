@@ -79,50 +79,30 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
         return;
       }
 
-      const [sitesData, tasksData, txData, draftData] = await Promise.all([
+      const [sitesData, txData, draftData] = await Promise.all([
         api.getSites().catch(() => ({ sites: [] })),
-        api.getTasks().catch(() => ({ tasks: [] })),
         api.getCreditTransactions().catch(() => ({ transactions: [] })),
         api.getDrafts().catch(() => ({ drafts: [] }))
       ]);
 
       const loadedSites = sitesData.sites || [];
       setSites(loadedSites);
-      setTasks(tasksData.tasks || []);
+      setTasks([]);
+      setOpportunities([]);
       setDrafts(draftData.drafts || []);
       setAccount(meData.account);
       setTransactions(txData.transactions || []);
       await loadAllTenants(meData.account.role);
 
-      if (loadedSites.length > 0) {
-        const sid = loadedSites[0].id;
-        const [oppRes, metricRes] = await Promise.all([
-          api.getOpportunities(sid).catch(() => ({ opportunities: [] })),
-          api.getGrowthMetrics(sid).catch(() => ({ metrics: {
-            monthlyOrganicVisits: 0,
-            monthlyVisitsGrowthPct: 0,
-            top10KeywordsCount: 0,
-            newTop10KeywordsThisMonth: 0,
-            newlyIndexedPagesCount: 0,
-            activeAutopilotTasksCount: 0,
-            pausedTasksCount: 0
-          }}))
-        ]);
-
-        setOpportunities(oppRes.opportunities || []);
-        setMetrics(metricRes.metrics);
-      } else {
-        setOpportunities([]);
-        setMetrics({
-          monthlyOrganicVisits: 0,
-          monthlyVisitsGrowthPct: 0,
-          top10KeywordsCount: 0,
-          newTop10KeywordsThisMonth: 0,
-          newlyIndexedPagesCount: 0,
-          activeAutopilotTasksCount: 0,
-          pausedTasksCount: 0
-        });
-      }
+      setMetrics({
+        monthlyOrganicVisits: 0,
+        monthlyVisitsGrowthPct: 0,
+        top10KeywordsCount: 0,
+        newTop10KeywordsThisMonth: 0,
+        newlyIndexedPagesCount: 0,
+        activeAutopilotTasksCount: 0,
+        pausedTasksCount: 0
+      });
     } catch (err) {
       console.error("Failed to load tenant data:", err);
     } finally {
@@ -361,6 +341,18 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     setSites((previous) => previous.map((site) => site.id === siteId ? res.site : site));
   };
 
+  const handleGetGrowthStatus = useCallback((siteId: string) => api.getGrowthStatus(siteId), [api]);
+
+  const handleStartGrowth = useCallback(async (siteId: string) => {
+    await api.startGrowth(siteId);
+    return api.getGrowthStatus(siteId);
+  }, [api]);
+
+  const handlePauseGrowth = useCallback(async (siteId: string) => {
+    await api.pauseGrowth(siteId);
+    return api.getGrowthStatus(siteId);
+  }, [api]);
+
   const handleCreateTask = async (taskData: Partial<AutomatedTask>) => {
     const res = await api.createTask(taskData);
     if (res.task) {
@@ -420,6 +412,9 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
       handleAddSite,
       handleTestSiteConnection,
       handleSetAutopilot,
+      handleGetGrowthStatus,
+      handleStartGrowth,
+      handlePauseGrowth,
       handleCreateTask,
       handleToggleTask,
       handleDeleteTask,
