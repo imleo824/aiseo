@@ -7,7 +7,7 @@ import { closeQueue } from './queue';
 import { disconnectWebDatabase } from './prisma';
 import { logger } from '../utils/logger';
 
-const start = async (): Promise<void> => {
+export const startProductionWeb = async (): Promise<void> => {
   assertProductionConfiguration('web');
   productionConfigurationWarnings('web').forEach((warning) => logger.warn('CONFIGURATION', warning));
   const app = createApp();
@@ -31,7 +31,9 @@ const start = async (): Promise<void> => {
   process.once('SIGINT', () => shutdown('SIGINT'));
 };
 
-void start().catch((error) => {
-  logger.error('SERVER_BOOT', 'Failed to start Web service', { data: error });
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith('server.ts') || process.argv[1]?.endsWith('server.cjs')) {
+  void startProductionWeb().catch((error) => {
+    logger.error('SERVER_BOOT', 'Failed to start Web service', { data: error });
+    process.exit(1);
+  });
+}

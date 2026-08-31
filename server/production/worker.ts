@@ -516,7 +516,7 @@ export const createProductionWorker = () => new Worker<QueuePayload>(PRODUCTION_
   }
 }, { connection: getQueueConnection(), concurrency: Number(process.env.WORKER_CONCURRENCY || 5), lockDuration: 120_000 });
 
-const start = async (): Promise<void> => {
+export const startProductionWorker = async (): Promise<void> => {
   assertProductionConfiguration('worker');
   productionConfigurationWarnings('worker').forEach((warning) => logger.warn('CONFIGURATION', warning));
   await assertDatabaseSecurity(workerPrisma, 'app_worker');
@@ -531,4 +531,4 @@ const start = async (): Promise<void> => {
   process.once('SIGINT', () => void shutdown());
 };
 
-if (process.argv[1]?.endsWith('worker.ts') || process.argv[1]?.endsWith('worker.cjs')) void start().catch((error) => { logger.error('WORKER_BOOT', 'Worker failed to start', { data: error }); process.exit(1); });
+if (process.argv[1]?.endsWith('worker.ts') || process.argv[1]?.endsWith('worker.cjs')) void startProductionWorker().catch((error) => { logger.error('WORKER_BOOT', 'Worker failed to start', { data: error }); process.exit(1); });

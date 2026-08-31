@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "tsx server.ts",
     "dev:worker": "tsx server/production/worker.ts",
-    "build": "prisma generate && vite build && esbuild server/production/server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && esbuild server/production/worker.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/worker.cjs",
-    "start": "node dist/server.cjs",
+    "build": "prisma generate && vite build && esbuild server/production/server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && esbuild server/production/worker.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/worker.cjs && esbuild server/production/entrypoint.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/entrypoint.cjs",
+    "start": "node dist/entrypoint.cjs",
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",
     "test": "vitest run",

@@ -41,4 +41,4 @@ EXPOSE 3000
 # process, while readiness is enforced by the database heartbeat checked by the
 # Web service. SERVICE_KIND avoids applying the Web HTTP probe to Worker images.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 CMD node -e "if(process.env.SERVICE_KIND==='worker')process.exit(0);const port=process.env.PORT||3000;fetch(`http://127.0.0.1:${port}/api/health/ready`).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["node", "dist/server.cjs"]
+CMD ["node", "dist/entrypoint.cjs"]
