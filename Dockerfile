@@ -36,5 +36,9 @@ COPY --from=build /app/dist ./dist
 RUN chown -R app:app /app
 USER app
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 CMD node -e "const port=process.env.PORT||3000;fetch(`http://127.0.0.1:${port}/api/health/ready`).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+# The shared production image runs either the HTTP service or the BullMQ worker.
+# Workers deliberately expose no HTTP port; their liveness is the container
+# process, while readiness is enforced by the database heartbeat checked by the
+# Web service. SERVICE_KIND avoids applying the Web HTTP probe to Worker images.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 CMD node -e "if(process.env.SERVICE_KIND==='worker')process.exit(0);const port=process.env.PORT||3000;fetch(`http://127.0.0.1:${port}/api/health/ready`).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "dist/server.cjs"]
