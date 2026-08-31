@@ -20,6 +20,7 @@ const roleRank: Record<OrganizationRole, number> = { VIEWER: 0, EDITOR: 1, ADMIN
 const idSchema = z.string().uuid();
 const languageSchema = z.enum(['zh-CN', 'en-US']);
 const siteSchema = z.object({ name: z.string().trim().min(1).max(120), domain: z.string().trim().min(3).max(253), language: languageSchema.default('zh-CN') });
+const siteUpdateSchema = z.object({ name: z.string().trim().min(1).max(120).optional(), domain: z.string().trim().min(3).max(253).optional(), language: languageSchema.optional() }).refine((value) => Object.keys(value).length > 0, '至少提供一个站点字段');
 const credentialSchema = z.object({ username: z.string().trim().min(1).max(200), applicationPassword: z.string().min(8).max(300) });
 const memberSchema = z.object({ profileId: z.string().uuid(), role: z.enum(['ADMIN', 'EDITOR', 'VIEWER']) });
 const knowledgeSchema = z.discriminatedUnion('type', [
@@ -211,6 +212,45 @@ apiRouter.post('/organizations/:organizationId/sites', asyncRoute(async (request
       const site = await tx.site.create({ data: { organizationId: orgId, name: input.name, domain, language: input.language } });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_CREATED', targetType: 'site', targetId: site.id } });
       return { statusCode: 201, data: { site } };
+    } });
+  });
+  sendData(response, outcome.data, outcome.statusCode);
+}));
+
+apiRouter.put('/organizations/:organizationId/sites/:siteId', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request), input = parseBody(siteUpdateSchema, request);
+  let domain: string | undefined;
+  if (input.domain) {
+    const domainUrl = new URL(input.domain.startsWith('http') ? input.domain : `https://${input.domain}`);
+    if (domainUrl.protocol !== 'https:' || domainUrl.pathname !== '/' || domainUrl.search || domainUrl.hash) throw new ValidationError('站点必须是公网 HTTPS 域名');
+    domain = domainUrl.hostname.toLowerCase();
+  }
+  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { ...input, domain }, execute: async () => {
+      const existing = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } });
+      if (!existing) throw new NotFoundError('站点不存在');
+      const domainChanged = Boolean(domain && domain !== existing.domain);
+      const site = await tx.site.update({ where: { id: siteId }, data: { name: input.name, domain, language: input.language, ...(domainChanged ? { wordpressStatus: SiteConnectionStatus.VERIFYING, wordpressVerifiedAt: null, publishPolicy: PublishPolicy.MANUAL_REVIEW, autoPublishEnabledAt: null } : {}) } });
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_UPDATED', targetType: 'site', targetId: siteId, metadata: { fields: Object.keys(input), domainChanged } } });
+      return { statusCode: 200, data: { site } };
+    } });
+  });
+  sendData(response, outcome.data, outcome.statusCode);
+}));
+
+apiRouter.delete('/organizations/:organizationId/sites/:siteId', asyncRoute(async (request, response) => {
+  await revalidateSensitiveSession(request);
+  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request);
+  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.OWNER);
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { siteId }, execute: async () => {
+      const site = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId }, include: { _count: { select: { drafts: true } } } });
+      if (!site) throw new NotFoundError('站点不存在');
+      if (site._count.drafts > 0) throw new ConflictError('该站点已有内容与审计记录，不能直接删除；请通过账号数据删除流程处理');
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_DELETED', targetType: 'site', targetId: siteId, metadata: { domain: site.domain, name: site.name } } });
+      await tx.site.delete({ where: { id: siteId } });
+      return { statusCode: 200, data: { deletedId: siteId } };
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);
@@ -527,6 +567,37 @@ apiRouter.put('/organizations/:organizationId/automation-tasks/:taskId', asyncRo
   sendData(response, outcome.data, outcome.statusCode);
 }));
 
+apiRouter.delete('/organizations/:organizationId/automation-tasks/:taskId', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), taskId = idSchema.parse(request.params.taskId), key = idempotencyKey(request);
+  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { taskId }, execute: async () => {
+      const task = await tx.automationTask.findFirst({ where: { id: taskId, organizationId: orgId } });
+      if (!task) throw new NotFoundError('自动任务不存在');
+      await tx.automationTask.update({ where: { id: taskId }, data: { status: 'DISABLED', lockedUntil: null } });
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'AUTOMATION_TASK_DISABLED', targetType: 'automation_task', targetId: taskId } });
+      return { statusCode: 200, data: { disabledId: taskId } };
+    } });
+  });
+  sendData(response, outcome.data, outcome.statusCode);
+}));
+
+apiRouter.post('/organizations/:organizationId/automation-tasks/:taskId/run', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), taskId = idSchema.parse(request.params.taskId), key = idempotencyKey(request);
+  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { taskId }, execute: async () => {
+      const task = await tx.automationTask.findFirst({ where: { id: taskId, organizationId: orgId }, include: { site: true } });
+      if (!task || task.status === 'DISABLED') throw new NotFoundError('自动任务不存在');
+      if (task.site.publishPolicy !== PublishPolicy.AUTO_PUBLISH) throw new ConflictError('站点必须先通过自动发布门禁');
+      const updated = await tx.automationTask.update({ where: { id: taskId }, data: { status: 'ACTIVE', nextRunAt: new Date(), lockedUntil: null, lastError: null } });
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'AUTOMATION_TASK_RUN_REQUESTED', targetType: 'automation_task', targetId: taskId } });
+      return { statusCode: 202, data: { task: updated, queued: true } };
+    } });
+  });
+  sendData(response, outcome.data, outcome.statusCode);
+}));
+
 apiRouter.get('/organizations/:organizationId/audit-events', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
   const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
@@ -623,6 +694,21 @@ apiRouter.put('/admin/pricing/packages/:packageId', asyncRoute(async (request, r
     return updated;
   });
   sendData(response, { paymentPackage });
+}));
+
+apiRouter.put('/admin/pricing/actions/:action', asyncRoute(async (request, response) => {
+  await revalidateSensitiveSession(request);
+  idempotencyKey(request);
+  const profileId = userId(request), action = z.string().regex(/^[A-Z][A-Z0-9_]{1,79}$/).parse(request.params.action);
+  const input = parseBody(z.object({ name: z.string().min(1).max(100), description: z.string().min(1).max(500), creditMicros: z.string().regex(/^\d+$/), active: z.boolean() }), request);
+  const actionPrice = await withRequestScope({ profileId }, async (tx) => {
+    await assertPlatformAdmin(tx, profileId);
+    if (!await tx.actionPrice.findUnique({ where: { action } })) throw new NotFoundError('计价项不存在');
+    const updated = await tx.actionPrice.update({ where: { action }, data: { name: input.name, description: input.description, creditMicros: BigInt(input.creditMicros), active: input.active } });
+    await tx.auditEvent.create({ data: { actorId: profileId, action: 'ACTION_PRICE_UPDATED', targetType: 'action_price', targetId: action, metadata: input } });
+    return updated;
+  });
+  sendData(response, { actionPrice });
 }));
 
 apiRouter.get('/admin/payments', asyncRoute(async (request, response) => {
