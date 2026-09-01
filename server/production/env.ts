@@ -73,8 +73,8 @@ const expectedDatabaseRole = (url: string, role: 'app_backend' | 'app_worker', v
 
 export const isDatabaseBackedRuntimeUnavailable = (service: ServiceKind): boolean => env.runtime === 'production' && (
   !(service === 'web' ? env.databaseUrl : env.workerDatabaseUrl) || !env.redisUrl
-  || !env.supabaseUrl || !isValidEncryptionKey()
-  || (service === 'web' ? !env.supabasePublishableKey : !env.supabaseServiceRoleKey)
+  || !isValidEncryptionKey()
+  || (service === 'web' && (!env.supabaseUrl || !env.supabasePublishableKey))
 );
 
 export const productionConfigurationStatus = (service: ServiceKind = 'web') => ({
@@ -84,7 +84,7 @@ export const productionConfigurationStatus = (service: ServiceKind = 'web') => (
     database: Boolean(service === 'web' ? env.databaseUrl : env.workerDatabaseUrl),
     redis: Boolean(env.redisUrl),
     encryptionKey: isValidEncryptionKey(),
-    supabaseAuth: Boolean(env.supabaseUrl && (service === 'web' ? env.supabasePublishableKey : env.supabaseServiceRoleKey)),
+    supabaseAuth: service === 'web' ? Boolean(env.supabaseUrl && env.supabasePublishableKey) : true,
     sentry: Boolean(env.sentryDsn),
     databaseBackedApi: !isDatabaseBackedRuntimeUnavailable(service)
   },
@@ -101,7 +101,7 @@ export const productionConfigurationWarnings = (service: ServiceKind): string[] 
   const databaseVariable = service === 'web' ? 'DATABASE_APP_URL' : 'DATABASE_WORKER_URL';
   if (!raw(databaseVariable)) warnings.push(`${databaseVariable} is not set; the ${service} service cannot use its dedicated non-BYPASSRLS role.`);
   if (!env.redisUrl) warnings.push('REDIS_URL is not set; asynchronous jobs are disabled.');
-  if (!env.supabaseUrl || (service === 'web' ? !env.supabasePublishableKey : !env.supabaseServiceRoleKey)) warnings.push('Required Supabase Auth credentials are not configured.');
+  if (service === 'web' && (!env.supabaseUrl || !env.supabasePublishableKey)) warnings.push('Required Supabase Auth credentials are not configured.');
   if (!env.sentryDsn) warnings.push('SENTRY_DSN is not set; production error and performance monitoring is unavailable.');
   if (!env.appEncryptionKey) warnings.push('APP_ENCRYPTION_KEY is not set; credential encryption is disabled.');
   if (service === 'web' && !raw('APP_BASE_URL') && !raw('RAILWAY_PUBLIC_DOMAIN')) warnings.push('APP_BASE_URL is not set; OAuth callbacks will default to localhost.');
@@ -132,8 +132,10 @@ export const assertProductionConfiguration = (service: ServiceKind): void => {
     if (!env.workerDatabaseUrl) throw new Error('DATABASE_WORKER_URL is required for the Worker service');
     if (env.databaseUrl) throw new Error('DATABASE_APP_URL must not be exposed to the Worker service');
     expectedDatabaseRole(env.workerDatabaseUrl, 'app_worker', 'DATABASE_WORKER_URL');
+    if (env.supabaseServiceRoleKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY must not be exposed to the Worker service; account erasure is isolated in Supabase Edge Functions');
+    if (env.supabasePublishableKey) throw new Error('SUPABASE_PUBLISHABLE_KEY must not be exposed to the Worker service');
   }
   if (!env.redisUrl) throw new Error('REDIS_URL is required in production');
-  if (!env.supabaseUrl || (service === 'web' ? !env.supabasePublishableKey : !env.supabaseServiceRoleKey)) throw new Error(`Required Supabase Auth configuration is missing for ${service}`);
+  if (service === 'web' && (!env.supabaseUrl || !env.supabasePublishableKey)) throw new Error('Required Supabase Auth configuration is missing for web');
   if (!env.sentryDsn) throw new Error('SENTRY_DSN is required in production');
 };

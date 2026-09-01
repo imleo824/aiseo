@@ -27,7 +27,6 @@ const setWebEnvironment = () => {
 const setWorkerEnvironment = () => {
   setCommonProductionEnvironment();
   process.env.DATABASE_WORKER_URL = 'postgresql://app_worker.projectref:password@pooler.example.com:5432/postgres?sslmode=require&connection_limit=5&pool_timeout=10';
-  process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-key';
 };
 
 const setProviderEnvironment = () => {
@@ -47,11 +46,24 @@ describe('production configuration guard', () => {
     expect(config.productionConfigurationStatus('web').runtime).toMatchObject({ service: 'web', database: true, databaseBackedApi: true });
   });
 
-  it('allows Worker to receive only the worker database role and Auth service key', async () => {
+  it('allows Worker to receive only its database role and no Supabase credentials', async () => {
     setWorkerEnvironment();
     const config = await import('./env');
     expect(() => config.assertProductionConfiguration('worker')).not.toThrow();
     expect(config.productionConfigurationStatus('worker').runtime).toMatchObject({ service: 'worker', database: true, databaseBackedApi: true });
+  });
+
+  it('rejects Supabase keys in the Worker service', async () => {
+    setWorkerEnvironment();
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-key';
+    let config = await import('./env');
+    expect(() => config.assertProductionConfiguration('worker')).toThrow('must not be exposed');
+
+    vi.resetModules();
+    setWorkerEnvironment();
+    process.env.SUPABASE_PUBLISHABLE_KEY = 'publishable-key';
+    config = await import('./env');
+    expect(() => config.assertProductionConfiguration('worker')).toThrow('must not be exposed');
   });
 
   it('rejects missing, cross-service, generic and administrator database credentials', async () => {

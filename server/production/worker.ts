@@ -11,7 +11,6 @@ import { assertProductionConfiguration, productionConfigurationWarnings } from '
 import { disconnectWorkerDatabase, workerPrisma } from './workerPrisma';
 import { wordPressService } from './wordpress';
 import { logger } from '../utils/logger';
-import { deleteAuthUser } from './authAdmin';
 import { jobService } from './jobService';
 import { resolvePublicHttpsOrigin } from '../utils/networkSafety';
 import { assertDatabaseSecurity } from './databaseSecurity';
@@ -62,7 +61,6 @@ const reconcile = async (): Promise<void> => {
       for (const organizationId of organizationIds) await tx.organization.update({ where: { id: organizationId }, data: { name: `Deleted organization ${pseudonym}`, disabledAt: new Date() } });
       await tx.auditEvent.create({ data: { action: 'ACCOUNT_DATA_ERASED', targetType: 'profile_hash', targetId: pseudonym, metadata: { retained: ['ledger', 'payment_intent', 'audit_event'] } } });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-    await deleteAuthUser(profile.id);
   }
   await workerPrisma.jobRun.updateMany({ where: { status: JobStatus.RUNNING, heartbeatAt: { lt: new Date(Date.now() - 10 * 60_000) }, attempts: { lt: 5 } }, data: { status: JobStatus.QUEUED, queueJobId: null, errorCode: 'STALE_WORKER_RECOVERED', errorMessage: 'Recovered from stale worker heartbeat' } });
   await workerPrisma.jobRun.updateMany({ where: { status: JobStatus.RUNNING, heartbeatAt: { lt: new Date(Date.now() - 10 * 60_000) }, attempts: { gte: 5 } }, data: { status: JobStatus.DEAD_LETTER, finishedAt: new Date(), errorCode: 'MAX_ATTEMPTS_EXCEEDED' } });

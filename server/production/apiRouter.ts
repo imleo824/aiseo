@@ -5,7 +5,7 @@ import sanitizeHtml from 'sanitize-html';
 import { z } from 'zod';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../domain/errors';
 import { resolvePublicHttpsOrigin } from '../utils/networkSafety';
-import { revalidateSensitiveSession, requireAuth, revokeAllSessions } from './auth';
+import { eraseOwnAuthUser, revalidateSensitiveSession, requireAuth } from './auth';
 import { billingService } from './billingService';
 import { asyncRoute, cursorPage, parseBody, sendData } from './http';
 import { executeIdempotent, requireIdempotencyKey } from './idempotency';
@@ -165,7 +165,7 @@ apiRouter.delete('/me', asyncRoute(async (request, response) => {
   idempotencyKey(request);
   if (!request.accessToken) throw new ForbiddenError('会话令牌缺失');
   await withRequestScope({ profileId }, async (tx) => { await tx.$executeRaw`SELECT private.request_account_deletion()`; });
-  await revokeAllSessions(request.accessToken);
+  await eraseOwnAuthUser(request.accessToken);
   sendData(response, { deletionRequested: true, purgeAfter: new Date(Date.now() + 30 * 86_400_000).toISOString() });
 }));
 
