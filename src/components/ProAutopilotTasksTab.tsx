@@ -34,6 +34,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
 }) => {
   const safeSites = useMemo(() => sites || [], [sites]);
   const safeTasks = useMemo(() => tasks || [], [tasks]);
+  const eligibleSites = useMemo(() => safeSites.filter((site) => site.autopilotEnabled && site.connectorStatus === 'CONNECTED'), [safeSites]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
@@ -41,10 +42,11 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
 
   // Modal Form State
   const [taskName, setTaskName] = useState('');
-  const [siteId, setSiteId] = useState('all');
+  const [siteId, setSiteId] = useState('');
   const [scheduleType, setScheduleType] = useState<'DAILY' | 'INTERVAL' | 'WEEKLY'>('DAILY');
   const [scheduleTime, setScheduleTime] = useState('09:00');
   const [targetKeywordTopic, setTargetKeywordTopic] = useState('');
+  const [sourceType, setSourceType] = useState<'KEYWORD' | 'REWRITE_URL' | 'COMPETITOR_URL'>('KEYWORD');
   const [articleCountPerRun, setArticleCountPerRun] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -54,19 +56,24 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
   };
 
   const handleOpenCreateModal = () => {
+    if (!eligibleSites.length) {
+      showToast('请先完成 3 次人工批准发布，并为站点显式开启自动发布');
+      return;
+    }
     setTaskName('');
-    setSiteId(safeSites[0]?.id || 'all');
+    setSiteId(eligibleSites[0].id);
     setScheduleType('DAILY');
     setScheduleTime('09:00');
     setTargetKeywordTopic('');
+    setSourceType('KEYWORD');
     setArticleCountPerRun(1);
     setIsModalOpen(true);
   };
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!taskName.trim()) {
-      showToast('请输入任务名称');
+    if (!taskName.trim() || !targetKeywordTopic.trim()) {
+      showToast('请输入任务名称和执行目标');
       return;
     }
 
@@ -81,15 +88,16 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
         siteName,
         scheduleType,
         scheduleTime,
-        targetKeywordTopic: targetKeywordTopic.trim() || '按站点主题自动选题',
+        targetKeywordTopic: targetKeywordTopic.trim(),
+        sourceType,
         articleCountPerRun,
         status: 'ACTIVE'
       });
 
       showToast('定时发文计划已创建！');
       setIsModalOpen(false);
-    } catch {
-      showToast('创建失败，请重试');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '创建失败，请重试');
     } finally {
       setIsSubmitting(false);
     }
@@ -104,8 +112,8 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
       } else {
         showToast((result && 'message' in result ? result.message : undefined) || '计划任务已完成执行');
       }
-    } catch {
-      showToast('执行异常，请稍后重试');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '执行异常，请稍后重试');
     } finally {
       setRunningTaskId(null);
     }
@@ -115,8 +123,8 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
     try {
       await onToggleTask(task.id, task.status);
       showToast(task.status === 'ACTIVE' ? '任务已暂停' : '任务已开启');
-    } catch {
-      showToast('操作失败');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '操作失败');
     }
   };
 
@@ -151,7 +159,9 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
               <button
                 type="button"
                 onClick={handleOpenCreateModal}
-                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                disabled={!eligibleSites.length}
+                title={eligibleSites.length ? '新建自动执行计划' : '站点通过自动发布门禁后开放'}
+                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-all shadow-xs flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>新建计划</span>
@@ -329,8 +339,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                   onChange={(e) => setSiteId(e.target.value)}
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
                 >
-                  <option value="all">全部站点（轮询发布）</option>
-                  {safeSites.map(s => (
+                  {eligibleSites.map(s => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
@@ -341,7 +350,11 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                   <label className="font-bold text-slate-800">调度周期</label>
                   <select
                     value={scheduleType}
-                    onChange={(e) => setScheduleType(e.target.value as any)}
+                  onChange={(e) => {
+                    const nextType = e.target.value as typeof scheduleType;
+                    setScheduleType(nextType);
+                    setScheduleTime(nextType === 'INTERVAL' ? '4' : '09:00');
+                  }}
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
                   >
                     <option value="DAILY">每天固定时间</option>
@@ -353,24 +366,38 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                 <div className="space-y-1.5">
                   <label className="font-bold text-slate-800">时间参数</label>
                   <input
-                    type="text"
+                    type={scheduleType === 'INTERVAL' ? 'number' : 'time'}
                     value={scheduleTime}
                     onChange={(e) => setScheduleTime(e.target.value)}
-                    placeholder="如 09:00 或 4"
+                    min={scheduleType === 'INTERVAL' ? 1 : undefined}
+                    max={scheduleType === 'INTERVAL' ? 720 : undefined}
+                    step={scheduleType === 'INTERVAL' ? 1 : undefined}
+                    placeholder={scheduleType === 'INTERVAL' ? '间隔小时数' : '执行时间'}
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
                   />
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="font-bold text-slate-800">指定关键词</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-800">执行来源</label>
+                  <select value={sourceType} onChange={(event) => setSourceType(event.target.value as typeof sourceType)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400">
+                    <option value="KEYWORD">关键词</option>
+                    <option value="REWRITE_URL">二创链接</option>
+                    <option value="COMPETITOR_URL">竞品站点</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="font-bold text-slate-800">执行目标</label>
                 <input
-                  type="text"
+                  type={sourceType === 'KEYWORD' ? 'text' : 'url'}
                   value={targetKeywordTopic}
                   onChange={(e) => setTargetKeywordTopic(e.target.value)}
-                  placeholder="留空则按站点主题选题；流量机会需由 GSC / DataForSEO 验证"
+                  placeholder={sourceType === 'KEYWORD' ? '输入核心关键词或主题' : '输入完整 HTTPS 地址'}
+                  required
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
                 />
+                </div>
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">

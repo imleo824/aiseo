@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react';
 import { NavItem, Language } from './types/seo';
 import { Sidebar } from './components/Sidebar';
-import { GrowthControlDashboard } from './components/GrowthControlDashboard';
+import { MainDashboard } from './components/MainDashboard';
 import { OnboardingModal } from './components/OnboardingModal';
 import { RechargeModal } from './components/RechargeModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -14,6 +14,7 @@ import {
 import { useTenantData } from './hooks/useTenantData';
 
 const ProAuditLedgerTab = lazy(() => import('./components/ProAuditLedgerTab').then(({ ProAuditLedgerTab }) => ({ default: ProAuditLedgerTab })));
+const ProAutopilotTasksTab = lazy(() => import('./components/ProAutopilotTasksTab').then(({ ProAutopilotTasksTab }) => ({ default: ProAutopilotTasksTab })));
 const ProSiteManagementTab = lazy(() => import('./components/ProSiteManagementTab').then(({ ProSiteManagementTab }) => ({ default: ProSiteManagementTab })));
 const ProCreditLedgerTab = lazy(() => import('./components/ProCreditLedgerTab').then(({ ProCreditLedgerTab }) => ({ default: ProCreditLedgerTab })));
 const ProPricingConfigTab = lazy(() => import('./components/ProPricingConfigTab').then(({ ProPricingConfigTab }) => ({ default: ProPricingConfigTab })));
@@ -43,6 +44,7 @@ export default function LegacyApp() {
 
   const {
     sites,
+    tasks,
     drafts,
     account,
     transactions,
@@ -57,14 +59,16 @@ export default function LegacyApp() {
     switch (activeNav) {
       case 'DASHBOARD':
         return {
-          title: '持续增长',
-          desc: '从真实搜索数据到可验证增量的自动闭环'
+          title: '手动执行',
+          desc: '选择站点与目标，剩余流程由系统自动完成'
         };
       case 'SITE_MANAGEMENT':
         return {
           title: '我的站点',
           desc: 'WordPress 站点连接、知识来源与发布管理'
         };
+      case 'AUTOPILOT_TASKS':
+        return { title: '自动执行', desc: '同一条生产链路按计划自动生成、发布和监测' };
       case 'AUDIT_LEDGER':
         return {
           title: '我的内容',
@@ -131,6 +135,7 @@ export default function LegacyApp() {
       {/* SIDEBAR (Desktop sticky + Mobile slide-over) */}
       <Sidebar
         sites={sites}
+        tasks={tasks}
         activeNav={activeNav}
         onSelectNav={setActiveNav}
         isOpenMobile={isMobileMenuOpen}
@@ -202,11 +207,12 @@ export default function LegacyApp() {
         <main className="flex-1 p-3 sm:p-5 lg:p-8 pb-24 md:pb-10 w-full max-w-7xl mx-auto">
           <Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">正在加载工作区…</div>}>
           {activeNav === 'DASHBOARD' && (
-            <GrowthControlDashboard
+            <MainDashboard
               sites={sites}
-              onGetGrowthStatus={actions.handleGetGrowthStatus}
-              onStartGrowth={actions.handleStartGrowth}
-              onPauseGrowth={actions.handlePauseGrowth}
+              drafts={drafts}
+              onTriggerScan={actions.handleTriggerScan}
+              onRollback={actions.handleRollback}
+              onRunCruise={actions.handleRunCruise}
               onOpenOnboarding={() => setIsOnboardingOpen(true)}
             />
           )}
@@ -220,6 +226,17 @@ export default function LegacyApp() {
               onSetAutopilot={actions.handleSetAutopilot}
               onRefreshSites={actions.loadTenantData}
               onOpenOnboarding={() => setIsOnboardingOpen(true)}
+            />
+          )}
+
+          {activeNav === 'AUTOPILOT_TASKS' && (
+            <ProAutopilotTasksTab
+              sites={sites}
+              tasks={tasks}
+              onCreateTask={actions.handleCreateTask}
+              onToggleTask={actions.handleToggleTask}
+              onDeleteTask={actions.handleDeleteTask}
+              onRunTaskNow={actions.handleRunTaskNow}
             />
           )}
 
@@ -285,6 +302,7 @@ export default function LegacyApp() {
         onSelectNav={setActiveNav}
         onOpenMobileDrawer={() => setIsMobileMenuOpen(true)}
         sites={sites}
+        tasks={tasks}
         account={account}
       />
 

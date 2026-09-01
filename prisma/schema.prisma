@@ -37,6 +37,7 @@ enum IntegrationProvider {
 }
 
 enum JobType {
+  AUTONOMOUS_EXECUTION
   GSC_SYNC
   DATAFORSEO_KEYWORD_SCAN
   CONTENT_GENERATION
@@ -48,6 +49,39 @@ enum JobType {
   PAYMENT_VERIFY
   AUTOMATION_RECONCILE
   INDEXING_MONITOR
+}
+
+enum ExecutionMode {
+  ONCE
+  SCHEDULED
+}
+
+enum ExecutionSourceType {
+  KEYWORD
+  REWRITE_URL
+  COMPETITOR_URL
+}
+
+enum ExecutionStatus {
+  QUEUED
+  RUNNING
+  AWAITING_REVIEW
+  PUBLISHING
+  MONITORING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum ExecutionStage {
+  INTAKE
+  SOURCE_CAPTURE
+  KEYWORD_RESEARCH
+  CONTENT_GENERATION
+  QUALITY_GATE
+  PUBLISHING
+  MONITORING
+  COMPLETED
 }
 
 enum JobStatus {
@@ -298,6 +332,7 @@ model Organization {
   dataSnapshots        DataSnapshot[]
   keywordScans         KeywordScan[]
   opportunities        Opportunity[]
+  executionRuns        ExecutionRun[]
   automationTasks      AutomationTask[]
   jobs                 JobRun[]
   drafts               ContentDraft[]
@@ -364,6 +399,7 @@ model Site {
   growthDecisions               GrowthDecision[]
   growthActions                 GrowthAction[]
   growthObservations            GrowthObservation[]
+  executionRuns                 ExecutionRun[]
 
   @@unique([organizationId, domain])
   @@index([organizationId, createdAt])
@@ -507,6 +543,7 @@ model Opportunity {
   drafts                   ContentDraft[]
   decisions                GrowthDecision[]
   actions                  GrowthAction[]
+  executionRuns            ExecutionRun[]
 
   @@unique([siteId, sourceKey])
   @@index([organizationId, siteId, status, createdAt])
@@ -674,6 +711,7 @@ model AutomationTask {
   updatedAt      DateTime         @updatedAt @map("updated_at")
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   site           Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  executionRuns  ExecutionRun[]
 
   @@index([status, nextRunAt])
   @@index([organizationId, siteId])
@@ -703,12 +741,53 @@ model JobRun {
   publishAttempt PublishAttempt?
   growthCycle    GrowthCycle?
   usageRecords   UsageRecord[]
+  executionRun   ExecutionRun?
 
   @@unique([organizationId, type, idempotencyKey])
   @@index([organizationId, status, createdAt])
   @@index([status, heartbeatAt])
   @@index([status, availableAt])
   @@map("job_runs")
+}
+
+model ExecutionRun {
+  id                 String              @id @default(uuid()) @db.Uuid
+  organizationId     String              @map("organization_id") @db.Uuid
+  siteId             String              @map("site_id") @db.Uuid
+  automationTaskId   String?             @map("automation_task_id") @db.Uuid
+  jobRunId           String?             @unique @map("job_run_id") @db.Uuid
+  mode               ExecutionMode
+  sourceType         ExecutionSourceType @map("source_type")
+  sourceValue        String              @map("source_value")
+  sourceFingerprint  String              @map("source_fingerprint")
+  status             ExecutionStatus     @default(QUEUED)
+  stage              ExecutionStage      @default(INTAKE)
+  resolvedKeyword    String?             @map("resolved_keyword")
+  knowledgeSourceIds String[]            @default([]) @map("knowledge_source_ids") @db.Uuid
+  opportunityId      String?             @map("opportunity_id") @db.Uuid
+  draftId            String?             @map("draft_id") @db.Uuid
+  result             Json?
+  errorCode          String?             @map("error_code")
+  errorMessage       String?             @map("error_message")
+  startedAt          DateTime?           @map("started_at")
+  finishedAt         DateTime?           @map("finished_at")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site               Site                @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  automationTask     AutomationTask?      @relation(fields: [automationTaskId], references: [id], onDelete: SetNull)
+  jobRun             JobRun?              @relation(fields: [jobRunId], references: [id], onDelete: SetNull)
+  opportunity        Opportunity?         @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  draft              ContentDraft?        @relation(fields: [draftId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, sourceFingerprint])
+  @@index([organizationId, siteId, createdAt(sort: Desc)])
+  @@index([siteId])
+  @@index([status, stage, updatedAt])
+  @@index([automationTaskId, createdAt(sort: Desc)])
+  @@index([opportunityId])
+  @@index([draftId])
+  @@map("execution_runs")
 }
 
 model ContentDraft {
@@ -735,6 +814,7 @@ model ContentDraft {
   reviews              DraftReview[]
   publishAttempts      PublishAttempt[]
   indexingObservations IndexingObservation[]
+  executionRuns        ExecutionRun[]
 
   @@index([organizationId, siteId, status, createdAt])
   @@index([siteId])
@@ -989,6 +1069,7 @@ model WorkerHeartbeat {
   workerId       String   @id @map("worker_id")
   queues         String[]
   processVersion String   @map("process_version")
+  capabilities   Json     @default("{}")
   heartbeatAt    DateTime @map("heartbeat_at")
   startedAt      DateTime @map("started_at")
 

@@ -368,6 +368,7 @@ export interface AutomatedTask {
   scheduleType: 'DAILY' | 'INTERVAL' | 'WEEKLY';
   scheduleTime: string;
   targetKeywordTopic: string;
+  sourceType?: 'KEYWORD' | 'REWRITE_URL' | 'COMPETITOR_URL';
   articleCountPerRun: number;
   totalArticles?: number; // 累计文章
   status: 'ACTIVE' | 'PAUSED';

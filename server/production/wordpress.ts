@@ -2,6 +2,7 @@ import { ExternalServiceError, ValidationError } from '../domain/errors';
 import { resolvePublicHttpsOrigin } from '../utils/networkSafety';
 import { createHash } from 'crypto';
 import { decryptSecret, encryptSecret } from './crypto';
+import sanitizeHtml from 'sanitize-html';
 
 export type WordPressCredentials = { username: string; applicationPassword: string };
 
@@ -14,7 +15,10 @@ const authorization = (credentials: WordPressCredentials): string => {
 };
 
 const requestJson = async <T>(url: string, init: RequestInit): Promise<T> => {
-  const response = await fetch(url, { ...init, signal: AbortSignal.timeout(12_000) });
+  const response = await fetch(url, { ...init, redirect: 'manual', signal: AbortSignal.timeout(12_000) });
+  if (response.status >= 300 && response.status < 400) {
+    throw new ExternalServiceError('WordPress REST API 不允许重定向，请绑定最终 HTTPS 域名');
+  }
   const body: unknown = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = typeof body === 'object' && body !== null && 'message' in body ? String(body.message) : response.statusText;
@@ -32,6 +36,17 @@ type WordPressEditableResource = {
   title?: { raw?: string; rendered?: string };
   content?: { raw?: string; rendered?: string };
 };
+
+export type WordPressSiteContext = {
+  normalizedUrl: string;
+  title: string;
+  content: string;
+  checksum: string;
+  fetchedAt: string;
+  internalLinks: Array<{ title: string; url: string }>;
+};
+
+const plainText = (value: string): string => sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }).replace(/\s+/g, ' ').trim();
 
 const comparableUrl = (value: string): string => {
   const url = new URL(value);
@@ -107,6 +122,35 @@ export const wordPressService = {
       title,
       contentChecksum: createHash('sha256').update(content).digest('hex'),
       contentLength: Buffer.byteLength(content, 'utf8')
+    };
+  },
+
+  async readSiteContext(domain: string, encrypted: Uint8Array): Promise<WordPressSiteContext> {
+    const origin = await resolvePublicHttpsOrigin(domain);
+    const credentials = this.decrypt(encrypted);
+    const headers = { authorization: authorization(credentials), accept: 'application/json' };
+    const fields = '_fields=id,link,slug,status,modified_gmt,title,content';
+    const [posts, pages] = await Promise.all([
+      requestJson<WordPressEditableResource[]>(`${origin}/wp-json/wp/v2/posts?context=edit&status=publish&per_page=20&orderby=modified&order=desc&${fields}`, { headers }),
+      requestJson<WordPressEditableResource[]>(`${origin}/wp-json/wp/v2/pages?context=edit&status=publish&per_page=20&orderby=modified&order=desc&${fields}`, { headers })
+    ]);
+    const resources = [...posts, ...pages]
+      .filter((resource): resource is WordPressEditableResource & { id: number; link: string } => Boolean(resource.id && resource.link))
+      .map((resource) => ({
+        title: plainText(String(resource.title?.raw || resource.title?.rendered || resource.slug || resource.link)).slice(0, 200),
+        url: comparableUrl(resource.link),
+        body: plainText(String(resource.content?.raw || resource.content?.rendered || '')).slice(0, 20_000)
+      }));
+    const internalLinks = [...new Map(resources.map(({ title, url }) => [url, { title, url }])).values()].slice(0, 40);
+    const content = resources.map(({ title, url, body }) => `[PAGE]\nURL: ${url}\nTITLE: ${title}\nCONTENT: ${body}`).join('\n\n').slice(0, 200_000);
+    if (content.length < 100) throw new ValidationError('已验证的 WordPress 站点没有足够的已发布内容用于站点理解');
+    return {
+      normalizedUrl: origin,
+      title: `WordPress content inventory for ${new URL(origin).hostname}`,
+      content,
+      checksum: createHash('sha256').update(content).digest('hex'),
+      fetchedAt: new Date().toISOString(),
+      internalLinks
     };
   },
 

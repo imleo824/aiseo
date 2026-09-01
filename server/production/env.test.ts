@@ -132,8 +132,8 @@ describe('production configuration guard', () => {
   it('allows optional providers to fail closed without blocking Web boot', async () => {
     setWebEnvironment();
     const config = await import('./env');
-    expect(config.productionConfigurationStatus('web').providers).toEqual({ gsc: false, dataForSeo: false, trc20Payments: false });
-    expect(config.productionConfigurationWarnings('web')).toContain('GSC OAuth is not configured; GSC connection endpoints will fail closed.');
+    expect(config.productionConfigurationStatus('web').providers).toEqual({ gsc: false, dataForSeo: false, contentAi: false, trc20Payments: false });
+    expect(config.productionConfigurationWarnings('web')).toContain('GSC OAuth is not configured for web; GSC operations will fail closed.');
   });
 
   it('uses Railway public domain as APP_BASE_URL when not set explicitly', async () => {

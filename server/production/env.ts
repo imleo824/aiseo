@@ -39,6 +39,7 @@ export const env = Object.freeze({
   gscClientSecret: process.env.GSC_CLIENT_SECRET || '',
   dataForSeoLogin: process.env.DATAFORSEO_LOGIN || '',
   dataForSeoPassword: process.env.DATAFORSEO_PASSWORD || '',
+  defaultSeoLocationCode: asPositiveInt('DEFAULT_SEO_LOCATION_CODE', 2840),
   tronGridApiKey: process.env.TRONGRID_API_KEY || '',
   trc20RecipientAddress: process.env.TRC20_RECIPIENT_ADDRESS || '',
   trc20UsdtContract: process.env.TRC20_USDT_CONTRACT || 'TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj',
@@ -91,6 +92,7 @@ export const productionConfigurationStatus = (service: ServiceKind = 'web') => (
   providers: {
     gsc: Boolean(env.gscClientId && env.gscClientSecret && env.gscStateSecret),
     dataForSeo: Boolean(env.dataForSeoLogin && env.dataForSeoPassword),
+    contentAi: Boolean(raw('OPENAI_API_KEY') || raw('GEMINI_API_KEY')),
     trc20Payments: Boolean(env.tronGridApiKey && env.trc20RecipientAddress && isValidTronBase58(env.trc20RecipientAddress))
   }
 });
@@ -105,9 +107,10 @@ export const productionConfigurationWarnings = (service: ServiceKind): string[] 
   if (!env.sentryDsn) warnings.push('SENTRY_DSN is not set; production error and performance monitoring is unavailable.');
   if (!env.appEncryptionKey) warnings.push('APP_ENCRYPTION_KEY is not set; credential encryption is disabled.');
   if (service === 'web' && !raw('APP_BASE_URL') && !raw('RAILWAY_PUBLIC_DOMAIN')) warnings.push('APP_BASE_URL is not set; OAuth callbacks will default to localhost.');
-  if (!env.gscClientId || !env.gscClientSecret) warnings.push('GSC OAuth is not configured; GSC connection endpoints will fail closed.');
-  if (!env.dataForSeoLogin || !env.dataForSeoPassword) warnings.push('DataForSEO is not configured; SERP jobs will fail closed.');
-  if (!env.tronGridApiKey || !env.trc20RecipientAddress) warnings.push('TRC20 payment verification is not configured; recharge endpoints will fail closed.');
+  if (!env.gscClientId || !env.gscClientSecret) warnings.push(`GSC OAuth is not configured for ${service}; GSC operations will fail closed.`);
+  if (service === 'worker' && (!env.dataForSeoLogin || !env.dataForSeoPassword)) warnings.push('DataForSEO is not configured; SERP jobs will fail closed.');
+  if (service === 'worker' && !raw('OPENAI_API_KEY') && !raw('GEMINI_API_KEY')) warnings.push('OpenAI/Gemini is not configured; content jobs will fail closed.');
+  if (service === 'worker' && (!env.tronGridApiKey || !env.trc20RecipientAddress)) warnings.push('TRC20 payment verification is not configured; recharge verification will fail closed.');
   return warnings;
 };
 

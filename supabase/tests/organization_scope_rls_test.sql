@@ -2,7 +2,7 @@ begin;
 create schema if not exists extensions;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
-select plan(38);
+select plan(45);
 
 select is(
   (select count(*) from pg_class
@@ -20,12 +20,12 @@ select is(
      'public.usage_records'::regclass, 'public.idempotency_keys'::regclass,
      'public.audit_events'::regclass, 'public.terms_acceptances'::regclass,
      'public.notifications'::regclass, 'public.worker_heartbeats'::regclass,
-     'public.system_settings'::regclass,
+     'public.system_settings'::regclass, 'public.execution_runs'::regclass,
      'public.site_growth_states'::regclass, 'public.growth_cycles'::regclass,
      'public.growth_decisions'::regclass, 'public.growth_actions'::regclass,
      'public.growth_observations'::regclass
    ]) and relrowsecurity),
-  32::bigint,
+  33::bigint,
   'every business table has RLS enabled'
 );
 
@@ -51,6 +51,9 @@ select ok(not has_table_privilege('app_backend', 'public.growth_decisions', 'ins
 select ok(not has_table_privilege('app_backend', 'public.growth_actions', 'insert'), 'Web cannot manufacture growth actions');
 select ok(not has_table_privilege('app_backend', 'public.growth_observations', 'insert'), 'Web cannot manufacture growth observations');
 select ok(has_table_privilege('app_worker', 'public.growth_observations', 'select,insert,update,delete'), 'Worker owns the evidence lifecycle without bypassing RLS');
+select ok(not has_table_privilege('anon', 'public.execution_runs', 'select,insert,update,delete'), 'anon cannot access autonomous execution records');
+select ok(has_table_privilege('app_backend', 'public.execution_runs', 'select,insert,update') and not has_table_privilege('app_backend', 'public.execution_runs', 'delete'), 'Web may manage but not delete execution records');
+select ok(has_table_privilege('app_worker', 'public.execution_runs', 'select,insert,update,delete'), 'Worker owns execution lifecycle records');
 
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
 values
@@ -76,6 +79,9 @@ select is((select count(*) from public.sites), 1::bigint, 'owner can select own 
 insert into public.site_growth_states (id, organization_id, site_id)
 values ('00000000-0000-0000-0000-0000000000a4', (select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000a3');
 select is((select count(*) from public.site_growth_states), 1::bigint, 'owner can create and select own growth state');
+insert into public.execution_runs (id, organization_id, site_id, mode, source_type, source_value, source_fingerprint, updated_at)
+values ('00000000-0000-0000-0000-0000000000a5', (select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000a3', 'ONCE', 'KEYWORD', 'WordPress SEO', 'rls-owner-execution', now());
+select is((select count(*) from public.execution_runs), 1::bigint, 'owner can create and select an execution record');
 reset role;
 
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password, created_at, updated_at)
@@ -94,6 +100,7 @@ select set_config('app.organization_id', (select organization_id::text from rls_
 set local role app_backend;
 select is((select count(*) from public.sites), 0::bigint, 'cross-organization SELECT is denied');
 select is((select count(*) from public.site_growth_states), 0::bigint, 'cross-organization growth-state SELECT is denied');
+select is((select count(*) from public.execution_runs), 0::bigint, 'cross-organization execution SELECT is denied');
 select throws_like(
   format('insert into public.sites (organization_id, domain, name, updated_at) values (%L, %L, %L, now())', (select organization_id from rls_context where label = 'a'), 'cross.example.test', 'Cross org'),
   '%row-level security%',
@@ -112,6 +119,7 @@ select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000b2', true
 select set_config('app.organization_id', (select organization_id::text from rls_context where label = 'a'), true);
 set local role app_backend;
 select is((select count(*) from public.sites), 1::bigint, 'viewer can SELECT organization rows');
+select is((select count(*) from public.execution_runs), 1::bigint, 'viewer can SELECT organization execution rows');
 select throws_like(
   format('insert into public.sites (organization_id, domain, name, updated_at) values (%L, %L, %L, now())', (select organization_id from rls_context where label = 'a'), 'viewer-write.example.test', 'Viewer write'),
   '%row-level security%',
@@ -119,6 +127,7 @@ select throws_like(
 );
 select is((with changed as (update public.sites set name = 'viewer changed' returning id) select count(*) from changed), 0::bigint, 'viewer cannot UPDATE organization rows');
 select is((with changed as (update public.site_growth_states set status = 'PAUSED' returning id) select count(*) from changed), 0::bigint, 'viewer cannot UPDATE growth state');
+select is((with changed as (update public.execution_runs set status = 'CANCELLED' returning id) select count(*) from changed), 0::bigint, 'viewer cannot UPDATE execution rows');
 reset role;
 
 update public.organizations set credit_balance_micros = 1000000 where id = (select organization_id from rls_context where label = 'a');

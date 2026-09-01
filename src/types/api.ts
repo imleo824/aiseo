@@ -60,6 +60,24 @@ export type JobRun = {
   createdAt: string;
   finishedAt?: string;
 };
+export type ExecutionRun = {
+  id: string;
+  siteId: string;
+  automationTaskId?: string;
+  jobRunId?: string;
+  mode: 'ONCE' | 'SCHEDULED';
+  sourceType: 'KEYWORD' | 'REWRITE_URL' | 'COMPETITOR_URL';
+  sourceValue?: string;
+  status: 'QUEUED' | 'RUNNING' | 'AWAITING_REVIEW' | 'PUBLISHING' | 'MONITORING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+  stage: 'INTAKE' | 'SOURCE_CAPTURE' | 'KEYWORD_RESEARCH' | 'CONTENT_GENERATION' | 'QUALITY_GATE' | 'PUBLISHING' | 'MONITORING' | 'COMPLETED';
+  resolvedKeyword?: string;
+  opportunityId?: string;
+  draftId?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+};
 export type Draft = {
   id: string;
   siteId: string;

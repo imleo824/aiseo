@@ -28,7 +28,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   const mainNavItems: { id: NavItem; label: string; icon: React.ReactNode; badge?: string }[] = [
     {
       id: 'DASHBOARD',
-      label: '持续增长',
+      label: '手动执行',
       icon: <Zap className="w-5 h-5" />,
     },
     {

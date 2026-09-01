@@ -62,4 +62,49 @@ describe('WordPress atomic read executor', () => {
 
     await expect(wordPressService.inspectTarget({ domain: 'example.com', encrypted, targetUrl: 'https://example.com/guides/crm/' })).rejects.toThrow('精确匹配');
   });
+
+  it('rejects WordPress REST redirects instead of forwarding credentials', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', {
+      status: 302,
+      headers: { location: 'https://redirected.example/wp-json' }
+    })));
+    const { wordPressService } = await import('./wordpress');
+    const encrypted = wordPressService.encrypt({ username: 'editor', applicationPassword: 'abcd efgh' });
+
+    await expect(wordPressService.testConnection('example.com', encrypted)).rejects.toThrow('不允许重定向');
+  });
+
+  it('builds a bounded site inventory with real internal links', async () => {
+    const repeated = 'WordPress SEO performance guidance '.repeat(10);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify([{
+        id: 42,
+        link: 'https://example.com/wordpress-seo/',
+        slug: 'wordpress-seo',
+        status: 'publish',
+        title: { raw: 'WordPress SEO Guide' },
+        content: { raw: `<p>${repeated}</p><script>ignored()</script>` }
+      }]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{
+        id: 7,
+        link: 'https://example.com/about/',
+        slug: 'about',
+        status: 'publish',
+        title: { rendered: 'About the company' },
+        content: { rendered: '<p>Verified company page content for source grounding.</p>' }
+      }]), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { wordPressService } = await import('./wordpress');
+    const encrypted = wordPressService.encrypt({ username: 'editor', applicationPassword: 'abcd efgh' });
+
+    const context = await wordPressService.readSiteContext('example.com', encrypted);
+
+    expect(context.internalLinks).toEqual([
+      { title: 'WordPress SEO Guide', url: 'https://example.com/wordpress-seo' },
+      { title: 'About the company', url: 'https://example.com/about' }
+    ]);
+    expect(context.content).toContain('URL: https://example.com/wordpress-seo');
+    expect(context.content).not.toContain('ignored()');
+    expect(context.checksum).toMatch(/^[a-f0-9]{64}$/);
+  });
 });

@@ -157,8 +157,8 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
 
   // Actions
   const handleTriggerScan = async (keyword?: string, siteId?: string) => {
-    const defaultKeyword = globalLanguage === 'zh-CN' ? 'DeepSeek K8s 部署实践' : 'Kubernetes FinOps Guide';
-    const finalKeyword = keyword || defaultKeyword;
+    const finalKeyword = keyword?.trim();
+    if (!finalKeyword) throw new Error('请输入需要扫描的真实关键词');
     let created: Opportunity[] = [];
 
     if (siteId) {
@@ -203,96 +203,34 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
   ) => {
     const targetSites = sites.filter(s => targetSiteIds.includes(s.id));
     if (targetSites.length === 0) return;
-
-    // 前置积分检查
-    if (account && account.credits < 20) {
-      throw new Error(`当前积分余额 (${account.credits} 积分) 不足 20 积分，请先充值 USDT 兑换积分。`);
+    if (account && account.credits < 25) {
+      throw new Error(`当前积分余额 (${account.credits} 积分) 不足 25 积分，请先充值 USDT 兑换积分。`);
     }
-
-    let modeTitle = '按站点主题自动选题';
-    if (keyword?.includes('[二次创作/改写]')) {
-      modeTitle = '客户授权旧文的差异化更新';
-    } else if (keyword?.includes('[竞品对标截流]')) {
-      modeTitle = '对标竞品截流';
-    } else if (keyword && keyword.trim()) {
-      modeTitle = '手动指定关键词';
-    }
-
-    addLog(`[准备启动] 模式：【${modeTitle}】· 正在为 ${targetSites.length} 个站点启动 8 阶段全自动生成、质检、发布与收录监测流程。`);
+    const raw = keyword?.trim() || '';
+    if (!raw) throw new Error('请提供关键词、二创内容链接或竞品站点');
+    const rewritePrefix = '[二次创作/改写]';
+    const competitorPrefix = '[竞品对标截流]';
+    const source = raw.startsWith(rewritePrefix)
+      ? { sourceType: 'REWRITE_URL' as const, sourceValue: raw.slice(rewritePrefix.length).trim(), title: '客户授权内容二创' }
+      : raw.startsWith(competitorPrefix)
+        ? { sourceType: 'COMPETITOR_URL' as const, sourceValue: raw.slice(competitorPrefix.length).trim(), title: '竞品差异化截流' }
+        : { sourceType: 'KEYWORD' as const, sourceValue: raw, title: '关键词内容增长' };
+    addLog(`[准备启动] 模式：【${source.title}】· 已创建可恢复、可审计的后台执行单。`);
     setPipelineStep(1, 'RUNNING');
-
-    // Jobs run sequentially because each one reserves and settles the same
-    // organization's immutable credit ledger.
-    addLog(`[步骤 1/8 · 意图挖掘] (${modeTitle}) 正在调用 DataForSEO 获取真实搜索量、KD 与 allintitle 数据…`);
-    const opps: Opportunity[] = [];
-    for (const site of targetSites) {
-      const defaultKeyword = keyword || (site.niche && site.niche !== '通用行业' && site.niche !== '通用商业技术'
-        ? (site.siteLanguage === 'zh-CN' ? `${site.niche} 核心技术落地与选型指南` : `${site.niche} Architecture Best Practices`)
-        : (site.siteLanguage === 'zh-CN' ? 'DeepSeek 企业级私有化微调' : 'Kubernetes FinOps Best Practices'));
-      const res = await api.scanOpportunities(site.id, defaultKeyword);
-      if (res.opportunity) {
-        opps.push(res.opportunity);
-      }
-    }
-    if (!opps.length) throw new Error('DataForSEO 未返回可继续处理的真实内容机会');
-    addLog(`[步骤 1/8 · 意图挖掘] 已生成 ${opps.length} 个带真实 SEO 快照的机会。`);
-    setPipelineStep(1, 'COMPLETED');
-
-    // Step 2: the brief endpoint first retrieves the customer knowledge sources.
     setPipelineStep(2, 'RUNNING');
-    addLog(`[步骤 2/8 · 知识检索] 正在检索站点关联的客户知识库与原创资料…`);
-    const briefs: Array<{ sourceCount?: number }> = [];
-    for (const opp of opps) {
-      const briefRes = await api.generateBrief(opp.id);
-      briefs.push(briefRes.brief);
-    }
-    const sourceCount = briefs.reduce((total, brief) => total + (brief.sourceCount || 0), 0);
-    addLog(`[步骤 2/8 · 知识检索] 已校验 ${sourceCount} 个可追溯的客户知识来源。`);
-    setPipelineStep(2, 'COMPLETED');
-
-    // Step 3 uses the real Content Brief returned in the previous operation.
-    setPipelineStep(3, 'RUNNING');
-    addLog(`[步骤 3/8 · 大纲策划] 已把真实 SEO 快照和知识来源锁定到内容任务，Worker 将生成结构与正文。`);
-    setPipelineStep(3, 'COMPLETED');
-
-    // The server performs generation, factual quality gating, internal linking,
-    // WordPress publication, and indexing in that order for each article.
-    setPipelineStep(4, 'RUNNING');
-    addLog(`[步骤 4/8 · 长文智造] (${modeTitle}) 正在生成文章；不合格内容不会进入发布步骤…`);
-    const draftsList: ArticleDraft[] = [];
-    for (const opp of opps) {
-      const draftRes = await api.generateDraft(opp.id);
-      if (draftRes.draft) {
-        draftsList.push(draftRes.draft);
-      }
-    }
-    setPipelineStep(4, draftsList.length === opps.length ? 'COMPLETED' : 'PARTIAL');
-
-    const qualityPassed = draftsList.filter((draft) => draft.qualityGate.passed).length;
-    const qualityFailed = draftsList.length - qualityPassed;
-    setPipelineStep(5, 'RUNNING');
-    addLog(`[步骤 5/8 · 质量核验] 真实质量门禁：通过 ${qualityPassed} 篇，阻止 ${qualityFailed} 篇。`);
-    setPipelineStep(5, qualityFailed === 0 ? 'COMPLETED' : qualityPassed === 0 ? 'FAILED' : 'PARTIAL');
-
-    setPipelineStep(6, 'SKIPPED');
-    addLog('[步骤 6/8 · 智能内链] 当前任务没有独立、可验证的内链插入记录，本步骤未标记完成。');
-
-    setPipelineStep(7, 'SKIPPED');
-    addLog('[步骤 7/8 · 站点发布] 默认人工审核已生效。请在“我的内容”中审核并发布，系统不会绕过审批。');
-
-    setPipelineStep(8, 'SKIPPED');
-    addLog('[步骤 8/8 · 收录监测] 草稿尚未发布，因此未创建索引监测；发布成功后 Worker 会自动开始监测。');
+    addLog('[步骤 1–5] Worker 正在完成来源抓取、真实关键词数据、内容生成与确定性质量门禁…');
+    const result = await api.runAutonomousExecution(targetSites[0].id, source);
+    for (const step of [1, 2, 3, 4, 5]) setPipelineStep(step, 'COMPLETED');
+    addLog(`[质量核验] 草稿《${result.draft.title}》已通过，执行结果已写入数据库。`);
+    const insertedInternalLinks = result.draft.contentHtml.includes('class="aiseo-internal-links"');
+    setPipelineStep(6, insertedInternalLinks ? 'COMPLETED' : 'SKIPPED');
+    addLog(insertedInternalLinks ? '[智能内链] 已从真实 WordPress 内容清单中插入相关站内链接。' : '[智能内链] 站点暂无语义相关的已发布页面，本次不插入无关链接。');
+    const published = result.draft.status === 'PUBLISHED';
+    setPipelineStep(7, published ? 'COMPLETED' : 'SKIPPED');
+    setPipelineStep(8, published ? 'COMPLETED' : 'SKIPPED');
+    addLog(published ? '[发布与监测] 已发布到 WordPress，并创建索引监测。' : '[发布门禁] 草稿已进入人工审核；站点解锁自动发布后，定时任务将自动发布。');
     await loadTenantData();
-    return draftsList[0];
-  };
-
-  const handleAnalyzeCompetitorAttack = async (siteId: string, competitor: string) => {
-    if (account && account.credits < 15) {
-      throw new Error(`当前积分余额 (${account.credits} 积分) 不足 15 积分，无法执行竞品分析，请先充值 USDT。`);
-    }
-    const res = await api.analyzeCompetitorAttack(siteId, competitor);
-    await loadTenantData();
-    return res.analysis;
+    return result.draft;
   };
 
   const handleUpdateSiteById = async (siteId: string, updated: Partial<WordPressSite>) => {
@@ -374,8 +312,8 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
   };
 
   const handleRunTaskNow = async (taskId: string) => {
-    if (account && account.credits < 20) {
-      throw new Error(`当前积分余额不足 20 积分，无法执行定时任务，请先充值 USDT。`);
+    if (account && account.credits < 25) {
+      throw new Error('当前积分余额不足 25 积分，无法执行定时任务，请先充值 USDT。');
     }
     const res = await api.runTaskNow(taskId);
     if (res.task) {
@@ -406,7 +344,6 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
       handleApprovePublish,
       handleRollback,
       handleRunCruise,
-      handleAnalyzeCompetitorAttack,
       handleUpdateSiteById,
       handleDeleteSite,
       handleAddSite,

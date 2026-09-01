@@ -1,10 +1,8 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
-import { DraftStatus, GrowthCycleTrigger, GrowthStateStatus, JobType, OrganizationRole, Prisma, PublishPolicy, ReviewDecision, SiteConnectionStatus } from '@prisma/client';
+import { DraftStatus, ExecutionMode, ExecutionSourceType, GrowthCycleTrigger, GrowthStateStatus, JobType, OrganizationRole, Prisma, PublishPolicy, ReviewDecision, SiteConnectionStatus } from '@prisma/client';
 import { Router, type Request } from 'express';
-import sanitizeHtml from 'sanitize-html';
 import { z } from 'zod';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../domain/errors';
-import { resolvePublicHttpsOrigin } from '../utils/networkSafety';
 import { eraseOwnAuthUser, revalidateSensitiveSession, requireAuth } from './auth';
 import { billingService } from './billingService';
 import { asyncRoute, cursorPage, parseBody, sendData } from './http';
@@ -17,6 +15,9 @@ import { gscProvider } from './providers';
 import { wordPressService } from './wordpress';
 import { growthService } from './growthService';
 import { gscComparisonWindow, readGscRows } from './growthEngine';
+import { capturePublicSource } from './sourceFetcher';
+import { executionService } from './executionService';
+import { isValidTimezone } from './schedule';
 
 const roleRank: Record<OrganizationRole, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2, OWNER: 3 };
 const idSchema = z.string().uuid();
@@ -30,10 +31,31 @@ const knowledgeSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ORIGINAL_RESEARCH'), siteId: z.string().uuid().optional(), title: z.string().trim().min(1).max(200), content: z.string().trim().min(40).max(200_000) }),
   z.object({ type: z.literal('ALLOWLISTED_URL'), siteId: z.string().uuid().optional(), title: z.string().trim().min(1).max(200), sourceUrl: z.string().url().max(2_000) })
 ]);
-const keywordScanSchema = z.object({ siteId: z.string().uuid(), seedKeyword: z.string().trim().min(1).max(200), languageCode: z.string().trim().min(2).max(10), locationCode: z.number().int().positive() });
+const keywordScanSchema = z.object({ siteId: z.string().uuid(), seedKeyword: z.string().trim().min(1).max(200) });
 const contentRunSchema = z.object({ siteId: z.string().uuid(), opportunityId: z.string().uuid(), knowledgeSourceIds: z.array(z.string().uuid()).min(1).max(20) });
-const automationConfigSchema = z.object({ seedKeyword: z.string().trim().min(1).max(200), languageCode: z.string().trim().min(2).max(10), locationCode: z.number().int().positive(), minutes: z.number().int().min(15).max(43_200).optional() });
-const automationSchema = z.object({ siteId: z.string().uuid(), name: z.string().trim().min(1).max(120), scheduleType: z.enum(['INTERVAL', 'DAILY', 'WEEKLY']), scheduleConfig: automationConfigSchema, nextRunAt: z.string().datetime() });
+const executionSourceSchema = z.discriminatedUnion('sourceType', [
+  z.object({ sourceType: z.literal('KEYWORD'), sourceValue: z.string().trim().min(2).max(200) }),
+  z.object({ sourceType: z.literal('REWRITE_URL'), sourceValue: z.string().url().max(2_000).refine((value) => value.startsWith('https://'), '二创链接必须使用 HTTPS') }),
+  z.object({ sourceType: z.literal('COMPETITOR_URL'), sourceValue: z.string().url().max(2_000).refine((value) => value.startsWith('https://'), '竞品站点必须使用 HTTPS') })
+]);
+const automationConfigSchema = z.object({
+  sourceType: z.enum(['KEYWORD', 'REWRITE_URL', 'COMPETITOR_URL']),
+  sourceValue: z.string().trim().min(2).max(2_000),
+  minutes: z.number().int().min(15).max(43_200).optional(),
+  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  timezone: z.string().trim().min(1).max(100).refine(isValidTimezone, '无效的 IANA 时区').optional()
+}).superRefine((value, context) => {
+  if (value.sourceType !== 'KEYWORD') {
+    try {
+      const url = new URL(value.sourceValue);
+      if (url.protocol !== 'https:') context.addIssue({ code: 'custom', path: ['sourceValue'], message: '链接必须使用 HTTPS' });
+    } catch { context.addIssue({ code: 'custom', path: ['sourceValue'], message: '请输入有效的完整链接' }); }
+  }
+});
+const automationSchema = z.object({ siteId: z.string().uuid(), name: z.string().trim().min(1).max(120), scheduleType: z.enum(['INTERVAL', 'DAILY', 'WEEKLY']), scheduleConfig: automationConfigSchema, nextRunAt: z.string().datetime(), enabled: z.boolean().default(true) }).superRefine((value, context) => {
+  if (value.scheduleType === 'INTERVAL' && !value.scheduleConfig.minutes) context.addIssue({ code: 'custom', path: ['scheduleConfig', 'minutes'], message: '间隔任务必须提供 minutes' });
+  if (value.scheduleType !== 'INTERVAL' && (!value.scheduleConfig.time || !value.scheduleConfig.timezone)) context.addIssue({ code: 'custom', path: ['scheduleConfig'], message: '日历任务必须提供当地时间和 IANA 时区' });
+});
 
 const userId = (request: Request): string => {
   if (!request.authUser) throw new ForbiddenError('认证上下文缺失');
@@ -48,23 +70,18 @@ const assertRole = async (tx: TransactionClient, profileId: string, orgId: strin
   return membership.role;
 };
 
-const idempotencyKey = (request: Request): string => requireIdempotencyKey(request.header('idempotency-key'));
-
-const fetchAllowlistedUrl = async (sourceUrl: string): Promise<{ normalizedUrl: string; content: string }> => {
-  const url = new URL(sourceUrl);
-  const origin = await resolvePublicHttpsOrigin(url.toString());
-  const normalizedUrl = `${origin}${url.pathname}${url.search}`;
-  const response = await fetch(normalizedUrl, { redirect: 'manual', headers: { accept: 'text/html,text/plain' }, signal: AbortSignal.timeout(15_000) });
-  if (response.status >= 300 && response.status < 400) throw new ValidationError('知识来源 URL 不允许重定向');
-  if (!response.ok) throw new ValidationError(`知识来源抓取失败 (${response.status})`);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('text/html') && !contentType.includes('text/plain')) throw new ValidationError('知识来源必须是 HTML 或纯文本');
-  const body = await response.text();
-  if (Buffer.byteLength(body) > 2_000_000) throw new ValidationError('知识来源页面超过 2MB 限制');
-  const content = sanitizeHtml(body, { allowedTags: [], allowedAttributes: {} }).replace(/\s+/g, ' ').trim();
-  if (content.length < 100) throw new ValidationError('知识来源正文过短');
-  return { normalizedUrl, content: content.slice(0, 200_000) };
+const assertExecutionProviders = async (tx: TransactionClient): Promise<void> => {
+  const heartbeat = await tx.workerHeartbeat.findFirst({ orderBy: { heartbeatAt: 'desc' } });
+  const online = Boolean(heartbeat && heartbeat.heartbeatAt > new Date(Date.now() - 45_000));
+  const capabilities = heartbeat?.capabilities && typeof heartbeat.capabilities === 'object' && !Array.isArray(heartbeat.capabilities)
+    ? heartbeat.capabilities as Record<string, unknown>
+    : {};
+  if (!online) throw new ConflictError('Worker 当前离线，无法接受正式执行任务');
+  if (capabilities.dataForSeo !== true) throw new ConflictError('DataForSEO 尚未在 Worker 配置，无法获取真实 SEO 数据');
+  if (capabilities.contentAi !== true) throw new ConflictError('OpenAI/Gemini 尚未在 Worker 配置，无法生成正式内容');
 };
+
+const idempotencyKey = (request: Request): string => requireIdempotencyKey(request.header('idempotency-key'));
 
 export const apiRouter = Router();
 
@@ -522,7 +539,7 @@ apiRouter.get('/organizations/:organizationId/knowledge-sources', asyncRoute(asy
 
 apiRouter.post('/organizations/:organizationId/knowledge-sources', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), key = idempotencyKey(request), input = parseBody(knowledgeSchema, request);
-  const imported = input.type === 'ALLOWLISTED_URL' ? await fetchAllowlistedUrl(input.sourceUrl) : undefined;
+  const imported = input.type === 'ALLOWLISTED_URL' ? await capturePublicSource(input.sourceUrl) : undefined;
   const content = input.type === 'ALLOWLISTED_URL' ? imported!.content : input.content;
   const checksum = createHash('sha256').update(content).digest('hex');
   const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
@@ -537,14 +554,62 @@ apiRouter.post('/organizations/:organizationId/knowledge-sources', asyncRoute(as
   sendData(response, outcome.data, outcome.statusCode);
 }));
 
+apiRouter.get('/organizations/:organizationId/executions', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
+  const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
+    const rows = await tx.executionRun.findMany({
+      where: { organizationId: orgId },
+      include: { jobRun: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: page.take + 1,
+      ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {})
+    });
+    return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
+  });
+  sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
+}));
+
+apiRouter.post('/organizations/:organizationId/executions', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), key = idempotencyKey(request), input = parseBody(z.object({ siteId: z.string().uuid(), source: executionSourceSchema }), request);
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {
+      const site = await tx.site.findFirst({ where: { id: input.siteId, organizationId: orgId } });
+      if (!site) throw new NotFoundError('站点不存在');
+      if (site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !site.wordpressVerifiedAt || !site.wordpressCredentials) {
+        throw new ConflictError('请先完成 WordPress 凭证配置与真实连接测试');
+      }
+      await assertExecutionProviders(tx);
+      const created = await executionService.create(tx, {
+        organizationId: orgId,
+        siteId: site.id,
+        mode: ExecutionMode.ONCE,
+        source: {
+          sourceType: input.source.sourceType as ExecutionSourceType,
+          sourceValue: input.source.sourceValue,
+          languageCode: site.language,
+          locationCode: env.defaultSeoLocationCode
+        },
+        occurrenceKey: key
+      });
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'AUTONOMOUS_EXECUTION_REQUESTED', targetType: 'execution_run', targetId: created.execution.id, metadata: { siteId: site.id, sourceType: input.source.sourceType, mode: 'ONCE', licensedSourceWarranty: input.source.sourceType === 'REWRITE_URL' } } });
+      return { statusCode: 202, data: created };
+    } });
+  });
+  sendData(response, outcome.data, outcome.statusCode);
+}));
+
 apiRouter.post('/organizations/:organizationId/keyword-scans', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), key = idempotencyKey(request), input = parseBody(keywordScanSchema, request);
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {
-      if (!await tx.site.findFirst({ where: { id: input.siteId, organizationId: orgId } })) throw new NotFoundError('站点不存在');
-      const scan = await tx.keywordScan.create({ data: { organizationId: orgId, ...input } });
-      const job = await jobService.create(tx, { organizationId: orgId, type: JobType.DATAFORSEO_KEYWORD_SCAN, idempotencyKey: key, payload: { keywordScanId: scan.id, ...input }, priceAction: 'KEYWORD_SCAN' });
+      const site = await tx.site.findFirst({ where: { id: input.siteId, organizationId: orgId } });
+      if (!site) throw new NotFoundError('站点不存在');
+      const scanInput = { ...input, languageCode: site.language, locationCode: env.defaultSeoLocationCode };
+      const scan = await tx.keywordScan.create({ data: { organizationId: orgId, ...scanInput } });
+      const job = await jobService.create(tx, { organizationId: orgId, type: JobType.DATAFORSEO_KEYWORD_SCAN, idempotencyKey: key, payload: { keywordScanId: scan.id, ...scanInput }, priceAction: 'KEYWORD_SCAN' });
       return { statusCode: 202, data: { scan, job } };
     } });
   });
@@ -683,8 +748,15 @@ apiRouter.post('/organizations/:organizationId/automation-tasks', asyncRoute(asy
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {
       const site = await tx.site.findFirst({ where: { id: input.siteId, organizationId: orgId } });
       if (!site) throw new NotFoundError('站点不存在');
-      if (input.scheduleType === 'INTERVAL' && !input.scheduleConfig.minutes) throw new ValidationError('间隔自动任务必须提供 minutes（15 至 43200）');
-      const task = await tx.automationTask.create({ data: { organizationId: orgId, siteId: input.siteId, name: input.name, scheduleType: input.scheduleType, scheduleConfig: input.scheduleConfig as Prisma.InputJsonValue, nextRunAt: new Date(input.nextRunAt), status: 'PAUSED' } });
+      if (site.publishPolicy !== PublishPolicy.AUTO_PUBLISH) throw new ConflictError('站点通过 3 次人工发布并显式开启自动发布后，才能创建定时任务');
+      if (input.enabled) await assertExecutionProviders(tx);
+      const scheduleConfig = {
+        ...input.scheduleConfig,
+        languageCode: site.language,
+        locationCode: env.defaultSeoLocationCode
+      };
+      const task = await tx.automationTask.create({ data: { organizationId: orgId, siteId: input.siteId, name: input.name, scheduleType: input.scheduleType, scheduleConfig: scheduleConfig as Prisma.InputJsonValue, nextRunAt: new Date(input.nextRunAt), status: input.enabled ? 'ACTIVE' : 'PAUSED' } });
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'AUTOMATION_TASK_CREATED', targetType: 'automation_task', targetId: task.id, metadata: { status: task.status, scheduleType: task.scheduleType, sourceType: input.scheduleConfig.sourceType, timezone: input.scheduleConfig.timezone || null } } });
       return { statusCode: 201, data: { task } };
     } });
   });
@@ -700,10 +772,15 @@ apiRouter.put('/organizations/:organizationId/automation-tasks/:taskId', asyncRo
       const task = await tx.automationTask.findFirst({ where: { id: taskId, organizationId: orgId }, include: { site: true } });
       if (!task) throw new NotFoundError('自动任务不存在');
       if (input.status === 'ACTIVE' && task.site.publishPolicy !== PublishPolicy.AUTO_PUBLISH) throw new ConflictError('站点必须先通过自动发布门禁');
+      if (input.status === 'ACTIVE') await assertExecutionProviders(tx);
       const scheduleType = input.scheduleType || task.scheduleType;
-      const scheduleConfig = input.scheduleConfig || task.scheduleConfig as { minutes?: number };
+      const storedConfig = task.scheduleConfig as { sourceType?: string; sourceValue?: string; minutes?: number };
+      const scheduleConfig = input.scheduleConfig
+        ? { ...input.scheduleConfig, languageCode: task.site.language, locationCode: env.defaultSeoLocationCode }
+        : storedConfig;
       if (scheduleType === 'INTERVAL' && !scheduleConfig.minutes) throw new ValidationError('间隔自动任务必须提供 minutes（15 至 43200）');
-      const updated = await tx.automationTask.update({ where: { id: taskId }, data: { status: input.status, scheduleType: input.scheduleType, scheduleConfig: input.scheduleConfig as Prisma.InputJsonValue | undefined, nextRunAt: input.nextRunAt ? new Date(input.nextRunAt) : undefined, lastError: null } });
+      if (scheduleType !== 'INTERVAL' && (!('time' in scheduleConfig) || !scheduleConfig.time || !('timezone' in scheduleConfig) || !scheduleConfig.timezone)) throw new ValidationError('日历自动任务必须提供当地时间和 IANA 时区');
+      const updated = await tx.automationTask.update({ where: { id: taskId }, data: { status: input.status, scheduleType: input.scheduleType, scheduleConfig: input.scheduleConfig ? scheduleConfig as Prisma.InputJsonValue : undefined, nextRunAt: input.nextRunAt ? new Date(input.nextRunAt) : undefined, lastError: null } });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'AUTOMATION_TASK_UPDATED', targetType: 'automation_task', targetId: taskId, metadata: { status: input.status } } });
       return { statusCode: 200, data: { task: updated } };
     } });
@@ -728,15 +805,26 @@ apiRouter.delete('/organizations/:organizationId/automation-tasks/:taskId', asyn
 
 apiRouter.post('/organizations/:organizationId/automation-tasks/:taskId/run', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), taskId = idSchema.parse(request.params.taskId), key = idempotencyKey(request);
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { taskId }, execute: async () => {
       const task = await tx.automationTask.findFirst({ where: { id: taskId, organizationId: orgId }, include: { site: true } });
       if (!task || task.status === 'DISABLED') throw new NotFoundError('自动任务不存在');
       if (task.site.publishPolicy !== PublishPolicy.AUTO_PUBLISH) throw new ConflictError('站点必须先通过自动发布门禁');
-      const updated = await tx.automationTask.update({ where: { id: taskId }, data: { status: 'ACTIVE', nextRunAt: new Date(), lockedUntil: null, lastError: null } });
-      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'AUTOMATION_TASK_RUN_REQUESTED', targetType: 'automation_task', targetId: taskId } });
-      return { statusCode: 202, data: { task: updated, queued: true } };
+      await assertExecutionProviders(tx);
+      const config = task.scheduleConfig as { sourceType?: ExecutionSourceType; sourceValue?: string; languageCode?: string; locationCode?: number };
+      if (!config.sourceType || !Object.values(ExecutionSourceType).includes(config.sourceType) || !config.sourceValue || !config.languageCode || !Number.isInteger(config.locationCode) || !config.locationCode) throw new ConflictError('自动任务配置不完整');
+      const created = await executionService.create(tx, {
+        organizationId: orgId,
+        siteId: task.siteId,
+        mode: ExecutionMode.SCHEDULED,
+        source: { sourceType: config.sourceType, sourceValue: config.sourceValue, languageCode: config.languageCode, locationCode: config.locationCode },
+        occurrenceKey: `manual:${key}`,
+        automationTaskId: task.id
+      });
+      const updated = await tx.automationTask.update({ where: { id: taskId }, data: { lastRunAt: new Date(), lockedUntil: null, lastError: null } });
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'AUTOMATION_TASK_RUN_REQUESTED', targetType: 'execution_run', targetId: created.execution.id, metadata: { automationTaskId: task.id } } });
+      return { statusCode: 202, data: { task: updated, execution: created.execution, job: created.job, queued: true } };
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);
@@ -886,7 +974,19 @@ apiRouter.post('/admin/organizations/:organizationId/adjustment', asyncRoute(asy
 
 apiRouter.get('/admin/provider-status', asyncRoute(async (request, response) => {
   const profileId = userId(request);
-  await withRequestScope({ profileId }, (tx) => assertPlatformAdmin(tx, profileId));
+  const worker = await withRequestScope({ profileId }, async (tx) => {
+    await assertPlatformAdmin(tx, profileId);
+    return tx.workerHeartbeat.findFirst({ orderBy: { heartbeatAt: 'desc' } });
+  });
   const { productionConfigurationStatus } = await import('./env');
-  sendData(response, productionConfigurationStatus().providers);
+  const web = productionConfigurationStatus('web').providers;
+  const capabilities = worker?.capabilities && typeof worker.capabilities === 'object' && !Array.isArray(worker.capabilities) ? worker.capabilities as Record<string, unknown> : {};
+  const workerOnline = Boolean(worker && worker.heartbeatAt > new Date(Date.now() - 45_000));
+  sendData(response, {
+    workerOnline,
+    gsc: workerOnline && web.gsc && capabilities.gsc === true,
+    dataForSeo: workerOnline && capabilities.dataForSeo === true,
+    contentAi: workerOnline && capabilities.contentAi === true,
+    trc20Payments: workerOnline && capabilities.trc20Payments === true
+  });
 }));

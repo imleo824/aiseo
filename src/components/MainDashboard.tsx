@@ -2,7 +2,6 @@ import React, { useState, useMemo, useCallback } from 'react';
 import {
   WordPressSite,
   ArticleDraft,
-  CompetitorAttackAnalysis,
   AUTOMATION_PIPELINE_STAGES,
   PipelineStepStates,
   PipelineStepStatus
@@ -37,7 +36,6 @@ interface MainDashboardProps {
     setPipelineStep: (step: number, status: PipelineStepStatus) => void,
     keyword?: string
   ) => Promise<ArticleDraft | undefined>;
-  onAnalyzeCompetitor?: (siteId: string, competitor: string) => Promise<CompetitorAttackAnalysis>;
   onOpenOnboarding?: () => void;
 }
 
@@ -51,7 +49,6 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   onTriggerScan,
   onRollback,
   onRunCruise,
-  onAnalyzeCompetitor,
   onOpenOnboarding
 }) => {
   const safeSites = useMemo(() => sites || [], [sites]);
@@ -73,8 +70,6 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
   // 竞品攻防
   const [competitorInput, setCompetitorInput] = useState<string>('');
-  const [isAnalyzingCompetitor, setIsAnalyzingCompetitor] = useState<boolean>(false);
-  const [competitorAnalysis, setCompetitorAnalysis] = useState<CompetitorAttackAnalysis | null>(null);
 
   // 执行状态
   const [isRunning, setIsRunning] = useState<boolean>(false);
@@ -111,35 +106,6 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     return safeDrafts.slice(0, 5);
   }, [safeDrafts]);
 
-  // 竞品分析
-  const handleRunCompetitorScan = async (targetComp?: string) => {
-    const comp = (targetComp || competitorInput).trim();
-    if (!comp) {
-      showToast('请输入竞品名称或网址（如 notion.so）');
-      return;
-    }
-    const targetSiteId = selectedSiteId || safeSites[0]?.id;
-    if (!targetSiteId && safeSites.length === 0) {
-      showToast('请先选择或添加目标站点');
-      return;
-    }
-
-    setIsAnalyzingCompetitor(true);
-    try {
-      if (onAnalyzeCompetitor) {
-        const result = await onAnalyzeCompetitor(targetSiteId, comp);
-        setCompetitorAnalysis(result);
-        showToast(`已完成竞品「${comp}」的真实资料分析。`);
-      } else {
-        showToast('竞品分析执行器未连接，未生成任何结论。');
-      }
-    } catch (e: any) {
-      showToast(e.message || '分析失败，请重试');
-    } finally {
-      setIsAnalyzingCompetitor(false);
-    }
-  };
-
   // 傻瓜式一键执行（无论是常规词还是竞品词）
   const handleExecuteGenerateAndPublish = async (overrideKeyword?: string) => {
     const targetSiteId = selectedSiteId || safeSites[0]?.id;
@@ -149,13 +115,14 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     }
 
     let keywordToUse = overrideKeyword;
-    if (overrideKeyword && mode === 'COMPETITOR' && !overrideKeyword.startsWith('[竞品对标截流]')) {
-      keywordToUse = `[竞品对标截流] ${overrideKeyword}`;
-    }
 
     if (!keywordToUse) {
       if (mode === 'KEYWORD') {
-        keywordToUse = keywordInput.trim() || undefined;
+        if (!keywordInput.trim()) {
+          showToast('请输入一个核心关键词或主题');
+          return;
+        }
+        keywordToUse = keywordInput.trim();
       } else if (mode === 'REWRITE') {
         if (!rewriteInput.trim()) {
           showToast('请输入您拥有使用授权的旧文章 URL 或素材');
@@ -214,7 +181,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
         }
         return failedStates;
       });
-      showToast('发布遇到异常，请检查站点连接');
+      showToast(e instanceof Error ? e.message : '执行失败，请查看任务日志');
     } finally {
       setIsRunning(false);
       setActivePipelineStep(null);
@@ -343,8 +310,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 }`}
               >
                 <Repeat className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                <span className="hidden sm:inline">内容更新</span>
-                <span className="inline sm:hidden">内容更新</span>
+                <span className="hidden sm:inline">二次创作</span>
+                <span className="inline sm:hidden">二创</span>
               </button>
 
               <button
@@ -368,7 +335,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 <div className="flex items-center justify-between text-xs text-slate-500">
                   <span className="font-semibold text-slate-700 flex items-center gap-1.5">
                     <Search className="w-3.5 h-3.5 text-slate-500" />
-                    输入核心词或主题（留空则按站点主题生成；连接 GSC / DataForSEO 后才能验证流量机会）：
+                    输入核心关键词或主题
                   </span>
                 </div>
                 <div className="relative">
@@ -403,7 +370,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 </div>
                 <div className="relative">
                   <input
-                    type="text"
+                    type="url"
                     value={rewriteInput}
                     onChange={(e) => setRewriteInput(e.target.value)}
                     placeholder="仅限您拥有使用授权的文章链接 (如 https://example.com/blog/...)"
@@ -427,14 +394,6 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               <CompetitorAnalysisSection
                 competitorInput={competitorInput}
                 onCompetitorInputChange={setCompetitorInput}
-                onAnalyze={() => handleRunCompetitorScan()}
-                isAnalyzing={isAnalyzingCompetitor}
-                competitorAnalysis={competitorAnalysis}
-                onSelectAttackKeyword={(kw) => {
-                  setCompetitorInput(kw);
-                  handleExecuteGenerateAndPublish(kw);
-                }}
-                isRunning={isRunning}
               />
             )}
           </div>
@@ -443,12 +402,12 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
           <div className="space-y-2.5 pt-1">
             <label className="text-base sm:text-lg font-extrabold text-slate-950 flex items-center gap-2.5">
               <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-slate-950 text-white flex items-center justify-center text-xs sm:text-sm font-bold shadow-xs">3</span>
-              <span>生成草稿</span>
+              <span>开始执行</span>
             </label>
             <button
               type="button"
               onClick={() => handleExecuteGenerateAndPublish()}
-              disabled={isRunning || safeSites.length === 0}
+              disabled={isRunning || safeSites.length === 0 || activeSite?.connectorStatus !== 'CONNECTED'}
               className={`w-full py-3.5 sm:py-4 rounded-xl font-extrabold text-sm sm:text-base transition-all flex items-center justify-center gap-2.5 shadow-sm cursor-pointer min-h-[48px] sm:min-h-[52px] active:scale-[0.99] ${
                 isRunning
                   ? 'bg-slate-800 text-slate-300 cursor-wait'
@@ -464,9 +423,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 <>
                   <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
                   <span className="truncate">
-                    {mode === 'KEYWORD' && (keywordInput ? `针对「${keywordInput.slice(0, 16)}${keywordInput.length > 16 ? '...' : ''}」生成审核草稿` : '按站点主题生成审核草稿（需真实数据源）')}
-                    {mode === 'REWRITE' && '生成差异化审核草稿'}
-                    {mode === 'COMPETITOR' && (competitorInput ? `针对竞品「${competitorInput.slice(0, 16)}」生成审核草稿` : '生成竞品对标审核草稿')}
+                    {activeSite?.connectorStatus !== 'CONNECTED' ? '请先完成 WordPress 真实连接测试' : mode === 'KEYWORD' ? (keywordInput ? `针对「${keywordInput.slice(0, 16)}${keywordInput.length > 16 ? '...' : ''}」开始执行` : '输入关键词后开始执行') : mode === 'REWRITE' ? '开始二创内容执行' : (competitorInput ? `针对竞品「${competitorInput.slice(0, 16)}」开始执行` : '输入竞品站点后开始执行')}
                   </span>
                   <ArrowRight className="w-4 h-4 shrink-0" />
                 </>

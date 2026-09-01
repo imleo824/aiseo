@@ -11,7 +11,8 @@ import {
   Settings,
   LogIn,
   Cpu,
-  ShieldCheck
+  ShieldCheck,
+  Bot
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -47,8 +48,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         {
           id: 'DASHBOARD',
-          label: '持续增长',
+          label: '手动执行',
           icon: <Zap className="w-4 h-4" />
+        },
+        {
+          id: 'AUTOPILOT_TASKS',
+          label: '自动执行',
+          icon: <Bot className="w-4 h-4" />
         }
       ]
     },

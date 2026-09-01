@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'crypto';
-import { DataSource, DataStatus, DraftStatus, GrowthActionStatus, GrowthCycleStatus, GrowthCycleTrigger, GrowthStage, GrowthStateStatus, JobStatus, JobType, PaymentStatus, Prisma, PublishAttemptStatus, PublishPolicy, SiteConnectionStatus } from '@prisma/client';
+import { DataSource, DataStatus, DraftStatus, ExecutionMode, ExecutionSourceType, ExecutionStage, ExecutionStatus, GrowthActionStatus, GrowthCycleStatus, GrowthCycleTrigger, GrowthStage, GrowthStateStatus, JobStatus, JobType, PaymentStatus, Prisma, PublishAttemptStatus, PublishPolicy, SiteConnectionStatus } from '@prisma/client';
 import { Job, Worker } from 'bullmq';
 import * as Sentry from '@sentry/node';
 import { billingService } from './billingService';
@@ -7,7 +7,7 @@ import { contentAi } from './contentAi';
 import { decryptSecret } from './crypto';
 import { dataForSeoProvider, gscProvider, tronGridProvider } from './providers';
 import { closeQueue, getProductionQueue, getQueueConnection, PRODUCTION_QUEUE, productionJobOptions } from './queue';
-import { assertProductionConfiguration, productionConfigurationWarnings } from './env';
+import { assertProductionConfiguration, productionConfigurationStatus, productionConfigurationWarnings } from './env';
 import { disconnectWorkerDatabase, workerPrisma } from './workerPrisma';
 import { wordPressService } from './wordpress';
 import { logger } from '../utils/logger';
@@ -16,26 +16,21 @@ import { resolvePublicHttpsOrigin } from '../utils/networkSafety';
 import { assertDatabaseSecurity } from './databaseSecurity';
 import { addDays, autonomyDecision, discoverGscOpportunities, gscComparisonWindow, GROWTH_SCORE_VERSION, planMinimumEffectiveAction, readGscRows } from './growthEngine';
 import { growthService } from './growthService';
+import { executionService } from './executionService';
+import { capturePublicSource } from './sourceFetcher';
+import { selectRelevantInternalLinks } from './seoPipeline';
+import { ValidationError } from '../domain/errors';
+import { nextAutomationRun } from './schedule';
 
 type QueuePayload = { jobRunId?: string; system?: boolean };
 const workerId = `${process.env.RAILWAY_REPLICA_ID || process.env.HOSTNAME || 'local'}:${process.pid}:${randomUUID().slice(0, 8)}`;
 const startedAt = new Date();
 if (process.env.SENTRY_DSN) Sentry.init({ dsn: process.env.SENTRY_DSN, environment: process.env.NODE_ENV, release: process.env.RAILWAY_GIT_COMMIT_SHA, tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0.1), sendDefaultPii: false });
 
-const nextRun = (current: Date, scheduleType: string, config: unknown): Date => {
-  const value = config as { minutes?: number };
-  if (scheduleType === 'INTERVAL') {
-    const minutes = Number(value.minutes);
-    if (!Number.isInteger(minutes) || minutes < 15 || minutes > 43_200) throw new Error('自动任务间隔必须为 15 到 43200 分钟');
-    return new Date(Math.max(Date.now(), current.getTime()) + minutes * 60_000);
-  }
-  const days = scheduleType === 'WEEKLY' ? 7 : 1;
-  return new Date(Math.max(Date.now(), current.getTime()) + days * 86_400_000);
-};
-
 const reconcile = async (): Promise<void> => {
   const queue = getProductionQueue();
-  await workerPrisma.workerHeartbeat.upsert({ where: { workerId }, create: { workerId, queues: [PRODUCTION_QUEUE], processVersion: process.env.RAILWAY_GIT_COMMIT_SHA || 'development', heartbeatAt: new Date(), startedAt }, update: { heartbeatAt: new Date(), queues: [PRODUCTION_QUEUE] } });
+  const capabilities = productionConfigurationStatus('worker').providers;
+  await workerPrisma.workerHeartbeat.upsert({ where: { workerId }, create: { workerId, queues: [PRODUCTION_QUEUE], processVersion: process.env.RAILWAY_GIT_COMMIT_SHA || 'development', capabilities, heartbeatAt: new Date(), startedAt }, update: { heartbeatAt: new Date(), queues: [PRODUCTION_QUEUE], capabilities } });
   await workerPrisma.paymentIntent.updateMany({ where: { status: { in: [PaymentStatus.AWAITING_TRANSFER, PaymentStatus.VERIFYING] }, expiresAt: { lt: new Date() } }, data: { status: PaymentStatus.EXPIRED } });
   const deletionCandidates = await workerPrisma.profile.findMany({ where: { deletionRequestedAt: { lte: new Date(Date.now() - 30 * 86_400_000) } }, select: { id: true } });
   for (const profile of deletionCandidates) {
@@ -81,36 +76,49 @@ const reconcile = async (): Promise<void> => {
   if (queuedCount > Number(process.env.QUEUE_BACKLOG_ALERT_THRESHOLD || 100)) Sentry.captureMessage(`AISEO queue backlog: ${queuedCount}`, 'warning');
   if (ledgerDifferences.length) Sentry.captureMessage(`AISEO ledger reconciliation mismatch in ${ledgerDifferences.length} organizations`, { level: 'fatal', extra: { organizationIds: ledgerDifferences.map(({ organization_id }) => organization_id) } });
 
-  await workerPrisma.$transaction(async (tx) => {
-    const tasks = await tx.$queryRaw<Array<{ id: string }>>`
+  const claimedTasks = await workerPrisma.$transaction((tx) => tx.$queryRaw<Array<{ id: string }>>`
+    WITH due AS (
       SELECT id FROM public.automation_tasks
       WHERE status = 'ACTIVE' AND next_run_at <= now()
         AND (locked_until IS NULL OR locked_until < now())
       ORDER BY next_run_at
       FOR UPDATE SKIP LOCKED
       LIMIT 50
-    `;
-    const created: string[] = [];
-    for (const { id } of tasks) {
-      const task = await tx.automationTask.findUniqueOrThrow({ where: { id } });
-      const site = await tx.site.findUniqueOrThrow({ where: { id: task.siteId } });
-      if (site.publishPolicy !== PublishPolicy.AUTO_PUBLISH) {
-        await tx.automationTask.update({ where: { id }, data: { status: 'PAUSED', lastError: '站点未启用自动发布' } });
-        continue;
-      }
-      const config = task.scheduleConfig as { seedKeyword?: string; languageCode?: string; locationCode?: number };
-      if (!config.seedKeyword || !config.languageCode || !Number.isInteger(config.locationCode) || !config.locationCode) {
-        await tx.automationTask.update({ where: { id }, data: { status: 'PAUSED', lastError: '自动任务缺少有效作业类型' } });
-        continue;
-      }
-      const idempotencyKey = `automation:${task.id}:${task.nextRunAt.toISOString()}`;
-      const scan = await tx.keywordScan.create({ data: { organizationId: task.organizationId, siteId: task.siteId, seedKeyword: config.seedKeyword, languageCode: config.languageCode, locationCode: config.locationCode } });
-      const run = await jobService.create(tx, { organizationId: task.organizationId, type: JobType.DATAFORSEO_KEYWORD_SCAN, idempotencyKey, payload: { keywordScanId: scan.id, siteId: task.siteId, seedKeyword: config.seedKeyword, languageCode: config.languageCode, locationCode: config.locationCode, automationTaskId: task.id }, priceAction: 'KEYWORD_SCAN' });
-      await tx.automationTask.update({ where: { id }, data: { lastRunAt: new Date(), nextRunAt: nextRun(task.nextRunAt, task.scheduleType, task.scheduleConfig), lockedUntil: null, lastError: null } });
-      created.push(run.id);
+    )
+    UPDATE public.automation_tasks task
+    SET locked_until = now() + interval '5 minutes'
+    FROM due
+    WHERE task.id = due.id
+    RETURNING task.id
+  `, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  for (const { id } of claimedTasks) {
+    try {
+      await workerPrisma.$transaction(async (tx) => {
+        const task = await tx.automationTask.findUniqueOrThrow({ where: { id } });
+        if (task.status !== 'ACTIVE') return;
+        const site = await tx.site.findUniqueOrThrow({ where: { id: task.siteId } });
+        if (site.publishPolicy !== PublishPolicy.AUTO_PUBLISH) throw new Error('站点未启用自动发布');
+        const config = task.scheduleConfig as { sourceType?: string; sourceValue?: string; languageCode?: string; locationCode?: number };
+        if (!config.sourceType || !Object.values(ExecutionSourceType).includes(config.sourceType as ExecutionSourceType) || !config.sourceValue || !config.languageCode || !Number.isInteger(config.locationCode) || !config.locationCode) {
+          throw new Error('自动任务缺少有效作业类型');
+        }
+        const idempotencyKey = `automation:${task.id}:${task.nextRunAt.toISOString()}`;
+        await executionService.create(tx, {
+          organizationId: task.organizationId,
+          siteId: task.siteId,
+          mode: ExecutionMode.SCHEDULED,
+          source: { sourceType: config.sourceType as ExecutionSourceType, sourceValue: config.sourceValue, languageCode: config.languageCode, locationCode: config.locationCode },
+          occurrenceKey: idempotencyKey,
+          automationTaskId: task.id
+        });
+        await tx.automationTask.update({ where: { id }, data: { lastRunAt: new Date(), nextRunAt: nextAutomationRun(task.nextRunAt, task.scheduleType, task.scheduleConfig as { minutes?: number; time?: string; timezone?: string }), lockedUntil: null, lastError: null } });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await workerPrisma.automationTask.updateMany({ where: { id, status: 'ACTIVE' }, data: { status: 'PAUSED', lockedUntil: null, lastError: message.slice(0, 1_000) } });
+      Sentry.captureException(error, { tags: { subsystem: 'automation-reconcile', automationTaskId: id } });
     }
-    return created;
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
 
   // Growth is state/data driven. A due state only creates a cycle when a new
   // immutable GSC snapshot exists; a timer alone never fabricates work.
@@ -161,7 +169,26 @@ const markFailed = async (runId: string, error: unknown): Promise<void> => {
     if (finalAttempt && run.type === JobType.WORDPRESS_PUBLISH) {
       await tx.publishAttempt.updateMany({ where: { jobRunId: runId }, data: { status: PublishAttemptStatus.FAILED, errorCode: 'WORDPRESS_PUBLISH_FAILED', errorMessage: message, finishedAt: new Date() } });
       const payload = run.payload as { draftId?: string };
-      if (payload.draftId) await tx.contentDraft.updateMany({ where: { id: payload.draftId }, data: { status: DraftStatus.PUBLISH_FAILED } });
+      if (payload.draftId) {
+        await tx.contentDraft.updateMany({ where: { id: payload.draftId }, data: { status: DraftStatus.PUBLISH_FAILED } });
+        const executions = await tx.executionRun.findMany({ where: { organizationId: run.organizationId, draftId: payload.draftId }, select: { id: true, automationTaskId: true } });
+        for (const execution of executions) {
+          await tx.executionRun.update({ where: { id: execution.id }, data: { status: ExecutionStatus.FAILED, errorCode: 'WORDPRESS_PUBLISH_FAILED', errorMessage: message, finishedAt: new Date() } });
+          if (execution.automationTaskId) await tx.automationTask.updateMany({ where: { id: execution.automationTaskId, status: 'ACTIVE' }, data: { status: 'PAUSED', lastError: message } });
+          await tx.auditEvent.create({ data: { organizationId: run.organizationId, action: 'AUTONOMOUS_PUBLISH_FAILED', targetType: 'execution_run', targetId: execution.id, metadata: { draftId: payload.draftId, jobRunId: runId } } });
+        }
+      }
+    }
+    if (finalAttempt && run.type === JobType.INDEXING_MONITOR) {
+      const payload = run.payload as { draftId?: string };
+      if (payload.draftId) {
+        const executions = await tx.executionRun.findMany({ where: { organizationId: run.organizationId, draftId: payload.draftId }, select: { id: true, automationTaskId: true } });
+        for (const execution of executions) {
+          await tx.executionRun.update({ where: { id: execution.id }, data: { status: ExecutionStatus.FAILED, errorCode: 'INDEXING_MONITOR_FAILED', errorMessage: message, finishedAt: new Date() } });
+          if (execution.automationTaskId) await tx.automationTask.updateMany({ where: { id: execution.automationTaskId, status: 'ACTIVE' }, data: { status: 'PAUSED', lastError: message } });
+          await tx.auditEvent.create({ data: { organizationId: run.organizationId, action: 'AUTONOMOUS_MONITORING_FAILED', targetType: 'execution_run', targetId: execution.id, metadata: { draftId: payload.draftId, jobRunId: runId } } });
+        }
+      }
     }
     if (finalAttempt && run.type === JobType.GROWTH_CYCLE) {
       const payload = run.payload as { cycleId?: string; siteId?: string };
@@ -176,6 +203,16 @@ const markFailed = async (runId: string, error: unknown): Promise<void> => {
       const payload = run.payload as { connectionId?: string };
       if (payload.connectionId) await tx.integrationConnection.updateMany({ where: { id: payload.connectionId, organizationId: run.organizationId }, data: { status: SiteConnectionStatus.FAILED, lastErrorCode: 'GSC_SYNC_FAILED', lastErrorMessage: message } });
     }
+    if (finalAttempt && run.type === JobType.AUTONOMOUS_EXECUTION) {
+      const payload = run.payload as { executionRunId?: string };
+      if (payload.executionRunId) {
+        const execution = await tx.executionRun.findFirst({ where: { id: payload.executionRunId, organizationId: run.organizationId } });
+        if (execution) {
+          await tx.executionRun.update({ where: { id: execution.id }, data: { status: ExecutionStatus.FAILED, errorCode: 'AUTONOMOUS_EXECUTION_FAILED', errorMessage: message, finishedAt: new Date() } });
+          if (execution.automationTaskId) await tx.automationTask.updateMany({ where: { id: execution.automationTaskId, status: 'ACTIVE' }, data: { status: 'PAUSED', lastError: message } });
+        }
+      }
+    }
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 };
 
@@ -186,7 +223,7 @@ const processKeywordScan = async (runId: string): Promise<string> => {
   const metrics = await dataForSeoProvider.scanKeyword({ keyword: payload.seedKeyword, languageCode: payload.languageCode, locationCode: payload.locationCode });
   return workerPrisma.$transaction(async (tx) => {
     const snapshot = await tx.dataSnapshot.create({ data: { organizationId: run.organizationId, siteId: payload.siteId, source: DataSource.DATAFORSEO, status: DataStatus.LIVE, formulaVersion: 'seo-metrics-1', fetchedAt: new Date(metrics.fetchedAt), payload: metrics as Prisma.InputJsonValue } });
-    const volume = BigInt(Math.max(1, metrics.searchVolume));
+    const volume = BigInt(Math.max(0, metrics.searchVolume));
     const roi = BigInt(Math.max(0, 100 - metrics.keywordDifficulty)) * volume * 1_000_000n / BigInt(metrics.allintitleCount + 1);
     const opportunity = await tx.opportunity.create({ data: { organizationId: run.organizationId, siteId: payload.siteId, keywordScanId: payload.keywordScanId, snapshotId: snapshot.id, type: 'KGR', title: metrics.keyword, keyword: metrics.keyword, searchVolume: metrics.searchVolume, keywordDifficulty: metrics.keywordDifficulty, allintitleCount: metrics.allintitleCount, kgrNumerator: BigInt(metrics.allintitleCount), kgrDenominator: volume, roiScoreMicros: roi, formulaVersion: 'kgr-roi-1', evidence: { source: 'DATAFORSEO', snapshotId: snapshot.id } } });
     await tx.keywordScan.update({ where: { id: payload.keywordScanId }, data: { snapshotId: snapshot.id, status: JobStatus.SUCCEEDED, resultCount: 1, completedAt: new Date() } });
@@ -335,6 +372,159 @@ const processGrowthAction = async (runId: string): Promise<string> => {
   return action.id;
 };
 
+const processAutonomousExecution = async (runId: string): Promise<string> => {
+  const run = await workerPrisma.jobRun.findUniqueOrThrow({ where: { id: runId } });
+  const payload = run.payload as { executionRunId?: string; languageCode?: string; locationCode?: number };
+  if (!payload.executionRunId || !payload.languageCode || !payload.locationCode) throw new Error('全自动执行参数不完整');
+  let execution = await workerPrisma.executionRun.findFirst({ where: { id: payload.executionRunId, organizationId: run.organizationId }, include: { site: true, automationTask: true } });
+  if (!execution) throw new Error('全自动执行单不存在');
+  if (execution.status === ExecutionStatus.SUCCEEDED || execution.status === ExecutionStatus.CANCELLED) return execution.id;
+  await workerPrisma.executionRun.update({ where: { id: execution.id }, data: { status: ExecutionStatus.RUNNING, startedAt: execution.startedAt || new Date(), errorCode: null, errorMessage: null } });
+
+  const sourceIds = [...execution.knowledgeSourceIds];
+  const captureAndPersist = async (url: string, prefix: '[TARGET_SITE]' | '[REFERENCE]' | '[COMPETITOR]', capturedInput?: Awaited<ReturnType<typeof capturePublicSource>>): Promise<string> => {
+    const captured = capturedInput || await capturePublicSource(url);
+    const existing = await workerPrisma.knowledgeSource.findUnique({ where: { organizationId_checksum: { organizationId: run.organizationId, checksum: captured.checksum } } });
+    if (existing) return existing.id;
+    const created = await workerPrisma.knowledgeSource.create({ data: {
+      organizationId: run.organizationId,
+      siteId: execution!.siteId,
+      type: 'ALLOWLISTED_URL',
+      title: `${prefix} ${captured.title}`.slice(0, 200),
+      sourceUrl: url,
+      normalizedUrl: captured.normalizedUrl,
+      content: captured.content,
+      summary: captured.content.slice(0, 500),
+      checksum: captured.checksum,
+      fetchedAt: new Date(captured.fetchedAt)
+    } });
+    return created.id;
+  };
+
+  if (!sourceIds.length) {
+    await workerPrisma.executionRun.update({ where: { id: execution.id }, data: { stage: ExecutionStage.SOURCE_CAPTURE } });
+    if (execution.site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !execution.site.wordpressCredentials || !execution.site.wordpressVerifiedAt) throw new Error('WordPress 连接未通过验证，无法读取真实站点上下文');
+    const targetContext = await wordPressService.readSiteContext(execution.site.domain, execution.site.wordpressCredentials).catch((error) => {
+      if (error instanceof ValidationError && error.message.includes('没有足够的已发布内容')) return capturePublicSource(execution!.site.domain);
+      throw error;
+    });
+    sourceIds.push(await captureAndPersist(execution.site.domain, '[TARGET_SITE]', targetContext));
+    if (execution.sourceType === ExecutionSourceType.REWRITE_URL && execution.sourceValue) sourceIds.push(await captureAndPersist(execution.sourceValue, '[REFERENCE]'));
+    if (execution.sourceType === ExecutionSourceType.COMPETITOR_URL && execution.sourceValue) sourceIds.push(await captureAndPersist(execution.sourceValue, '[COMPETITOR]'));
+    await workerPrisma.executionRun.update({ where: { id: execution.id }, data: { knowledgeSourceIds: sourceIds } });
+  }
+
+  const knowledge = await workerPrisma.knowledgeSource.findMany({ where: { id: { in: sourceIds }, organizationId: run.organizationId, status: DataStatus.LIVE } });
+  if (knowledge.length !== sourceIds.length) throw new Error('执行来源未完整保存，任务已失败关闭');
+  const comparableSource = (value?: string | null): string | undefined => {
+    if (!value) return undefined;
+    try {
+      const url = new URL(value.startsWith('https://') ? value : `https://${value}`);
+      url.hash = '';
+      url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+      return url.toString();
+    } catch { return undefined; }
+  };
+  const requestedSource = comparableSource(execution.sourceValue);
+  const targetHost = execution.site.domain.replace(/^www\./, '').toLowerCase();
+  const decoratedKnowledge = knowledge.map((source) => {
+    const normalized = comparableSource(source.normalizedUrl || source.sourceUrl);
+    let prefix: '[TARGET_SITE]' | '[REFERENCE]' | '[COMPETITOR]' = '[TARGET_SITE]';
+    if (requestedSource && normalized === requestedSource && execution.sourceType === ExecutionSourceType.REWRITE_URL) prefix = '[REFERENCE]';
+    else if (requestedSource && normalized === requestedSource && execution.sourceType === ExecutionSourceType.COMPETITOR_URL) prefix = '[COMPETITOR]';
+    else {
+      try {
+        const host = new URL(normalized || '').hostname.replace(/^www\./, '').toLowerCase();
+        if (host !== targetHost) prefix = execution.sourceType === ExecutionSourceType.REWRITE_URL ? '[REFERENCE]' : '[COMPETITOR]';
+      } catch { /* The source remains target-site evidence. */ }
+    }
+    return { ...source, decoratedTitle: `${prefix} ${source.title.replace(/^\[(?:TARGET_SITE|REFERENCE|COMPETITOR)\]\s*/, '')}` };
+  });
+  let keyword = execution.resolvedKeyword;
+  if (!keyword) {
+    if (execution.sourceType === ExecutionSourceType.KEYWORD) keyword = execution.sourceValue || undefined;
+    else {
+      const prefix = execution.sourceType === ExecutionSourceType.REWRITE_URL ? '[REFERENCE]' : execution.sourceType === ExecutionSourceType.COMPETITOR_URL ? '[COMPETITOR]' : '[TARGET_SITE]';
+      const primary = decoratedKnowledge.find(({ decoratedTitle }) => decoratedTitle.startsWith(prefix)) || decoratedKnowledge[0];
+      keyword = (await contentAi.deriveKeyword({ language: execution.site.language, sourceType: execution.sourceType === ExecutionSourceType.REWRITE_URL ? 'REWRITE_URL' : execution.sourceType === ExecutionSourceType.COMPETITOR_URL ? 'COMPETITOR_URL' : 'SITE', title: primary.decoratedTitle, content: primary.content })).keyword;
+    }
+    if (!keyword) throw new Error('未能解析可验证的目标关键词');
+    await workerPrisma.executionRun.update({ where: { id: execution.id }, data: { resolvedKeyword: keyword } });
+  }
+
+  let opportunityId = execution.opportunityId;
+  if (!opportunityId) {
+    await workerPrisma.executionRun.update({ where: { id: execution.id }, data: { stage: ExecutionStage.KEYWORD_RESEARCH } });
+    const metrics = await dataForSeoProvider.scanKeyword({ keyword, languageCode: payload.languageCode, locationCode: payload.locationCode });
+    opportunityId = await workerPrisma.$transaction(async (tx) => {
+      const snapshot = await tx.dataSnapshot.create({ data: { organizationId: run.organizationId, siteId: execution!.siteId, source: DataSource.DATAFORSEO, status: DataStatus.LIVE, formulaVersion: 'seo-metrics-1', fetchedAt: new Date(metrics.fetchedAt), payload: metrics as Prisma.InputJsonValue } });
+      const scan = await tx.keywordScan.create({ data: { organizationId: run.organizationId, siteId: execution!.siteId, snapshotId: snapshot.id, seedKeyword: keyword!, languageCode: payload.languageCode!, locationCode: payload.locationCode!, status: JobStatus.SUCCEEDED, resultCount: 1, completedAt: new Date() } });
+      const volume = BigInt(Math.max(0, metrics.searchVolume));
+      const roi = BigInt(Math.max(0, 100 - metrics.keywordDifficulty)) * volume * 1_000_000n / BigInt(metrics.allintitleCount + 1);
+      const type = execution!.sourceType === ExecutionSourceType.COMPETITOR_URL ? 'COMPETITOR_GAP' : execution!.sourceType === ExecutionSourceType.REWRITE_URL ? 'CONTENT_GAP' : 'KGR';
+      const opportunity = await tx.opportunity.create({ data: { organizationId: run.organizationId, siteId: execution!.siteId, keywordScanId: scan.id, snapshotId: snapshot.id, sourceKey: `execution:${execution!.id}`, type, title: keyword!, keyword, searchVolume: metrics.searchVolume, keywordDifficulty: metrics.keywordDifficulty, allintitleCount: metrics.allintitleCount, kgrNumerator: BigInt(metrics.allintitleCount), kgrDenominator: volume, roiScoreMicros: roi, formulaVersion: 'autonomous-execution-1', evidence: { source: 'DATAFORSEO', snapshotId: snapshot.id, executionRunId: execution!.id, inputType: execution!.sourceType } } });
+      await tx.executionRun.update({ where: { id: execution!.id }, data: { opportunityId: opportunity.id } });
+      return opportunity.id;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
+  execution = await workerPrisma.executionRun.findUniqueOrThrow({ where: { id: execution.id }, include: { site: true, automationTask: true } });
+  if (execution.draftId) return execution.id;
+  const opportunity = await workerPrisma.opportunity.findFirst({ where: { id: opportunityId, organizationId: run.organizationId }, include: { snapshot: true } });
+  if (!opportunity?.keyword || opportunity.snapshot.status !== DataStatus.LIVE) throw new Error('真实 SEO 机会或快照不可用');
+  await workerPrisma.executionRun.update({ where: { id: execution.id }, data: { stage: ExecutionStage.CONTENT_GENERATION } });
+  const targetInventory = decoratedKnowledge.find(({ decoratedTitle }) => decoratedTitle.startsWith('[TARGET_SITE]'));
+  const internalLinkCandidates = [...(targetInventory?.content.matchAll(/\[PAGE\]\nURL: (https:\/\/[^\n]+)\nTITLE: ([^\n]+)/g) || [])]
+    .map((match) => ({ url: match[1], title: match[2].trim() }))
+    .filter(({ url }) => {
+      try { return new URL(url).hostname.replace(/^www\./, '').toLowerCase() === targetHost; } catch { return false; }
+    });
+  const generated = await contentAi.generate({
+    keyword: opportunity.keyword,
+    language: execution.site.language,
+    seoSnapshot: opportunity.snapshot.payload,
+    knowledge: decoratedKnowledge.map(({ decoratedTitle, content }) => ({ title: decoratedTitle, content })),
+    internalLinks: selectRelevantInternalLinks(opportunity.keyword, opportunity.title, internalLinkCandidates)
+  });
+
+  await workerPrisma.$transaction(async (tx) => {
+    const automatic = generated.qualityReport.passed
+      && execution!.site.publishPolicy === PublishPolicy.AUTO_PUBLISH
+      && execution!.site.wordpressStatus === SiteConnectionStatus.CONNECTED
+      && Boolean(execution!.site.wordpressCredentials)
+      && Boolean(execution!.site.wordpressVerifiedAt);
+    const draft = await tx.contentDraft.create({ data: {
+      organizationId: run.organizationId,
+      siteId: execution!.siteId,
+      opportunityId: opportunity.id,
+      seoSnapshotId: opportunity.snapshot.id,
+      status: automatic ? DraftStatus.PUBLISHING : generated.qualityReport.passed ? DraftStatus.PENDING_REVIEW : DraftStatus.QUALITY_FAILED,
+      title: generated.title,
+      slug: generated.slug,
+      html: generated.html,
+      qualityReport: generated.qualityReport as Prisma.InputJsonValue,
+      dataProvenance: [{ snapshotId: opportunity.snapshot.id, source: opportunity.snapshot.source, status: opportunity.snapshot.status, fetchedAt: opportunity.snapshot.fetchedAt.toISOString(), formulaVersion: opportunity.snapshot.formulaVersion, executionRunId: execution!.id }] as Prisma.InputJsonValue,
+      knowledgeSourceIds: sourceIds
+    } });
+    if (!generated.qualityReport.passed) {
+      await billingService.releaseCreditHold(tx, runId);
+      await tx.executionRun.update({ where: { id: execution!.id }, data: { draftId: draft.id, status: ExecutionStatus.FAILED, stage: ExecutionStage.QUALITY_GATE, errorCode: 'QUALITY_GATE_FAILED', errorMessage: '草稿未通过确定性质量门禁', finishedAt: new Date() } });
+      if (execution!.automationTaskId) await tx.automationTask.updateMany({ where: { id: execution!.automationTaskId, status: 'ACTIVE' }, data: { status: 'PAUSED', lastError: '草稿未通过质量门禁' } });
+      return;
+    }
+    await billingService.settleCreditHold(tx, runId, 'content_draft', draft.id);
+    if (automatic) {
+      const publish = await jobService.create(tx, { organizationId: run.organizationId, type: JobType.WORDPRESS_PUBLISH, idempotencyKey: `execution-publish:${execution!.id}`, payload: { draftId: draft.id, automated: true, executionRunId: execution!.id } });
+      await tx.publishAttempt.create({ data: { organizationId: run.organizationId, draftId: draft.id, jobRunId: publish.id, attemptNumber: 1 } });
+      await tx.executionRun.update({ where: { id: execution!.id }, data: { draftId: draft.id, status: ExecutionStatus.PUBLISHING, stage: ExecutionStage.PUBLISHING } });
+    } else {
+      await tx.executionRun.update({ where: { id: execution!.id }, data: { draftId: draft.id, status: ExecutionStatus.AWAITING_REVIEW, stage: ExecutionStage.QUALITY_GATE, result: { manualReviewRequired: true, reason: 'AUTO_PUBLISH_GATE_NOT_UNLOCKED' } } });
+    }
+    await tx.auditEvent.create({ data: { organizationId: run.organizationId, action: 'AUTONOMOUS_DRAFT_CREATED', targetType: 'execution_run', targetId: execution!.id, metadata: { draftId: draft.id, automatic, sourceType: execution!.sourceType } } });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  return execution.id;
+};
+
 const processContentGeneration = async (runId: string): Promise<string> => {
   const run = await workerPrisma.jobRun.findUniqueOrThrow({ where: { id: runId } });
   const payload = run.payload as { siteId?: string; opportunityId?: string; knowledgeSourceIds?: string[]; seoSnapshotId?: string; keyword?: string; automationTaskId?: string };
@@ -364,7 +554,7 @@ const processContentGeneration = async (runId: string): Promise<string> => {
 
 const processWordPressPublish = async (runId: string): Promise<string> => {
   const run = await workerPrisma.jobRun.findUniqueOrThrow({ where: { id: runId } });
-  const payload = run.payload as { draftId?: string; automated?: boolean };
+  const payload = run.payload as { draftId?: string; automated?: boolean; executionRunId?: string };
   if (!payload.draftId) throw new Error('发布任务缺少 draftId');
   const draft = await workerPrisma.contentDraft.findFirst({ where: { id: payload.draftId, organizationId: run.organizationId }, include: { site: true, reviews: true } });
   const approved = draft?.reviews.some(({ decision }) => decision === 'APPROVED');
@@ -377,6 +567,7 @@ const processWordPressPublish = async (runId: string): Promise<string> => {
     await tx.site.update({ where: { id: draft.siteId }, data: { manualPublishSuccesses: { increment: draft.site.publishPolicy === PublishPolicy.MANUAL_REVIEW ? 1 : 0 } } });
     await tx.jobRun.create({ data: { organizationId: run.organizationId, type: JobType.INDEXING_MONITOR, idempotencyKey: `indexing:${draft.id}:1`, payload: { draftId: draft.id, observationNumber: 1 }, availableAt: new Date(Date.now() + 60 * 60_000) } });
     await tx.auditEvent.create({ data: { organizationId: run.organizationId, action: 'WORDPRESS_PUBLISHED', targetType: 'content_draft', targetId: draft.id, metadata: published } });
+    await tx.executionRun.updateMany({ where: { organizationId: run.organizationId, draftId: draft.id }, data: { status: ExecutionStatus.MONITORING, stage: ExecutionStage.MONITORING, result: { publishedUrl: published.url, remotePostId: published.postId, indexingMonitoringScheduled: true }, finishedAt: null } });
   });
   return draft.id;
 };
@@ -404,6 +595,16 @@ const processIndexingMonitor = async (runId: string): Promise<string> => {
   const observation = await workerPrisma.$transaction(async (tx) => {
     const created = await tx.indexingObservation.create({ data: { organizationId: run.organizationId, siteId: draft.siteId, draftId: draft.id, url: draft.publishedUrl!, source: 'SITEMAP', indexed: null, status: sitemapStatus, observedAt: new Date(), payload: { sitemapPresent: present, statusCode, note: 'Sitemap presence is not treated as proof of indexing' } } });
     if (observationNumber < 7) await tx.jobRun.create({ data: { organizationId: run.organizationId, type: JobType.INDEXING_MONITOR, idempotencyKey: `indexing:${draft.id}:${observationNumber + 1}`, payload: { draftId: draft.id, observationNumber: observationNumber + 1 }, availableAt: new Date(Date.now() + 24 * 60 * 60_000) } });
+    const executions = await tx.executionRun.findMany({ where: { organizationId: run.organizationId, draftId: draft.id } });
+    for (const execution of executions) {
+      const previous = execution.result && typeof execution.result === 'object' && !Array.isArray(execution.result) ? execution.result as Record<string, unknown> : {};
+      await tx.executionRun.update({ where: { id: execution.id }, data: {
+        status: observationNumber >= 7 ? ExecutionStatus.SUCCEEDED : ExecutionStatus.MONITORING,
+        stage: observationNumber >= 7 ? ExecutionStage.COMPLETED : ExecutionStage.MONITORING,
+        result: { ...previous, lastIndexingObservationId: created.id, sitemapPresent: present, indexingObservationNumber: observationNumber, indexingComplete: observationNumber >= 7 },
+        finishedAt: observationNumber >= 7 ? new Date() : null
+      } });
+    }
     return created;
   });
   return observation.id;
@@ -457,6 +658,7 @@ export const createProductionWorker = () => new Worker<QueuePayload>(PRODUCTION_
     let resultId: string | undefined;
     let deferred = false;
     switch (run.type) {
+      case JobType.AUTONOMOUS_EXECUTION: resultId = await processAutonomousExecution(runId); break;
       case JobType.DATAFORSEO_KEYWORD_SCAN: resultId = await processKeywordScan(runId); break;
       case JobType.CONTENT_GENERATION: resultId = await processContentGeneration(runId); break;
       case JobType.GROWTH_CYCLE: resultId = await processGrowthCycle(runId); break;

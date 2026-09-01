@@ -6,7 +6,6 @@ import {
   AutomatedTask,
   GrowthMetrics,
   Language,
-  CompetitorAttackAnalysis,
   ArticleGenerationAutomation,
   TenantAccount,
   CreditTransaction,
@@ -14,11 +13,11 @@ import {
 } from "../types/seo";
 import { api as productionApi } from '../lib/api';
 import { supabase } from '../lib/supabase';
-import type { Draft, GrowthStatus, JobRun, KnowledgeSource as ProductionKnowledgeSource, Ledger, Me, Opportunity as ProductionOpportunity, Site as ProductionSite } from '../types/api';
+import type { Draft, ExecutionRun, GrowthStatus, JobRun, KnowledgeSource as ProductionKnowledgeSource, Ledger, Me, Opportunity as ProductionOpportunity, Site as ProductionSite } from '../types/api';
 
 type ProductionTask = {
   id: string; siteId: string; name: string; scheduleType: 'DAILY' | 'INTERVAL' | 'WEEKLY';
-  scheduleConfig: { seedKeyword?: string; minutes?: number }; status: 'ACTIVE' | 'PAUSED' | 'DISABLED';
+  scheduleConfig: { sourceType?: 'KEYWORD' | 'REWRITE_URL' | 'COMPETITOR_URL'; sourceValue?: string; minutes?: number }; status: 'ACTIVE' | 'PAUSED' | 'DISABLED';
   lastRunAt?: string; nextRunAt: string; createdAt: string;
 };
 
@@ -87,8 +86,11 @@ const toLegacyTask = (task: ProductionTask, sites: WordPressSite[]): AutomatedTa
   siteName: sites.find((site) => site.id === task.siteId)?.name || '未知站点',
   taskName: task.name,
   scheduleType: task.scheduleType,
-  scheduleTime: task.scheduleType === 'INTERVAL' ? `${task.scheduleConfig.minutes || 0} 分钟` : '',
-  targetKeywordTopic: task.scheduleConfig.seedKeyword || '',
+  scheduleTime: task.scheduleType === 'INTERVAL'
+    ? String(Math.max(1, Math.round((task.scheduleConfig.minutes || 60) / 60)))
+    : new Date(task.nextRunAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }),
+  targetKeywordTopic: task.scheduleConfig.sourceValue || '',
+  sourceType: task.scheduleConfig.sourceType,
   articleCountPerRun: 1,
   status: task.status === 'ACTIVE' ? 'ACTIVE' : 'PAUSED',
   lastRunAt: task.lastRunAt,
@@ -401,9 +403,31 @@ export class ApiService {
     return (await productionApi.post<{ state: GrowthStatus['state'] }>(`/organizations/${organizationId}/sites/${siteId}/growth/pause`, {})).data;
   }
 
+  public async runAutonomousExecution(siteId: string, source: { sourceType: 'KEYWORD' | 'REWRITE_URL' | 'COMPETITOR_URL'; sourceValue: string }) {
+    const { organizationId } = await this.resolveWorkspace();
+    const created = (await productionApi.post<{ execution: ExecutionRun; job: JobRun }>(`/organizations/${organizationId}/executions`, { siteId, source })).data;
+    await this.waitForJob(created.job.id, 300_000);
+    const publishDeadline = Date.now() + 120_000;
+    let execution = created.execution;
+    while (Date.now() < publishDeadline) {
+      const executions = (await productionApi.get<ExecutionRun[]>(`/organizations/${organizationId}/executions?limit=100`)).data;
+      execution = executions.find((item) => item.id === created.execution.id) || execution;
+      if (execution.status !== 'PUBLISHING') break;
+      await new Promise((resolve) => window.setTimeout(resolve, 1_500));
+    }
+    if (execution.status === 'FAILED') throw new Error(execution.errorMessage || '全自动执行未完成');
+    if (execution.status === 'PUBLISHING') throw new Error('WordPress 仍在发布中，请稍后到“我的内容”查看结果');
+    const drafts = (await productionApi.get<Draft[]>(`/organizations/${organizationId}/drafts`)).data;
+    const draft = execution.draftId ? drafts.find((item) => item.id === execution.draftId) : undefined;
+    if (!draft) throw new Error('执行已结束，但没有生成可交付草稿');
+    return { execution, draft: toLegacyDraft(draft) };
+  }
+
   public async scanOpportunities(siteId: string, keyword?: string) {
     const { organizationId } = await this.resolveWorkspace();
-    const result = (await productionApi.post<{ scan: { id: string }; job: { id: string } }>(`/organizations/${organizationId}/keyword-scans`, { siteId, seedKeyword: keyword || '', languageCode: 'zh-CN', locationCode: 2156 })).data;
+    const seedKeyword = keyword?.trim();
+    if (!seedKeyword) throw new Error('请输入需要扫描的真实关键词');
+    const result = (await productionApi.post<{ scan: { id: string }; job: { id: string } }>(`/organizations/${organizationId}/keyword-scans`, { siteId, seedKeyword })).data;
     const completed = await this.waitForJob(result.job.id);
     const opportunityId = completed.result?.resultId;
     const opportunities = (await productionApi.get<ProductionOpportunity[]>(`/organizations/${organizationId}/opportunities?limit=100`)).data;
@@ -413,20 +437,12 @@ export class ApiService {
     return { opportunity: toLegacyOpportunity(opportunity), scan: result.scan, job: completed };
   }
 
-  public async analyzeCompetitorAttack(siteId: string, competitor: string) {
-    const query = `${competitor.replace(/^https?:\/\//, '').replace(/\/$/, '')} alternative`;
-    const { opportunity } = await this.scanOpportunities(siteId, query);
-    const evidence = opportunity.demandEvidence.evidenceDescription;
-    const kd = Number(evidence.match(/KD\s+(\d+)/i)?.[1] || 0);
-    return { analysis: { competitor, competitorOverview: `DataForSEO 已完成“${query}”的真实关键词快照。`, competitorWeaknesses: ['尚未接入可验证的竞品页面抓取，因此不生成页面弱点结论。'], attackKeywords: [{ keyword: opportunity.targetKeyword, type: 'ALTERNATIVE', typeLabel: '替代方案词', intent: '商业调查', estimatedMonthlyTraffic: opportunity.demandEvidence.monthlyImpressions || 0, attackAngle: '仅基于真实关键词快照生成内容，不臆测竞品事实', difficulty: kd >= 70 ? 'HIGH' : kd >= 40 ? 'MEDIUM' : 'LOW', recommendedH2s: [] }], strategicAdvice: '使用客户知识来源陈述自身能力；竞品事实必须由客户提供或经白名单资料验证。' } satisfies CompetitorAttackAnalysis };
-  }
-
   public async serpScan(data: { seedKeyword: string; siteId?: string; location?: string }) {
     const sites = await this.getSites();
     const siteId = data.siteId || sites.sites[0]?.id;
     if (!siteId) throw new Error('请先添加 WordPress 站点');
     const { opportunity } = await this.scanOpportunities(siteId, data.seedKeyword);
-    const volume = Math.max(1, opportunity.demandEvidence.monthlyImpressions || 0);
+    const volume = Math.max(0, opportunity.demandEvidence.monthlyImpressions || 0);
     const allintitleMatch = opportunity.demandEvidence.evidenceDescription.match(/allintitle\s+(\d+)/i);
     const allintitle = Number(allintitleMatch?.[1] || 0);
     const kdMatch = opportunity.demandEvidence.evidenceDescription.match(/KD\s+(\d+)/i);
@@ -439,7 +455,7 @@ export class ApiService {
         keyword: opportunity.targetKeyword,
         searchVolume: volume,
         kd,
-        kgrIndex: allintitle / volume,
+        kgrIndex: volume > 0 ? allintitle / volume : 0,
         serpVulnerabilityScore: Math.max(0, 100 - kd),
         commercialIntentScore: 0,
         roiScore: opportunity.scoreBreakdown.totalScore,
@@ -533,16 +549,24 @@ export class ApiService {
   public async createTask(data: Partial<AutomatedTask>) {
     const { organizationId } = await this.resolveWorkspace();
     if (!data.siteId || data.siteId === 'all') throw new Error('请选择一个已通过自动发布门禁的站点');
-    const minutes = data.scheduleType === 'INTERVAL' ? Math.max(15, Number.parseInt(data.scheduleTime || '60', 10) || 60) : undefined;
+    const intervalHours = data.scheduleType === 'INTERVAL' ? Number.parseInt(data.scheduleTime || '4', 10) : undefined;
+    const minutes = intervalHours == null ? undefined : Math.min(43_200, Math.max(60, intervalHours * 60));
     const nextRunAt = new Date();
-    if (data.scheduleType === 'DAILY' && /^\d{2}:\d{2}$/.test(data.scheduleTime || '')) {
+    if ((data.scheduleType === 'DAILY' || data.scheduleType === 'WEEKLY') && /^\d{2}:\d{2}$/.test(data.scheduleTime || '')) {
       const [hour, minute] = (data.scheduleTime || '09:00').split(':').map(Number);
       nextRunAt.setHours(hour, minute, 0, 0);
-      if (nextRunAt <= new Date()) nextRunAt.setDate(nextRunAt.getDate() + 1);
+      if (data.scheduleType === 'WEEKLY') nextRunAt.setDate(nextRunAt.getDate() + 7);
+      else if (nextRunAt <= new Date()) nextRunAt.setDate(nextRunAt.getDate() + 1);
     } else {
       nextRunAt.setMinutes(nextRunAt.getMinutes() + (minutes || 60));
     }
-    const created = (await productionApi.post<{ task: ProductionTask }>(`/organizations/${organizationId}/automation-tasks`, { siteId: data.siteId, name: data.taskName || '自动内容任务', scheduleType: data.scheduleType || 'DAILY', scheduleConfig: { seedKeyword: data.targetKeywordTopic || '站点主题', languageCode: 'zh-CN', locationCode: 2156, ...(minutes ? { minutes } : {}) }, nextRunAt: nextRunAt.toISOString() })).data.task;
+    const sourceValue = data.targetKeywordTopic?.trim();
+    if (!sourceValue) throw new Error('请提供关键词、二创内容链接或竞品站点');
+    const calendarSchedule = data.scheduleType === 'INTERVAL' ? {} : {
+      time: data.scheduleTime || '09:00',
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+    };
+    const created = (await productionApi.post<{ task: ProductionTask }>(`/organizations/${organizationId}/automation-tasks`, { siteId: data.siteId, name: data.taskName || '自动内容任务', scheduleType: data.scheduleType || 'DAILY', scheduleConfig: { sourceType: data.sourceType || 'KEYWORD', sourceValue, ...(minutes ? { minutes } : {}), ...calendarSchedule }, nextRunAt: nextRunAt.toISOString(), enabled: data.status !== 'PAUSED' })).data.task;
     const sites = await this.getSites();
     return { task: toLegacyTask(created, sites.sites) };
   }
