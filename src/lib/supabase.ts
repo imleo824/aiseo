@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const runtimeConfig = globalThis.__AISEO_RUNTIME_CONFIG__;
+const url = runtimeConfig?.supabaseUrl || import.meta.env.VITE_SUPABASE_URL;
+const publishableKey = runtimeConfig?.supabasePublishableKey || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 export const missingSupabaseBrowserConfiguration = !url || !publishableKey;
 

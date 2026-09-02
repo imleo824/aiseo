@@ -11,22 +11,21 @@ Deno.serve(async (request) => {
   const authorization = request.headers.get('authorization');
   const url = Deno.env.get('SUPABASE_URL');
   const serviceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!authorization || !url || !serviceRole) return json({ error: 'misconfigured' }, 500);
+  if (!url || !serviceRole) return json({ error: 'misconfigured' }, 500);
+  if (authorization !== `Bearer ${serviceRole}`) return json({ error: 'unauthorized' }, 401);
 
   const admin = createClient(url, serviceRole, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
-  const token = authorization.replace(/^Bearer\s+/i, '');
-  const { data: identity, error: identityError } = await admin.auth.getUser(token);
-  if (identityError || !identity.user) return json({ error: 'unauthorized' }, 401);
+  const { data: claimed, error: claimError } = await admin.rpc('claim_due_account_erasures', { max_count: 50 });
+  if (claimError) return json({ error: 'erasure_claim_failed' }, 500);
 
-  const { data: profile, error: profileError } = await admin
-    .from('profiles')
-    .select('deletion_requested_at')
-    .eq('id', identity.user.id)
-    .maybeSingle();
-  if (profileError) return json({ error: 'profile_check_failed' }, 500);
-  if (!profile?.deletion_requested_at) return json({ error: 'deletion_not_requested' }, 409);
-
-  const { error: deletionError } = await admin.auth.admin.deleteUser(identity.user.id, false);
-  if (deletionError) return json({ error: 'auth_deletion_failed' }, 502);
-  return json({ data: { erased: true } });
+  let erased = 0;
+  let failed = 0;
+  for (const row of Array.isArray(claimed) ? claimed : []) {
+    const profileId = typeof row?.profile_id === 'string' ? row.profile_id : '';
+    if (!profileId) continue;
+    const { error } = await admin.auth.admin.deleteUser(profileId, false);
+    if (error && !/not found/i.test(error.message)) failed += 1;
+    else erased += 1;
+  }
+  return json({ data: { claimed: Array.isArray(claimed) ? claimed.length : 0, erased, failed } }, failed ? 207 : 200);
 });

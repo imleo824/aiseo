@@ -65,14 +65,14 @@ export default function LegacyApp() {
       case 'SITE_MANAGEMENT':
         return {
           title: '我的站点',
-          desc: 'WordPress 站点连接、知识来源与发布管理'
+          desc: 'WordPress 官方授权、可选 GSC 与发布策略管理'
         };
       case 'AUTOPILOT_TASKS':
-        return { title: '自动执行', desc: '同一条生产链路按计划自动生成、发布和监测' };
+        return { title: '自动执行', desc: '同一条增长链路按真实新证据自动选择、执行和观察' };
       case 'AUDIT_LEDGER':
         return {
           title: '我的内容',
-          desc: '文章列表、收录状态与操作日志'
+          desc: '交付内容、发布状态与真实观察记录'
         };
       case 'CREDIT_LEDGER':
         return {
@@ -210,9 +210,8 @@ export default function LegacyApp() {
             <MainDashboard
               sites={sites}
               drafts={drafts}
-              onTriggerScan={actions.handleTriggerScan}
               onRollback={actions.handleRollback}
-              onRunCruise={actions.handleRunCruise}
+              onStartGrowthProgram={actions.handleStartGrowthProgram}
               onOpenOnboarding={() => setIsOnboardingOpen(true)}
             />
           )}
@@ -223,6 +222,7 @@ export default function LegacyApp() {
               onUpdateSite={actions.handleUpdateSiteById}
               onDeleteSite={actions.handleDeleteSite}
               onTestSiteConnection={actions.handleTestSiteConnection}
+              onAuthorizeWordPress={actions.handleAuthorizeWordPress}
               onSetAutopilot={actions.handleSetAutopilot}
               onRefreshSites={actions.loadTenantData}
               onOpenOnboarding={() => setIsOnboardingOpen(true)}
@@ -235,7 +235,6 @@ export default function LegacyApp() {
               tasks={tasks}
               onCreateTask={actions.handleCreateTask}
               onToggleTask={actions.handleToggleTask}
-              onDeleteTask={actions.handleDeleteTask}
               onRunTaskNow={actions.handleRunTaskNow}
             />
           )}
@@ -311,10 +310,8 @@ export default function LegacyApp() {
         <OnboardingModal
           isOpen={isOnboardingOpen}
           onClose={() => setIsOnboardingOpen(false)}
-          onAddSite={async (siteData) => {
-            await actions.handleAddSite(siteData);
-            setIsOnboardingOpen(false);
-          }}
+          onAddSite={actions.handleAddSite}
+          onAuthorizeWordPress={actions.handleAuthorizeWordPress}
         />
       )}
 

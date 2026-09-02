@@ -67,12 +67,17 @@ export const revalidateSensitiveSession = async (request: Request): Promise<User
   return user;
 };
 
-export const eraseOwnAuthUser = async (accessToken: string): Promise<void> => {
-  if (!env.supabaseUrl) throw new Error('Supabase Auth is not configured');
-  const response = await fetch(`${env.supabaseUrl.replace(/\/$/, '')}/functions/v1/account-erasure`, {
+export const revokeOwnSessions = async (accessToken: string): Promise<void> => {
+  if (!env.supabaseUrl || !env.supabasePublishableKey) throw new Error('Supabase Auth is not configured');
+  const response = await fetch(`${env.supabaseUrl.replace(/\/$/, '')}/auth/v1/logout?scope=global`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${accessToken}` },
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      apikey: env.supabasePublishableKey
+    },
     signal: AbortSignal.timeout(10_000)
   });
-  if (!response.ok) throw new Error(`Failed to erase Supabase Auth user: HTTP ${response.status}`);
+  if (!response.ok && response.status !== 401) {
+    throw new Error(`Failed to revoke Supabase Auth sessions: HTTP ${response.status}`);
+  }
 };

@@ -9,15 +9,16 @@ declare global {
   }
 }
 
+const turnstileSiteKey = globalThis.__AISEO_RUNTIME_CONFIG__?.turnstileSiteKey || import.meta.env.VITE_TURNSTILE_SITE_KEY;
+
 function Turnstile({ onToken }: { onToken: (token: string | null) => void }) {
   const container = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | undefined>(undefined);
-  const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
   useEffect(() => {
-    if (!siteKey) return;
+    if (!turnstileSiteKey) return;
     const render = () => {
       if (!container.current || !window.turnstile || widgetId.current) return;
-      widgetId.current = window.turnstile.render(container.current, { sitekey: siteKey, callback: (token) => onToken(token), 'expired-callback': () => onToken(null) });
+      widgetId.current = window.turnstile.render(container.current, { sitekey: turnstileSiteKey, callback: (token) => onToken(token), 'expired-callback': () => onToken(null) });
     };
     const existing = document.querySelector<HTMLScriptElement>('script[data-aiseo-turnstile]');
     if (existing) { existing.addEventListener('load', render); render(); }
@@ -31,8 +32,8 @@ function Turnstile({ onToken }: { onToken: (token: string | null) => void }) {
       document.head.appendChild(script);
     }
     return () => { if (widgetId.current && window.turnstile) window.turnstile.remove(widgetId.current); };
-  }, [onToken, siteKey]);
-  if (!siteKey) return <p className="text-sm text-amber-300">注册验证尚未配置，公开注册已关闭。</p>;
+  }, [onToken]);
+  if (!turnstileSiteKey) return <p className="text-sm text-amber-300">注册验证尚未配置，公开注册已关闭。</p>;
   return <div ref={container} />;
 }
 
@@ -81,7 +82,7 @@ export function AuthScreen() {
       {mode !== 'forgot' && <label className="block text-sm">密码<input className="field" type="password" minLength={10} value={password} onChange={(event) => setPassword(event.target.value)} required /></label>}
       {mode === 'signup' && <Turnstile onToken={setCaptchaToken} />}
       {message && <p className="rounded-lg bg-slate-800 p-3 text-sm text-slate-200">{message}</p>}
-      <button disabled={busy || (mode === 'signup' && !import.meta.env.VITE_TURNSTILE_SITE_KEY)} className="w-full rounded-lg bg-cyan-500 px-4 py-3 font-semibold text-slate-950 disabled:opacity-50">{busy ? '处理中…' : '继续'}</button>
+      <button disabled={busy || (mode === 'signup' && !turnstileSiteKey)} className="w-full rounded-lg bg-cyan-500 px-4 py-3 font-semibold text-slate-950 disabled:opacity-50">{busy ? '处理中…' : '继续'}</button>
       <div className="flex flex-wrap gap-3 text-sm text-slate-400">
         {mode !== 'login' && <button type="button" onClick={() => setMode('login')}>返回登录</button>}
         {mode === 'login' && <><button type="button" onClick={() => setMode('signup')}>注册</button><button type="button" onClick={() => setMode('forgot')}>忘记密码</button></>}

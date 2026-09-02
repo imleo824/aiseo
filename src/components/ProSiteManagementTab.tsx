@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { WordPressSite, SiteType } from '../types/seo';
-import { KnowledgeSourcesModal } from './KnowledgeSourcesModal';
 import { GscConnectionModal } from './GscConnectionModal';
 import {
   Plus,
@@ -15,15 +14,15 @@ import {
   Languages,
   Sliders,
   X,
-  RefreshCw,
-  BookOpen
+  RefreshCw
 } from 'lucide-react';
 
 interface ProSiteManagementTabProps {
   sites: WordPressSite[];
   onUpdateSite: (siteId: string, updated: Partial<WordPressSite>) => Promise<void>;
   onDeleteSite?: (siteId: string) => Promise<void>;
-  onTestSiteConnection?: (siteId: string) => Promise<any>;
+  onTestSiteConnection?: (siteId: string) => Promise<unknown>;
+  onAuthorizeWordPress?: (siteId: string) => Promise<{ authorizationUrl: string }>;
   onSetAutopilot?: (siteId: string, enabled: boolean, acceptRisk?: boolean) => Promise<void>;
   onRefreshSites?: () => Promise<void>;
   onOpenOnboarding: () => void;
@@ -34,13 +33,13 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
   onUpdateSite,
   onDeleteSite,
   onTestSiteConnection,
+  onAuthorizeWordPress,
   onSetAutopilot,
   onRefreshSites,
   onOpenOnboarding
 }) => {
   const safeSites = sites || [];
   const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
-  const [knowledgeSite, setKnowledgeSite] = useState<WordPressSite | null>(null);
   const [gscSite, setGscSite] = useState<WordPressSite | null>(null);
   const [confirmDeleteSiteId, setConfirmDeleteSiteId] = useState<string | null>(null);
   const [confirmAutopilotSiteId, setConfirmAutopilotSiteId] = useState<string | null>(null);
@@ -51,16 +50,12 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
     niche: string;
     siteType: SiteType;
     siteLanguage: string;
-    wpUsername: string;
-    wpAppPassword: string;
   }>({
     name: '',
     domain: '',
     niche: '',
     siteType: 'WORDPRESS',
     siteLanguage: 'zh-CN',
-    wpUsername: '',
-    wpAppPassword: '',
   });
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -79,8 +74,6 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
       niche: site.niche || '',
       siteType: site.siteType || 'WORDPRESS',
       siteLanguage: site.siteLanguage || 'zh-CN',
-      wpUsername: site.wpUsername || '',
-      wpAppPassword: '',
     });
   };
 
@@ -106,21 +99,12 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
       return;
     }
 
-    // WordPress uses a username + application-password pair. Other platform
-    // types must never inherit these credentials or call the WordPress client.
-    if (editForm.siteType === 'WORDPRESS' && ((editForm.wpUsername.trim() && !editForm.wpAppPassword.trim()) || (!editForm.wpUsername.trim() && editForm.wpAppPassword.trim()))) {
-      showToast('配置 WordPress REST API 时，账号和应用密码必须同时提供');
-      return;
-    }
-
     await onUpdateSite(siteId, {
       name: trimmedName,
       domain: cleanDomain,
       niche: editForm.niche.trim() || '通用行业',
       siteType: editForm.siteType,
       siteLanguage: editForm.siteLanguage,
-      wpUsername: editForm.siteType === 'WORDPRESS' ? (editForm.wpUsername.trim() || undefined) : undefined,
-      wpAppPassword: editForm.siteType === 'WORDPRESS' ? (editForm.wpAppPassword.trim() || undefined) : undefined,
     });
 
     setEditingSiteId(null);
@@ -133,6 +117,18 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
     try { await onTestSiteConnection(editingSiteId); showToast('WordPress HTTPS、REST API、身份与发布权限验证通过'); }
     catch (error) { showToast(error instanceof Error ? error.message : 'WordPress 连接验证失败'); }
     finally { setConnectionTesting(false); }
+  };
+
+  const handleAuthorizeWordPress = async (siteId: string) => {
+    if (!onAuthorizeWordPress) return;
+    setConnectionTesting(true);
+    try {
+      const authorization = await onAuthorizeWordPress(siteId);
+      window.location.assign(authorization.authorizationUrl);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '无法启动 WordPress 官方授权');
+      setConnectionTesting(false);
+    }
   };
 
   const handleDelete = async (siteId: string) => {
@@ -266,13 +262,8 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
 
                     <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end sm:justify-start">
 
-                      <button
-                        type="button"
-                        onClick={() => setKnowledgeSite(site)}
-                        className="flex-1 sm:flex-none px-3.5 py-2.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5"
-                      >
-                        <BookOpen className="w-3.5 h-3.5 text-slate-600" />
-                        <span>知识来源</span>
+                      <button type="button" onClick={() => void handleAuthorizeWordPress(site.id)} disabled={connectionTesting || !onAuthorizeWordPress} className={`flex-1 sm:flex-none px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition disabled:opacity-50 ${site.connectorStatus === 'CONNECTED' ? 'bg-white text-slate-700 border-slate-200' : 'bg-slate-900 text-white border-slate-900'}`}>
+                        {site.connectorStatus === 'CONNECTED' ? '重新授权 WordPress' : '授权 WordPress'}
                       </button>
 
                       <button type="button" onClick={() => setGscSite(site)} className={`flex-1 sm:flex-none px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition ${site.gscConnected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-slate-700 border-slate-200'}`}>GSC：{site.gscConnected ? '已连接' : '未连接'}</button>
@@ -416,47 +407,21 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                 <div className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center justify-between pb-2 border-b border-slate-100">
                   <div className="flex items-center gap-1.5">
                     <Key className="w-4 h-4 text-blue-600" />
-                    <span>2. 接口凭证</span>
+                    <span>2. WordPress 授权状态</span>
                   </div>
                 </div>
 
-                {editForm.siteType === 'WORDPRESS' ? (
                 <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-200/50 pb-1.5">
                     <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
                       <Layers className="w-3.5 h-3.5 text-blue-600" />
-                      <span>WordPress 凭证</span>
+                      <span>凭证由 WordPress 官方授权流程管理，不在本页显示或编辑</span>
                     </span>
                     <button type="button" onClick={() => void handleTestWordPress()} disabled={connectionTesting || !onTestSiteConnection} className="px-2.5 py-1 bg-white border border-slate-200 text-slate-700 text-[11px] rounded-lg font-medium flex items-center gap-1 disabled:opacity-50"><RefreshCw className={`w-3 h-3 ${connectionTesting ? 'animate-spin' : ''}`} />{connectionTesting ? '验证中' : '测试连接'}</button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-semibold text-slate-600 block">账号</label>
-                      <input
-                        type="text"
-                        placeholder="用户名"
-                        value={editForm.wpUsername}
-                        onChange={(e) => setEditForm({ ...editForm, wpUsername: e.target.value })}
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200/80 rounded-lg text-slate-900 text-xs focus:outline-none focus:border-slate-400"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-semibold text-slate-600">应用密码</label>
-                      </div>
-                      <input
-                        type="password"
-                        placeholder="密码"
-                        value={editForm.wpAppPassword}
-                        onChange={(e) => setEditForm({ ...editForm, wpAppPassword: e.target.value })}
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200/80 rounded-lg text-slate-900 text-xs font-mono focus:outline-none focus:border-slate-400"
-                      />
-                    </div>
-                  </div>
+                  <p className="text-[11px] leading-5 text-slate-600">如需更换账号或凭证，请使用站点列表中的“重新授权 WordPress”。授权回调会自动加密保存新凭证并验证发布权限。</p>
                 </div>
-                ) : null}
               </div>
 
 
@@ -484,9 +449,6 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
         </div>
       )}
 
-      {knowledgeSite && (
-        <KnowledgeSourcesModal site={knowledgeSite} onClose={() => setKnowledgeSite(null)} />
-      )}
       {gscSite && (
         <GscConnectionModal site={gscSite} onClose={() => setGscSite(null)} onChanged={onRefreshSites || (async () => undefined)} />
       )}

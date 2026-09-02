@@ -58,8 +58,8 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
       if (res.packages) {
         setPackages(res.packages);
       }
-    } catch (err: any) {
-      setError(err?.message || '加载定价配置失败');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '加载定价配置失败');
     } finally {
       setLoading(false);
     }
@@ -87,8 +87,8 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
       setTimeout(() => {
         setSuccessMsg(null);
       }, 4000);
-    } catch (err: any) {
-      setError(err?.message || '保存配置失败');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '保存配置失败');
     } finally {
       setSaving(false);
     }
@@ -113,7 +113,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
     setActionPricing(next);
   };
 
-  const handleUpdatePackage = (index: number, field: keyof UsdtPackage, val: any) => {
+  const handleUpdatePackage = <K extends keyof UsdtPackage>(index: number, field: K, val: UsdtPackage[K]) => {
     const next = [...packages];
     next[index] = { ...next[index], [field]: val };
     setPackages(next);

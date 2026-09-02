@@ -1,22 +1,27 @@
 export type Organization = { id: string; name: string; creditBalanceMicros: string; role: 'OWNER' | 'ADMIN' | 'EDITOR' | 'VIEWER' };
 export type Me = { profile: { id: string; email: string; displayName?: string; platformRole: 'USER' | 'PLATFORM_ADMIN' }; organizations: Organization[] };
 export type Site = { id: string; name: string; domain: string; language: string; wordpressStatus: string; wordpressUser?: string; wordpressVerifiedAt?: string; publishPolicy: string; manualPublishSuccesses: number; autoPublishEnabledAt?: string; createdAt: string; integrations: Array<{ id: string; provider: 'GSC'; propertyId?: string; status: string; lastSyncedAt?: string; lastErrorMessage?: string }> };
-export type KnowledgeSource = { id: string; siteId?: string; type: string; title: string; summary?: string; status: string; createdAt: string };
 export type Opportunity = { id: string; siteId: string; title: string; type: string; targetUrl?: string; keyword?: string; searchVolume?: number; keywordDifficulty?: number; allintitleCount?: number; roiScoreMicros?: string; expectedValueMicros?: string; confidenceMicros?: string; formulaVersion: string; status: string };
-export type SiteGrowthState = {
+export type GrowthStageCode = 'UNDERSTAND' | 'DISCOVER' | 'DECIDE' | 'EXECUTE' | 'LEARN';
+export type GrowthRunStage = {
   id: string;
+  runId: string;
   siteId: string;
-  status: 'NEEDS_BASELINE' | 'BASELINING' | 'ACTIVE' | 'OBSERVING' | 'PAUSED' | 'BLOCKED';
-  autonomyLevel: 'OBSERVE_ONLY' | 'GUIDED' | 'AUTONOMOUS';
-  stateVersion: string;
-  baselineCompletedAt?: string;
-  lastCycleAt?: string;
-  nextDecisionAt?: string;
-  lastDataWatermark?: string;
-  blockedReason?: string;
+  stage: GrowthStageCode;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'SKIPPED' | 'BLOCKED' | 'FAILED';
+  summary?: string;
+  processedCount: number;
+  totalCount?: number;
+  evidence: Array<Record<string, unknown>>;
+  errorCode?: string;
+  errorMessage?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  updatedAt?: string;
 };
 export type GrowthAction = {
   id: string;
+  runId: string;
   type: string;
   status: string;
   riskLevel: 'A' | 'B' | 'C' | 'D';
@@ -25,30 +30,22 @@ export type GrowthAction = {
   expectedValueMicros?: string;
   plan: Record<string, unknown>;
   createdAt: string;
-  decision: { rank: number; scoreMicros: string; rationale: Record<string, unknown> };
+  decision?: { rank: number; scoreMicros: string; rationale: Record<string, unknown> };
 };
-export type GrowthStatus = {
-  state: SiteGrowthState | null;
-  cycles: Array<{ id: string; status: string; stage: string; trigger: string; summary?: Record<string, unknown>; errorMessage?: string; createdAt: string; finishedAt?: string }>;
-  opportunities: Opportunity[];
-  actions: GrowthAction[];
-  readiness: {
-    canStart: boolean;
-    gscReady: boolean;
-    knowledgeReady: boolean;
-    wordpressReady: boolean;
-    executionMode: 'OBSERVE_ONLY' | 'REVIEW_GATED';
-    blockers: Array<'GSC_CONNECTION_REQUIRED' | 'KNOWLEDGE_SOURCE_REQUIRED'>;
-  };
-  metrics: {
-    organicClicks: number | null;
-    previousOrganicClicks: number | null;
-    organicClickChangePct: number | null;
-    attributedLiftMicros: string | null;
-    attributionStatus: 'AVAILABLE' | 'INSUFFICIENT_OBSERVATION';
-    source: 'GSC' | 'UNAVAILABLE';
-    collectedAt: string | null;
-  };
+export type GrowthProgram = {
+  id: string;
+  siteId: string;
+  mode: 'ONCE' | 'CONTINUOUS';
+  inputType: 'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE';
+  inputValue: string;
+  status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'BLOCKED';
+  nextRunAt?: string;
+  lastRunAt?: string;
+  deliveredRunCount: number;
+  consecutiveWins: number;
+  lastError?: string;
+  createdAt: string;
+  runs?: GrowthRun[];
 };
 export type JobRun = {
   id: string;
@@ -60,21 +57,27 @@ export type JobRun = {
   createdAt: string;
   finishedAt?: string;
 };
-export type ExecutionRun = {
+export type GrowthRun = {
   id: string;
   siteId: string;
-  automationTaskId?: string;
+  programId: string;
   jobRunId?: string;
-  mode: 'ONCE' | 'SCHEDULED';
-  sourceType: 'KEYWORD' | 'REWRITE_URL' | 'COMPETITOR_URL';
-  sourceValue?: string;
-  status: 'QUEUED' | 'RUNNING' | 'AWAITING_REVIEW' | 'PUBLISHING' | 'MONITORING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
-  stage: 'INTAKE' | 'SOURCE_CAPTURE' | 'KEYWORD_RESEARCH' | 'CONTENT_GENERATION' | 'QUALITY_GATE' | 'PUBLISHING' | 'MONITORING' | 'COMPLETED';
+  trigger: 'USER' | 'SCHEDULED' | 'DATA_CHANGE' | 'OBSERVATION';
+  status: 'QUEUED' | 'RUNNING' | 'NEEDS_REVIEW' | 'DELIVERED' | 'BLOCKED' | 'FAILED' | 'CANCELLED';
+  currentStage: GrowthStageCode;
   resolvedKeyword?: string;
+  selectedActionType?: string;
+  targetUrl?: string;
   opportunityId?: string;
   draftId?: string;
+  delivery?: Record<string, unknown>;
+  observation?: Record<string, unknown>;
   errorCode?: string;
   errorMessage?: string;
+  stages: GrowthRunStage[];
+  actions?: GrowthAction[];
+  draft?: Draft;
+  measurement?: { gscConnected: boolean; lastSyncedAt?: string; trafficClaimAllowed: boolean };
   createdAt: string;
   updatedAt: string;
 };

@@ -1,9 +1,9 @@
-import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
-import { DraftStatus, ExecutionMode, ExecutionSourceType, GrowthCycleTrigger, GrowthStateStatus, JobType, OrganizationRole, Prisma, PublishPolicy, ReviewDecision, SiteConnectionStatus } from '@prisma/client';
+import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import { DraftStatus, GrowthActionStatus, GrowthInputType, GrowthProgramMode, GrowthProgramStatus, GrowthRunStatus, JobType, OrganizationRole, Prisma, PublishPolicy, ReviewDecision, SiteConnectionStatus } from '@prisma/client';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../domain/errors';
-import { eraseOwnAuthUser, revalidateSensitiveSession, requireAuth } from './auth';
+import { revokeOwnSessions, revalidateSensitiveSession, requireAuth } from './auth';
 import { billingService } from './billingService';
 import { asyncRoute, cursorPage, parseBody, sendData } from './http';
 import { executeIdempotent, requireIdempotencyKey } from './idempotency';
@@ -13,48 +13,24 @@ import { currentEncryptionKeyVersion, encryptSecret } from './crypto';
 import { env } from './env';
 import { gscProvider } from './providers';
 import { wordPressService } from './wordpress';
-import { growthService } from './growthService';
-import { gscComparisonWindow, readGscRows } from './growthEngine';
-import { capturePublicSource } from './sourceFetcher';
-import { executionService } from './executionService';
-import { isValidTimezone } from './schedule';
+import { gscComparisonWindow } from './growthEngine';
+import { growthProgramService } from './growthProgramService';
 
 const roleRank: Record<OrganizationRole, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2, OWNER: 3 };
 const idSchema = z.string().uuid();
 const languageSchema = z.enum(['zh-CN', 'en-US']);
 const siteSchema = z.object({ name: z.string().trim().min(1).max(120), domain: z.string().trim().min(3).max(253), language: languageSchema.default('zh-CN') });
 const siteUpdateSchema = z.object({ name: z.string().trim().min(1).max(120).optional(), domain: z.string().trim().min(3).max(253).optional(), language: languageSchema.optional() }).refine((value) => Object.keys(value).length > 0, '至少提供一个站点字段');
-const credentialSchema = z.object({ username: z.string().trim().min(1).max(200), applicationPassword: z.string().min(8).max(300) });
 const memberSchema = z.object({ profileId: z.string().uuid(), role: z.enum(['ADMIN', 'EDITOR', 'VIEWER']) });
-const knowledgeSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('TEXT'), siteId: z.string().uuid().optional(), title: z.string().trim().min(1).max(200), content: z.string().trim().min(40).max(200_000) }),
-  z.object({ type: z.literal('ORIGINAL_RESEARCH'), siteId: z.string().uuid().optional(), title: z.string().trim().min(1).max(200), content: z.string().trim().min(40).max(200_000) }),
-  z.object({ type: z.literal('ALLOWLISTED_URL'), siteId: z.string().uuid().optional(), title: z.string().trim().min(1).max(200), sourceUrl: z.string().url().max(2_000) })
+const growthInputSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('KEYWORD'), value: z.string().trim().min(2).max(200) }),
+  z.object({ type: z.literal('REFERENCE_URL'), value: z.string().url().max(2_000).refine((value) => value.startsWith('https://'), '参考文章必须使用 HTTPS') }),
+  z.object({ type: z.literal('COMPETITOR_SITE'), value: z.string().url().max(2_000).refine((value) => value.startsWith('https://'), '竞品站点必须使用 HTTPS') })
 ]);
-const keywordScanSchema = z.object({ siteId: z.string().uuid(), seedKeyword: z.string().trim().min(1).max(200) });
-const contentRunSchema = z.object({ siteId: z.string().uuid(), opportunityId: z.string().uuid(), knowledgeSourceIds: z.array(z.string().uuid()).min(1).max(20) });
-const executionSourceSchema = z.discriminatedUnion('sourceType', [
-  z.object({ sourceType: z.literal('KEYWORD'), sourceValue: z.string().trim().min(2).max(200) }),
-  z.object({ sourceType: z.literal('REWRITE_URL'), sourceValue: z.string().url().max(2_000).refine((value) => value.startsWith('https://'), '二创链接必须使用 HTTPS') }),
-  z.object({ sourceType: z.literal('COMPETITOR_URL'), sourceValue: z.string().url().max(2_000).refine((value) => value.startsWith('https://'), '竞品站点必须使用 HTTPS') })
-]);
-const automationConfigSchema = z.object({
-  sourceType: z.enum(['KEYWORD', 'REWRITE_URL', 'COMPETITOR_URL']),
-  sourceValue: z.string().trim().min(2).max(2_000),
-  minutes: z.number().int().min(15).max(43_200).optional(),
-  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
-  timezone: z.string().trim().min(1).max(100).refine(isValidTimezone, '无效的 IANA 时区').optional()
-}).superRefine((value, context) => {
-  if (value.sourceType !== 'KEYWORD') {
-    try {
-      const url = new URL(value.sourceValue);
-      if (url.protocol !== 'https:') context.addIssue({ code: 'custom', path: ['sourceValue'], message: '链接必须使用 HTTPS' });
-    } catch { context.addIssue({ code: 'custom', path: ['sourceValue'], message: '请输入有效的完整链接' }); }
-  }
-});
-const automationSchema = z.object({ siteId: z.string().uuid(), name: z.string().trim().min(1).max(120), scheduleType: z.enum(['INTERVAL', 'DAILY', 'WEEKLY']), scheduleConfig: automationConfigSchema, nextRunAt: z.string().datetime(), enabled: z.boolean().default(true) }).superRefine((value, context) => {
-  if (value.scheduleType === 'INTERVAL' && !value.scheduleConfig.minutes) context.addIssue({ code: 'custom', path: ['scheduleConfig', 'minutes'], message: '间隔任务必须提供 minutes' });
-  if (value.scheduleType !== 'INTERVAL' && (!value.scheduleConfig.time || !value.scheduleConfig.timezone)) context.addIssue({ code: 'custom', path: ['scheduleConfig'], message: '日历任务必须提供当地时间和 IANA 时区' });
+const growthProgramSchema = z.object({
+  mode: z.enum(['ONCE', 'CONTINUOUS']),
+  input: growthInputSchema,
+  budgetLimitMicros: z.string().regex(/^\d+$/).transform(BigInt).optional()
 });
 
 const userId = (request: Request): string => {
@@ -86,6 +62,7 @@ const idempotencyKey = (request: Request): string => requireIdempotencyKey(reque
 export const apiRouter = Router();
 
 type GscState = { organizationId: string; profileId: string; siteId: string; propertyId: string; nonce: string; expiresAt: number };
+type WordPressState = { organizationId: string; profileId: string; siteId: string; nonce: string; expiresAt: number };
 const signGscState = (state: GscState): string => {
   if (!env.gscStateSecret) throw new ValidationError('GSC_STATE_SECRET 尚未配置');
   const body = Buffer.from(JSON.stringify(state)).toString('base64url');
@@ -98,6 +75,21 @@ const readGscState = (value: string): GscState => {
   if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) throw new ValidationError('GSC OAuth state 签名无效');
   const state = JSON.parse(Buffer.from(body, 'base64url').toString()) as GscState;
   if (state.expiresAt < Date.now()) throw new ValidationError('GSC OAuth state 已过期');
+  return state;
+};
+
+const signWordPressState = (state: WordPressState): string => {
+  if (!env.gscStateSecret) throw new ValidationError('OAuth state secret 尚未配置');
+  const body = Buffer.from(JSON.stringify(state)).toString('base64url');
+  return `${body}.${createHmac('sha256', env.gscStateSecret).update(`wordpress:${body}`).digest('base64url')}`;
+};
+const readWordPressState = (value: string): WordPressState => {
+  const [body, signature] = value.split('.');
+  if (!body || !signature || !env.gscStateSecret) throw new ValidationError('WordPress OAuth state 无效');
+  const expected = createHmac('sha256', env.gscStateSecret).update(`wordpress:${body}`).digest('base64url');
+  if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) throw new ValidationError('WordPress OAuth state 签名无效');
+  const state = JSON.parse(Buffer.from(body, 'base64url').toString()) as WordPressState;
+  if (state.expiresAt < Date.now()) throw new ValidationError('WordPress OAuth state 已过期');
   return state;
 };
 
@@ -126,6 +118,33 @@ apiRouter.get('/integrations/gsc/callback', asyncRoute(async (request, response)
     await tx.auditEvent.create({ data: { organizationId: state.organizationId, actorId: state.profileId, action: 'GSC_AUTHORIZED', targetType: 'site', targetId: state.siteId, metadata: { propertyId: state.propertyId, initialSyncQueued: true } } });
   });
   response.redirect('/?gsc=syncing');
+}));
+
+apiRouter.get('/integrations/wordpress/callback', asyncRoute(async (request, response) => {
+  const state = readWordPressState(String(request.query.state || ''));
+  const siteUrl = String(request.query.site_url || '');
+  const username = String(request.query.user_login || '');
+  const applicationPassword = String(request.query.password || '');
+  if (!siteUrl || !username || !applicationPassword) throw new ValidationError('WordPress 未返回完整授权凭证');
+  const site = await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
+    await assertRole(tx, state.profileId, state.organizationId, OrganizationRole.EDITOR);
+    const pending = await tx.idempotencyKey.findFirst({ where: { organizationId: state.organizationId, profileId: state.profileId, key: state.nonce, requestHash: 'wordpress-oauth-state', expiresAt: { gt: new Date() } } });
+    if (!pending) throw new ConflictError('WordPress OAuth state 已使用或不存在');
+    const found = await tx.site.findFirst({ where: { id: state.siteId, organizationId: state.organizationId } });
+    if (!found) throw new NotFoundError('站点不存在');
+    const authorizedOrigin = new URL(siteUrl).origin;
+    const expectedOrigin = new URL(found.domain.startsWith('https://') ? found.domain : `https://${found.domain}`).origin;
+    if (authorizedOrigin !== expectedOrigin) throw new ValidationError('WordPress 授权站点与绑定站点不一致');
+    return found;
+  });
+  const encrypted = wordPressService.encrypt({ username, applicationPassword });
+  const verified = await wordPressService.testConnection(site.domain, encrypted);
+  await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
+    await tx.site.update({ where: { id: state.siteId }, data: { wordpressCredentials: encrypted, wordpressCredentialKeyVersion: currentEncryptionKeyVersion(), wordpressStatus: SiteConnectionStatus.CONNECTED, wordpressUser: verified.user, wordpressVerifiedAt: new Date(), publishPolicy: PublishPolicy.MANUAL_REVIEW } });
+    await tx.idempotencyKey.deleteMany({ where: { organizationId: state.organizationId, profileId: state.profileId, key: state.nonce } });
+    await tx.auditEvent.create({ data: { organizationId: state.organizationId, actorId: state.profileId, action: 'WORDPRESS_AUTHORIZED', targetType: 'site', targetId: state.siteId, metadata: { user: verified.user, siteName: verified.siteName, authorization: 'APPLICATION_PASSWORD_FLOW' } } });
+  });
+  response.redirect(`/?wordpress=connected&siteId=${encodeURIComponent(state.siteId)}`);
 }));
 
 apiRouter.use(requireAuth);
@@ -158,17 +177,21 @@ apiRouter.get('/me/export', asyncRoute(async (request, response) => {
   const data = await withRequestScope({ profileId }, async (tx) => {
     const memberships = await tx.organizationMember.findMany({ where: { profileId }, include: { organization: true } });
     const ids = memberships.map(({ organizationId: id }) => id);
-    const [sites, knowledgeSources, snapshots, opportunities, drafts, ledger, payments, auditEvents] = await Promise.all([
+    const [sites, knowledgeSources, snapshots, opportunities, growthPrograms, growthRuns, growthActions, growthObservations, drafts, ledger, payments, auditEvents] = await Promise.all([
       tx.site.findMany({ where: { organizationId: { in: ids } }, select: { id: true, organizationId: true, name: true, domain: true, language: true, wordpressStatus: true, publishPolicy: true, createdAt: true } }),
       tx.knowledgeSource.findMany({ where: { organizationId: { in: ids } } }),
       tx.dataSnapshot.findMany({ where: { organizationId: { in: ids } } }),
       tx.opportunity.findMany({ where: { organizationId: { in: ids } } }),
+      tx.growthProgram.findMany({ where: { organizationId: { in: ids } } }),
+      tx.growthRun.findMany({ where: { organizationId: { in: ids } }, include: { stages: true } }),
+      tx.growthAction.findMany({ where: { organizationId: { in: ids } } }),
+      tx.growthObservation.findMany({ where: { organizationId: { in: ids } } }),
       tx.contentDraft.findMany({ where: { organizationId: { in: ids } }, include: { reviews: true, publishAttempts: true } }),
       tx.ledgerEntry.findMany({ where: { organizationId: { in: ids } } }),
       tx.paymentIntent.findMany({ where: { organizationId: { in: ids } } }),
       tx.auditEvent.findMany({ where: { organizationId: { in: ids } }, take: 10_000 })
     ]);
-    return { exportedAt: new Date().toISOString(), profile: request.authUser, organizations: memberships, sites, knowledgeSources, snapshots, opportunities, drafts, ledger, payments, auditEvents };
+    return { exportedAt: new Date().toISOString(), profile: request.authUser, organizations: memberships, sites, knowledgeSources, snapshots, opportunities, growthPrograms, growthRuns, growthActions, growthObservations, drafts, ledger, payments, auditEvents };
   });
   response.setHeader('Content-Disposition', `attachment; filename="aiseo-export-${new Date().toISOString().slice(0, 10)}.json"`);
   sendData(response, data);
@@ -182,8 +205,8 @@ apiRouter.delete('/me', asyncRoute(async (request, response) => {
   idempotencyKey(request);
   if (!request.accessToken) throw new ForbiddenError('会话令牌缺失');
   await withRequestScope({ profileId }, async (tx) => { await tx.$executeRaw`SELECT private.request_account_deletion()`; });
-  await eraseOwnAuthUser(request.accessToken);
-  sendData(response, { deletionRequested: true, purgeAfter: new Date(Date.now() + 30 * 86_400_000).toISOString() });
+  await revokeOwnSessions(request.accessToken);
+  sendData(response, { deletionRequested: true, sessionsRevoked: true, purgeAfter: new Date(Date.now() + 30 * 86_400_000).toISOString() }, 202);
 }));
 
 apiRouter.get('/organizations', asyncRoute(async (request, response) => {
@@ -284,20 +307,35 @@ apiRouter.delete('/organizations/:organizationId/sites/:siteId', asyncRoute(asyn
   sendData(response, outcome.data, outcome.statusCode);
 }));
 
-apiRouter.put('/organizations/:organizationId/sites/:siteId/wordpress-credentials', asyncRoute(async (request, response) => {
+apiRouter.post('/organizations/:organizationId/sites/:siteId/wordpress/authorize', asyncRoute(async (request, response) => {
   await revalidateSensitiveSession(request);
-  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request), input = parseBody(credentialSchema, request);
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request);
+  const site = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { siteId, username: input.username }, execute: async () => {
-      const site = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } });
-      if (!site) throw new NotFoundError('站点不存在');
-      const encrypted = wordPressService.encrypt(input);
-      await tx.site.update({ where: { id: siteId }, data: { wordpressCredentials: encrypted, wordpressCredentialKeyVersion: currentEncryptionKeyVersion(), wordpressStatus: SiteConnectionStatus.VERIFYING, wordpressUser: null, wordpressVerifiedAt: null, publishPolicy: PublishPolicy.MANUAL_REVIEW } });
-      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'WORDPRESS_CREDENTIALS_UPDATED', targetType: 'site', targetId: siteId } });
-      return { statusCode: 200, data: { configured: true, status: SiteConnectionStatus.VERIFYING } };
-    } });
+    const found = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } });
+    if (!found) throw new NotFoundError('站点不存在');
+    return found;
   });
+  const endpoint = await wordPressService.applicationPasswordAuthorizationUrl(site.domain);
+  const nonce = randomUUID();
+  const state = signWordPressState({ organizationId: orgId, profileId, siteId, nonce, expiresAt: Date.now() + 10 * 60_000 });
+  const authorizationUrl = new URL(endpoint);
+  authorizationUrl.searchParams.set('app_name', 'AISEO');
+  authorizationUrl.searchParams.set('app_id', site.id);
+  authorizationUrl.searchParams.set('success_url', `${env.appBaseUrl}/api/v1/integrations/wordpress/callback?state=${encodeURIComponent(state)}`);
+  authorizationUrl.searchParams.set('reject_url', `${env.appBaseUrl}/?wordpress=cancelled&siteId=${encodeURIComponent(siteId)}`);
+  const outcome = await withRequestScope({ profileId, organizationId: orgId }, (tx) => executeIdempotent({
+    tx,
+    organizationId: orgId,
+    profileId,
+    key,
+    body: { siteId },
+    execute: async () => {
+      await tx.idempotencyKey.create({ data: { organizationId: orgId, profileId, key: nonce, requestHash: 'wordpress-oauth-state', expiresAt: new Date(Date.now() + 10 * 60_000) } });
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'WORDPRESS_AUTHORIZATION_STARTED', targetType: 'site', targetId: siteId } });
+      return { statusCode: 200, data: { authorizationUrl: authorizationUrl.toString(), expiresInSeconds: 600 } };
+    }
+  }));
   sendData(response, outcome.data, outcome.statusCode);
 }));
 
@@ -340,7 +378,7 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/auto-publish', asyn
         tx.knowledgeSource.count({ where: { organizationId: orgId, OR: [{ siteId }, { siteId: null }], status: 'LIVE' } })
       ]);
       if (site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !site.wordpressVerifiedAt) throw new ConflictError('WordPress 连接未通过验证');
-      if (snapshotCount < 1 || knowledgeCount < 1) throw new ConflictError('至少需要一个真实数据源和一个知识来源');
+      if (snapshotCount < 1 || knowledgeCount < 1) throw new ConflictError('至少需要一个真实数据快照和系统自动建立的站点事实语料');
       if (site.manualPublishSuccesses < 3) throw new ConflictError('需要连续完成 3 次人工批准并成功发布');
       if (!input.acceptRisk) throw new ConflictError('必须接受自动发布风险条款');
       const now = new Date();
@@ -354,17 +392,20 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/auto-publish', asyn
 }));
 
 apiRouter.post('/organizations/:organizationId/sites/:siteId/gsc/authorize', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId);
+  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request);
   const input = parseBody(z.object({ propertyId: z.string().trim().min(3).max(500) }), request);
   if (!input.propertyId.startsWith('sc-domain:') && !/^https:\/\//.test(input.propertyId)) throw new ValidationError('GSC 属性必须是 sc-domain: 或 HTTPS URL');
   const nonce = randomUUID();
-  const url = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
-    if (!await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } })) throw new NotFoundError('站点不存在');
-    await tx.idempotencyKey.create({ data: { organizationId: orgId, profileId, key: nonce, requestHash: 'gsc-oauth-state', expiresAt: new Date(Date.now() + 10 * 60_000) } });
-    return gscProvider.authorizationUrl(signGscState({ organizationId: orgId, profileId, siteId, propertyId: input.propertyId, nonce, expiresAt: Date.now() + 10 * 60_000 }));
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { siteId, ...input }, execute: async () => {
+      if (!await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } })) throw new NotFoundError('站点不存在');
+      await tx.idempotencyKey.create({ data: { organizationId: orgId, profileId, key: nonce, requestHash: 'gsc-oauth-state', expiresAt: new Date(Date.now() + 10 * 60_000) } });
+      const authorizationUrl = gscProvider.authorizationUrl(signGscState({ organizationId: orgId, profileId, siteId, propertyId: input.propertyId, nonce, expiresAt: Date.now() + 10 * 60_000 }));
+      return { statusCode: 200, data: { authorizationUrl } };
+    } });
   });
-  sendData(response, { authorizationUrl: url });
+  sendData(response, outcome.data, outcome.statusCode);
 }));
 
 apiRouter.post('/organizations/:organizationId/sites/:siteId/gsc/sync', asyncRoute(async (request, response) => {
@@ -397,223 +438,82 @@ apiRouter.delete('/organizations/:organizationId/sites/:siteId/gsc', asyncRoute(
   sendData(response, { disconnected: true });
 }));
 
-apiRouter.post('/organizations/:organizationId/sites/:siteId/growth/start', asyncRoute(async (request, response) => {
+apiRouter.post('/organizations/:organizationId/sites/:siteId/growth-programs', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request);
-  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { siteId }, execute: async () => {
-      const [site, connection, knowledgeCount, latestSnapshot] = await Promise.all([
-        tx.site.findFirst({ where: { id: siteId, organizationId: orgId } }),
-        tx.integrationConnection.findFirst({ where: { organizationId: orgId, siteId, provider: 'GSC' } }),
-        tx.knowledgeSource.count({ where: { organizationId: orgId, status: 'LIVE', OR: [{ siteId }, { siteId: null }] } }),
-        tx.dataSnapshot.findFirst({ where: { organizationId: orgId, siteId, source: 'GSC', status: 'LIVE', comparisonSnapshotId: { not: null } }, orderBy: [{ periodEnd: 'desc' }, { fetchedAt: 'desc' }] })
-      ]);
-      if (!site) throw new NotFoundError('站点不存在');
-      // Discovery and learning can safely run in observe-only mode before a
-      // publishing executor exists. WordPress becomes an execution gate, not
-      // an artificial prerequisite for collecting reality.
-      if (!connection?.propertyId || connection.status !== SiteConnectionStatus.CONNECTED) throw new ConflictError('开始增长前必须完成 GSC 授权与连接验证');
-      if (!knowledgeCount) throw new ConflictError('开始增长前必须提供至少一个真实业务知识来源');
-
-      const state = await tx.siteGrowthState.upsert({
-        where: { siteId },
-        create: { organizationId: orgId, siteId, status: latestSnapshot ? GrowthStateStatus.ACTIVE : GrowthStateStatus.BASELINING },
-        update: { status: latestSnapshot ? GrowthStateStatus.ACTIVE : GrowthStateStatus.BASELINING, pausedAt: null, blockedReason: null }
-      });
-
-      let cycle = null;
-      let job;
-      let phase: 'ANALYZING_REALITY' | 'SYNCING_REALITY';
-      if (latestSnapshot) {
-        const created = await growthService.createCycle(tx, { organizationId: orgId, siteId, trigger: GrowthCycleTrigger.MANUAL_START, idempotencyKey: `growth:${siteId}:${latestSnapshot.id}`, inputWatermark: latestSnapshot.fetchedAt });
-        await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_GROWTH_STARTED', targetType: 'site', targetId: siteId, metadata: { cycleId: created.cycle.id, sourceSnapshotId: latestSnapshot.id } } });
-        cycle = created.cycle;
-        job = created.job;
-        phase = 'ANALYZING_REALITY';
-      } else {
-        const end = new Date(Date.now() - 3 * 86_400_000);
-        const start = new Date(end.getTime() - 27 * 86_400_000);
-        const date = (value: Date) => value.toISOString().slice(0, 10);
-        job = await jobService.create(tx, {
-          organizationId: orgId,
-          type: JobType.GSC_SYNC,
-          idempotencyKey: `growth-baseline:${siteId}:${date(end)}`,
-          payload: { connectionId: connection.id, siteId, growthBaseline: true, startDate: date(start), endDate: date(end) }
-        });
-        await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_GROWTH_BASELINE_REQUESTED', targetType: 'site', targetId: siteId, metadata: { syncJobId: job.id } } });
-        phase = 'SYNCING_REALITY';
-      }
-      return { statusCode: 202, data: { state, cycle, job, phase } };
-    } });
-  });
-  sendData(response, outcome.data, outcome.statusCode);
-}));
-
-apiRouter.post('/organizations/:organizationId/sites/:siteId/growth/pause', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request);
-  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { siteId }, execute: async () => {
-      const state = await growthService.pause(tx, orgId, siteId);
-      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_GROWTH_PAUSED', targetType: 'site', targetId: siteId } });
-      return { statusCode: 200, data: { state } };
-    } });
-  });
-  sendData(response, outcome.data, outcome.statusCode);
-}));
-
-apiRouter.get('/organizations/:organizationId/sites/:siteId/growth', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId);
-  const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const [site, knowledgeCount, state, cycles, opportunities, actions, snapshotPair, observations] = await Promise.all([
-      tx.site.findFirst({
-        where: { id: siteId, organizationId: orgId },
-        select: {
-          wordpressStatus: true,
-          wordpressVerifiedAt: true,
-          integrations: { where: { provider: 'GSC' }, select: { status: true, propertyId: true }, take: 1 }
-        }
-      }),
-      tx.knowledgeSource.count({ where: { organizationId: orgId, status: 'LIVE', OR: [{ siteId }, { siteId: null }] } }),
-      tx.siteGrowthState.findUnique({ where: { siteId } }),
-      tx.growthCycle.findMany({ where: { organizationId: orgId, siteId }, orderBy: { createdAt: 'desc' }, take: 20 }),
-      tx.opportunity.findMany({ where: { organizationId: orgId, siteId, status: 'OPEN', expectedValueMicros: { not: null } }, orderBy: { expectedValueMicros: 'desc' }, take: 20 }),
-      tx.growthAction.findMany({ where: { organizationId: orgId, siteId }, include: { decision: true }, orderBy: { createdAt: 'desc' }, take: 20 }),
-      tx.dataSnapshot.findFirst({
-        where: { organizationId: orgId, siteId, source: 'GSC', status: 'LIVE', comparisonSnapshotId: { not: null } },
-        include: { comparisonSnapshot: true },
-        orderBy: [{ periodEnd: 'desc' }, { fetchedAt: 'desc' }]
-      }),
-      tx.growthObservation.findMany({ where: { organizationId: orgId, siteId, status: 'EVALUATED' }, orderBy: { observedAt: 'desc' }, take: 100 })
-    ]);
-    if (!site) throw new NotFoundError('站点不存在');
-    const gscConnection = site.integrations[0];
-    const gscReady = gscConnection?.status === SiteConnectionStatus.CONNECTED && Boolean(gscConnection.propertyId);
-    const wordpressReady = site.wordpressStatus === SiteConnectionStatus.CONNECTED && Boolean(site.wordpressVerifiedAt);
-    const knowledgeReady = knowledgeCount > 0;
-    const currentRows = readGscRows(snapshotPair?.payload);
-    const previousRows = readGscRows(snapshotPair?.comparisonSnapshot?.payload);
-    const currentClicks = currentRows.reduce((sum, row) => sum + row.clicks, 0);
-    const previousClicks = previousRows.reduce((sum, row) => sum + row.clicks, 0);
-    const attributedLiftMicros = observations.reduce((sum, item) => item.outcome === 'WIN' && item.estimatedLiftMicros ? sum + item.estimatedLiftMicros : sum, 0n);
-    return {
-      state,
-      cycles,
-      opportunities,
-      actions,
-      readiness: {
-        canStart: gscReady && knowledgeReady,
-        gscReady,
-        knowledgeReady,
-        wordpressReady,
-        executionMode: wordpressReady ? 'REVIEW_GATED' : 'OBSERVE_ONLY',
-        blockers: [
-          ...(!gscReady ? ['GSC_CONNECTION_REQUIRED'] : []),
-          ...(!knowledgeReady ? ['KNOWLEDGE_SOURCE_REQUIRED'] : [])
-        ]
-      },
-      metrics: {
-        organicClicks: currentRows.length ? currentClicks : null,
-        previousOrganicClicks: previousRows.length ? previousClicks : null,
-        organicClickChangePct: previousRows.length && previousClicks > 0 ? (currentClicks - previousClicks) / previousClicks * 100 : null,
-        attributedLiftMicros: observations.length ? attributedLiftMicros : null,
-        attributionStatus: observations.length ? 'AVAILABLE' : 'INSUFFICIENT_OBSERVATION',
-        source: snapshotPair ? 'GSC' : 'UNAVAILABLE',
-        collectedAt: snapshotPair?.fetchedAt || null
-      }
-    };
-  });
-  sendData(response, result);
-}));
-
-apiRouter.get('/organizations/:organizationId/knowledge-sources', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
-  const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const rows = await tx.knowledgeSource.findMany({ where: { organizationId: orgId }, orderBy: { id: 'asc' }, take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
-    return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
-  });
-  sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
-}));
-
-apiRouter.post('/organizations/:organizationId/knowledge-sources', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), key = idempotencyKey(request), input = parseBody(knowledgeSchema, request);
-  const imported = input.type === 'ALLOWLISTED_URL' ? await capturePublicSource(input.sourceUrl) : undefined;
-  const content = input.type === 'ALLOWLISTED_URL' ? imported!.content : input.content;
-  const checksum = createHash('sha256').update(content).digest('hex');
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
-    if (input.siteId && !await tx.site.findFirst({ where: { id: input.siteId, organizationId: orgId } })) throw new NotFoundError('站点不存在');
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {
-      const source = await tx.knowledgeSource.create({ data: { organizationId: orgId, siteId: input.siteId, type: input.type, title: input.title, sourceUrl: input.type === 'ALLOWLISTED_URL' ? input.sourceUrl : undefined, normalizedUrl: imported?.normalizedUrl, content, summary: content.slice(0, 500), checksum, fetchedAt: imported ? new Date() : undefined } });
-      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'KNOWLEDGE_SOURCE_CREATED', targetType: 'knowledge_source', targetId: source.id } });
-      return { statusCode: 201, data: { source } };
-    } });
-  });
-  sendData(response, outcome.data, outcome.statusCode);
-}));
-
-apiRouter.get('/organizations/:organizationId/executions', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
-  const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const rows = await tx.executionRun.findMany({
-      where: { organizationId: orgId },
-      include: { jobRun: true },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: page.take + 1,
-      ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {})
-    });
-    return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
-  });
-  sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
-}));
-
-apiRouter.post('/organizations/:organizationId/executions', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), key = idempotencyKey(request), input = parseBody(z.object({ siteId: z.string().uuid(), source: executionSourceSchema }), request);
+  const input = parseBody(growthProgramSchema, request);
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {
-      const site = await tx.site.findFirst({ where: { id: input.siteId, organizationId: orgId } });
+      const site = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } });
       if (!site) throw new NotFoundError('站点不存在');
       if (site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !site.wordpressVerifiedAt || !site.wordpressCredentials) {
-        throw new ConflictError('请先完成 WordPress 凭证配置与真实连接测试');
+        throw new ConflictError('请先完成 WordPress 原生授权与真实连接验证');
       }
       await assertExecutionProviders(tx);
-      const created = await executionService.create(tx, {
+      const created = await growthProgramService.create(tx, {
         organizationId: orgId,
-        siteId: site.id,
-        mode: ExecutionMode.ONCE,
-        source: {
-          sourceType: input.source.sourceType as ExecutionSourceType,
-          sourceValue: input.source.sourceValue,
-          languageCode: site.language,
-          locationCode: env.defaultSeoLocationCode
-        },
-        occurrenceKey: key
+        siteId,
+        mode: input.mode as GrowthProgramMode,
+        inputType: input.input.type as GrowthInputType,
+        inputValue: input.input.value,
+        occurrenceKey: key,
+        budgetLimitMicros: input.budgetLimitMicros
       });
-      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'AUTONOMOUS_EXECUTION_REQUESTED', targetType: 'execution_run', targetId: created.execution.id, metadata: { siteId: site.id, sourceType: input.source.sourceType, mode: 'ONCE', licensedSourceWarranty: input.source.sourceType === 'REWRITE_URL' } } });
       return { statusCode: 202, data: created };
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);
 }));
 
-apiRouter.post('/organizations/:organizationId/keyword-scans', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), key = idempotencyKey(request), input = parseBody(keywordScanSchema, request);
+apiRouter.get('/organizations/:organizationId/sites/:siteId/growth-programs', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId);
+  const programs = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
+    if (!await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } })) throw new NotFoundError('站点不存在');
+    return tx.growthProgram.findMany({ where: { organizationId: orgId, siteId }, include: { runs: { orderBy: { createdAt: 'desc' }, take: 1, include: { stages: { orderBy: { createdAt: 'asc' } } } } }, orderBy: { createdAt: 'desc' } });
+  });
+  sendData(response, programs);
+}));
+
+apiRouter.get('/organizations/:organizationId/growth-programs/:programId', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), programId = idSchema.parse(request.params.programId);
+  const program = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
+    const found = await tx.growthProgram.findFirst({ where: { id: programId, organizationId: orgId }, include: { site: { select: { id: true, name: true, domain: true, wordpressStatus: true, integrations: { where: { provider: 'GSC' }, select: { status: true, lastSyncedAt: true }, take: 1 } } }, runs: { orderBy: { createdAt: 'desc' }, take: 20, include: { stages: { orderBy: { createdAt: 'asc' } }, actions: true } } } });
+    if (!found) throw new NotFoundError('增长程序不存在');
+    return found;
+  });
+  sendData(response, program);
+}));
+
+const changeProgramStatus = (status: GrowthProgramStatus) => asyncRoute(async (request: Request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), programId = idSchema.parse(request.params.programId), key = idempotencyKey(request);
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {
-      const site = await tx.site.findFirst({ where: { id: input.siteId, organizationId: orgId } });
-      if (!site) throw new NotFoundError('站点不存在');
-      const scanInput = { ...input, languageCode: site.language, locationCode: env.defaultSeoLocationCode };
-      const scan = await tx.keywordScan.create({ data: { organizationId: orgId, ...scanInput } });
-      const job = await jobService.create(tx, { organizationId: orgId, type: JobType.DATAFORSEO_KEYWORD_SCAN, idempotencyKey: key, payload: { keywordScanId: scan.id, ...scanInput }, priceAction: 'KEYWORD_SCAN' });
-      return { statusCode: 202, data: { scan, job } };
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { programId, status }, execute: async () => {
+      const program = await tx.growthProgram.findFirst({ where: { id: programId, organizationId: orgId } });
+      if (!program) throw new NotFoundError('增长程序不存在');
+      if (program.mode === GrowthProgramMode.ONCE && status === GrowthProgramStatus.ACTIVE) throw new ConflictError('一次性程序不能恢复；请创建一次新的执行');
+      const updated = await tx.growthProgram.update({ where: { id: programId }, data: { status, nextRunAt: status === GrowthProgramStatus.ACTIVE ? new Date() : program.nextRunAt, lockedUntil: null, lastError: null } });
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: status === GrowthProgramStatus.PAUSED ? 'GROWTH_PROGRAM_PAUSED' : 'GROWTH_PROGRAM_RESUMED', targetType: 'growth_program', targetId: programId } });
+      return { statusCode: 200, data: { program: updated } };
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);
+});
+apiRouter.post('/organizations/:organizationId/growth-programs/:programId/pause', changeProgramStatus(GrowthProgramStatus.PAUSED));
+apiRouter.post('/organizations/:organizationId/growth-programs/:programId/resume', changeProgramStatus(GrowthProgramStatus.ACTIVE));
+
+apiRouter.get('/organizations/:organizationId/growth-runs/:runId', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), runId = idSchema.parse(request.params.runId);
+  const run = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
+    const found = await tx.growthRun.findFirst({ where: { id: runId, organizationId: orgId }, include: { program: true, stages: { orderBy: { createdAt: 'asc' } }, opportunity: true, draft: { include: { reviews: true, publishAttempts: true } }, actions: { include: { observations: true } } } });
+    if (!found) throw new NotFoundError('增长执行不存在');
+    const gsc = await tx.integrationConnection.findFirst({ where: { organizationId: orgId, siteId: found.siteId, provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, select: { lastSyncedAt: true } });
+    return { ...found, measurement: { gscConnected: Boolean(gsc), lastSyncedAt: gsc?.lastSyncedAt || null, trafficClaimAllowed: Boolean(gsc) } };
+  });
+  sendData(response, run);
 }));
 
 apiRouter.get('/organizations/:organizationId/opportunities', asyncRoute(async (request, response) => {
@@ -624,23 +524,6 @@ apiRouter.get('/organizations/:organizationId/opportunities', asyncRoute(async (
     return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
   sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
-}));
-
-apiRouter.post('/organizations/:organizationId/content-runs', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), key = idempotencyKey(request), input = parseBody(contentRunSchema, request);
-  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {
-      const opportunity = await tx.opportunity.findFirst({ where: { id: input.opportunityId, organizationId: orgId, siteId: input.siteId }, include: { snapshot: true } });
-      if (!opportunity || opportunity.snapshot.status !== 'LIVE') throw new ValidationError('机会或真实 SEO 快照不可用');
-      if (!opportunity.keyword) throw new ValidationError('该增长机会不是新内容机会，不能进入内容生成流程');
-      const sources = await tx.knowledgeSource.findMany({ where: { id: { in: input.knowledgeSourceIds }, organizationId: orgId, status: 'LIVE', OR: [{ siteId: input.siteId }, { siteId: null }] } });
-      if (sources.length !== input.knowledgeSourceIds.length) throw new ValidationError('知识来源缺失、不可用或跨组织');
-      const job = await jobService.create(tx, { organizationId: orgId, type: JobType.CONTENT_GENERATION, idempotencyKey: key, payload: { ...input, seoSnapshotId: opportunity.snapshotId, keyword: opportunity.keyword }, priceAction: 'CONTENT_GENERATION' });
-      return { statusCode: 202, data: { job } };
-    } });
-  });
-  sendData(response, outcome.data, outcome.statusCode);
 }));
 
 apiRouter.get('/organizations/:organizationId/jobs', asyncRoute(async (request, response) => {
@@ -671,13 +554,16 @@ apiRouter.post('/organizations/:organizationId/drafts/:draftId/approve', asyncRo
   const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { draftId, ...input }, execute: async () => {
-      const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId } });
+      const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { growthRuns: { include: { actions: true }, take: 1 } } });
       if (!draft) throw new NotFoundError('草稿不存在');
+      if (draft.status !== DraftStatus.PENDING_REVIEW) throw new ConflictError('只有等待审核的草稿可以批准');
       const quality = draft.qualityReport as { passed?: boolean };
       const provenance = draft.dataProvenance as Array<{ status?: string; source?: string }>;
       if (!quality.passed || !Array.isArray(provenance) || provenance.length === 0 || provenance.some((item) => item.status !== 'LIVE')) throw new ConflictError('质量门禁或真实数据溯源未通过');
       await tx.draftReview.create({ data: { draftId, reviewerId: profileId, decision: ReviewDecision.APPROVED, comment: input.comment } });
       const updated = await tx.contentDraft.update({ where: { id: draftId }, data: { status: DraftStatus.APPROVED } });
+      const action = draft.growthRuns[0]?.actions[0];
+      if (action) await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.APPROVED } });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'DRAFT_APPROVED', targetType: 'content_draft', targetId: draftId } });
       return { statusCode: 200, data: { draft: updated } };
     } });
@@ -691,10 +577,19 @@ apiRouter.post('/organizations/:organizationId/drafts/:draftId/reject', asyncRou
   const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { draftId, ...input }, execute: async () => {
-      const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId } });
+      const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { growthRuns: { include: { actions: true, program: true }, take: 1 } } });
       if (!draft) throw new NotFoundError('草稿不存在');
+      if (draft.status !== DraftStatus.PENDING_REVIEW) throw new ConflictError('只有等待审核的草稿可以拒绝');
       await tx.draftReview.create({ data: { draftId, reviewerId: profileId, decision: ReviewDecision.REJECTED, comment: input.comment } });
       const updated = await tx.contentDraft.update({ where: { id: draftId }, data: { status: DraftStatus.REJECTED } });
+      const run = draft.growthRuns[0];
+      const action = run?.actions[0];
+      if (action) await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.CANCELLED } });
+      if (run) {
+        await tx.growthRun.update({ where: { id: run.id }, data: { status: GrowthRunStatus.CANCELLED, finishedAt: new Date(), errorCode: 'CUSTOMER_REJECTED', errorMessage: input.comment } });
+        if (run.program.mode === GrowthProgramMode.ONCE) await tx.growthProgram.update({ where: { id: run.programId }, data: { status: GrowthProgramStatus.COMPLETED, nextRunAt: null } });
+      }
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'DRAFT_REJECTED', targetType: 'content_draft', targetId: draftId, metadata: { growthRunId: run?.id || null, chargedDeliverable: true } } });
       return { statusCode: 200, data: { draft: updated } };
     } });
   });
@@ -707,13 +602,18 @@ apiRouter.post('/organizations/:organizationId/drafts/:draftId/publish', asyncRo
   const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { draftId }, execute: async () => {
-      const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { site: true, reviews: true } });
+      const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { site: true, reviews: true, growthRuns: { include: { actions: true }, take: 1 } } });
       if (!draft || draft.status !== DraftStatus.APPROVED || !draft.reviews.some((review) => review.decision === ReviewDecision.APPROVED)) throw new ConflictError('草稿尚未通过人工审批');
       if (draft.site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !draft.site.wordpressCredentials) throw new ConflictError('WordPress 连接不可用');
+      const run = draft.growthRuns[0];
+      const action = run?.actions[0];
+      if (!run || !action) throw new ConflictError('草稿未关联统一增长执行，不能进入发布队列');
       const attemptNumber = await tx.publishAttempt.count({ where: { draftId } }) + 1;
-      const job = await jobService.create(tx, { organizationId: orgId, type: JobType.WORDPRESS_PUBLISH, idempotencyKey: key, payload: { draftId } });
-      const attempt = await tx.publishAttempt.create({ data: { organizationId: orgId, draftId, jobRunId: job.id, attemptNumber } });
+      const job = await jobService.create(tx, { organizationId: orgId, type: JobType.WORDPRESS_PUBLISH, idempotencyKey: `growth-action-publish:${action.id}`, payload: { draftId, growthRunId: run.id, actionId: action.id, automated: false } });
+      const attempt = await tx.publishAttempt.findUnique({ where: { jobRunId: job.id } })
+        || await tx.publishAttempt.create({ data: { organizationId: orgId, draftId, jobRunId: job.id, attemptNumber } });
       await tx.contentDraft.update({ where: { id: draftId }, data: { status: DraftStatus.PUBLISHING } });
+      await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.EXECUTING } });
       return { statusCode: 202, data: { job, attempt } };
     } });
   });
@@ -726,105 +626,72 @@ apiRouter.post('/organizations/:organizationId/drafts/:draftId/rollback', asyncR
   const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { draftId }, execute: async () => {
-      const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId } });
+      const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { growthRuns: { include: { actions: true }, take: 1 } } });
       if (!draft?.remotePostId || draft.status !== DraftStatus.PUBLISHED) throw new ConflictError('草稿没有可回滚的远端文章');
-      const job = await jobService.create(tx, { organizationId: orgId, type: JobType.WORDPRESS_ROLLBACK, idempotencyKey: key, payload: { draftId } });
+      const action = draft.growthRuns[0]?.actions[0];
+      if (!action) throw new ConflictError('草稿未关联统一增长动作，不能安全回滚');
+      const job = await jobService.create(tx, { organizationId: orgId, type: JobType.WORDPRESS_ROLLBACK, idempotencyKey: `growth-action-rollback:${action.id}`, payload: { draftId, actionId: action.id } });
       return { statusCode: 202, data: { job } };
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);
 }));
 
-apiRouter.get('/organizations/:organizationId/automation-tasks', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request);
-  const tasks = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => { await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER); return tx.automationTask.findMany({ where: { organizationId: orgId }, orderBy: { nextRunAt: 'asc' } }); });
-  sendData(response, tasks);
-}));
-
-apiRouter.post('/organizations/:organizationId/automation-tasks', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), key = idempotencyKey(request), input = parseBody(automationSchema, request);
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {
-      const site = await tx.site.findFirst({ where: { id: input.siteId, organizationId: orgId } });
-      if (!site) throw new NotFoundError('站点不存在');
-      if (site.publishPolicy !== PublishPolicy.AUTO_PUBLISH) throw new ConflictError('站点通过 3 次人工发布并显式开启自动发布后，才能创建定时任务');
-      if (input.enabled) await assertExecutionProviders(tx);
-      const scheduleConfig = {
-        ...input.scheduleConfig,
-        languageCode: site.language,
-        locationCode: env.defaultSeoLocationCode
-      };
-      const task = await tx.automationTask.create({ data: { organizationId: orgId, siteId: input.siteId, name: input.name, scheduleType: input.scheduleType, scheduleConfig: scheduleConfig as Prisma.InputJsonValue, nextRunAt: new Date(input.nextRunAt), status: input.enabled ? 'ACTIVE' : 'PAUSED' } });
-      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'AUTOMATION_TASK_CREATED', targetType: 'automation_task', targetId: task.id, metadata: { status: task.status, scheduleType: task.scheduleType, sourceType: input.scheduleConfig.sourceType, timezone: input.scheduleConfig.timezone || null } } });
-      return { statusCode: 201, data: { task } };
+apiRouter.post('/organizations/:organizationId/growth-actions/:actionId/approve', asyncRoute(async (request, response) => {
+  await revalidateSensitiveSession(request);
+  const profileId = userId(request), orgId = organizationId(request), actionId = idSchema.parse(request.params.actionId), key = idempotencyKey(request);
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { actionId }, execute: async () => {
+      const action = await tx.growthAction.findFirst({ where: { id: actionId, organizationId: orgId }, include: { run: { include: { draft: { include: { site: true } } } } } });
+      const draft = action?.run.draft;
+      if (!action || !draft) throw new NotFoundError('增长动作或交付草稿不存在');
+      const quality = draft.qualityReport as { passed?: boolean };
+      if (!quality.passed || draft.status !== DraftStatus.PENDING_REVIEW) throw new ConflictError('草稿未通过质量门禁或已经处理');
+      if (draft.site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !draft.site.wordpressCredentials) throw new ConflictError('WordPress 连接不可用');
+      await tx.draftReview.create({ data: { draftId: draft.id, reviewerId: profileId, decision: ReviewDecision.APPROVED } });
+      const job = await jobService.create(tx, { organizationId: orgId, type: JobType.WORDPRESS_PUBLISH, idempotencyKey: `growth-action-publish:${action.id}`, payload: { draftId: draft.id, growthRunId: action.runId, actionId: action.id } });
+      const attemptNumber = await tx.publishAttempt.count({ where: { draftId: draft.id } }) + 1;
+      await tx.publishAttempt.create({ data: { organizationId: orgId, draftId: draft.id, jobRunId: job.id, attemptNumber } });
+      await tx.contentDraft.update({ where: { id: draft.id }, data: { status: DraftStatus.PUBLISHING } });
+      await tx.growthAction.update({ where: { id: action.id }, data: { status: 'EXECUTING' } });
+      return { statusCode: 202, data: { actionId: action.id, draftId: draft.id, job } };
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);
 }));
 
-apiRouter.put('/organizations/:organizationId/automation-tasks/:taskId', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), taskId = idSchema.parse(request.params.taskId), key = idempotencyKey(request);
-  const input = parseBody(z.object({ status: z.enum(['ACTIVE', 'PAUSED', 'DISABLED']), scheduleType: z.enum(['INTERVAL', 'DAILY', 'WEEKLY']).optional(), scheduleConfig: automationConfigSchema.optional(), nextRunAt: z.string().datetime().optional() }), request);
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {
-      const task = await tx.automationTask.findFirst({ where: { id: taskId, organizationId: orgId }, include: { site: true } });
-      if (!task) throw new NotFoundError('自动任务不存在');
-      if (input.status === 'ACTIVE' && task.site.publishPolicy !== PublishPolicy.AUTO_PUBLISH) throw new ConflictError('站点必须先通过自动发布门禁');
-      if (input.status === 'ACTIVE') await assertExecutionProviders(tx);
-      const scheduleType = input.scheduleType || task.scheduleType;
-      const storedConfig = task.scheduleConfig as { sourceType?: string; sourceValue?: string; minutes?: number };
-      const scheduleConfig = input.scheduleConfig
-        ? { ...input.scheduleConfig, languageCode: task.site.language, locationCode: env.defaultSeoLocationCode }
-        : storedConfig;
-      if (scheduleType === 'INTERVAL' && !scheduleConfig.minutes) throw new ValidationError('间隔自动任务必须提供 minutes（15 至 43200）');
-      if (scheduleType !== 'INTERVAL' && (!('time' in scheduleConfig) || !scheduleConfig.time || !('timezone' in scheduleConfig) || !scheduleConfig.timezone)) throw new ValidationError('日历自动任务必须提供当地时间和 IANA 时区');
-      const updated = await tx.automationTask.update({ where: { id: taskId }, data: { status: input.status, scheduleType: input.scheduleType, scheduleConfig: input.scheduleConfig ? scheduleConfig as Prisma.InputJsonValue : undefined, nextRunAt: input.nextRunAt ? new Date(input.nextRunAt) : undefined, lastError: null } });
-      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'AUTOMATION_TASK_UPDATED', targetType: 'automation_task', targetId: taskId, metadata: { status: input.status } } });
-      return { statusCode: 200, data: { task: updated } };
+apiRouter.post('/organizations/:organizationId/growth-actions/:actionId/reject', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), actionId = idSchema.parse(request.params.actionId), key = idempotencyKey(request);
+  const input = parseBody(z.object({ comment: z.string().trim().min(1).max(2_000) }), request);
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { actionId, ...input }, execute: async () => {
+      const action = await tx.growthAction.findFirst({ where: { id: actionId, organizationId: orgId }, include: { run: { include: { program: true } } } });
+      if (!action?.run.draftId) throw new NotFoundError('增长动作或交付草稿不存在');
+      if (action.status !== GrowthActionStatus.REVIEW_REQUIRED || action.run.status !== GrowthRunStatus.NEEDS_REVIEW) throw new ConflictError('只有等待审核的增长动作可以拒绝');
+      await tx.draftReview.create({ data: { draftId: action.run.draftId, reviewerId: profileId, decision: ReviewDecision.REJECTED, comment: input.comment } });
+      await tx.contentDraft.update({ where: { id: action.run.draftId }, data: { status: DraftStatus.REJECTED } });
+      await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.CANCELLED } });
+      await tx.growthRun.update({ where: { id: action.runId }, data: { status: GrowthRunStatus.CANCELLED, finishedAt: new Date(), errorCode: 'CUSTOMER_REJECTED', errorMessage: input.comment, delivery: { rejectedByCustomer: true, actionId: action.id, chargedDeliverable: true } } });
+      if (action.run.program.mode === GrowthProgramMode.ONCE) await tx.growthProgram.update({ where: { id: action.run.programId }, data: { status: GrowthProgramStatus.COMPLETED, nextRunAt: null } });
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'GROWTH_ACTION_REJECTED', targetType: 'growth_action', targetId: action.id, metadata: { comment: input.comment, chargedDeliverable: true } } });
+      return { statusCode: 200, data: { rejected: true, actionId: action.id } };
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);
 }));
 
-apiRouter.delete('/organizations/:organizationId/automation-tasks/:taskId', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), taskId = idSchema.parse(request.params.taskId), key = idempotencyKey(request);
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { taskId }, execute: async () => {
-      const task = await tx.automationTask.findFirst({ where: { id: taskId, organizationId: orgId } });
-      if (!task) throw new NotFoundError('自动任务不存在');
-      await tx.automationTask.update({ where: { id: taskId }, data: { status: 'DISABLED', lockedUntil: null } });
-      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'AUTOMATION_TASK_DISABLED', targetType: 'automation_task', targetId: taskId } });
-      return { statusCode: 200, data: { disabledId: taskId } };
-    } });
-  });
-  sendData(response, outcome.data, outcome.statusCode);
-}));
-
-apiRouter.post('/organizations/:organizationId/automation-tasks/:taskId/run', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), taskId = idSchema.parse(request.params.taskId), key = idempotencyKey(request);
+apiRouter.post('/organizations/:organizationId/growth-actions/:actionId/rollback', asyncRoute(async (request, response) => {
+  await revalidateSensitiveSession(request);
+  const profileId = userId(request), orgId = organizationId(request), actionId = idSchema.parse(request.params.actionId), key = idempotencyKey(request);
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { taskId }, execute: async () => {
-      const task = await tx.automationTask.findFirst({ where: { id: taskId, organizationId: orgId }, include: { site: true } });
-      if (!task || task.status === 'DISABLED') throw new NotFoundError('自动任务不存在');
-      if (task.site.publishPolicy !== PublishPolicy.AUTO_PUBLISH) throw new ConflictError('站点必须先通过自动发布门禁');
-      await assertExecutionProviders(tx);
-      const config = task.scheduleConfig as { sourceType?: ExecutionSourceType; sourceValue?: string; languageCode?: string; locationCode?: number };
-      if (!config.sourceType || !Object.values(ExecutionSourceType).includes(config.sourceType) || !config.sourceValue || !config.languageCode || !Number.isInteger(config.locationCode) || !config.locationCode) throw new ConflictError('自动任务配置不完整');
-      const created = await executionService.create(tx, {
-        organizationId: orgId,
-        siteId: task.siteId,
-        mode: ExecutionMode.SCHEDULED,
-        source: { sourceType: config.sourceType, sourceValue: config.sourceValue, languageCode: config.languageCode, locationCode: config.locationCode },
-        occurrenceKey: `manual:${key}`,
-        automationTaskId: task.id
-      });
-      const updated = await tx.automationTask.update({ where: { id: taskId }, data: { lastRunAt: new Date(), lockedUntil: null, lastError: null } });
-      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'AUTOMATION_TASK_RUN_REQUESTED', targetType: 'execution_run', targetId: created.execution.id, metadata: { automationTaskId: task.id } } });
-      return { statusCode: 202, data: { task: updated, execution: created.execution, job: created.job, queued: true } };
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { actionId }, execute: async () => {
+      const action = await tx.growthAction.findFirst({ where: { id: actionId, organizationId: orgId }, include: { run: { include: { draft: true } } } });
+      if (!action?.run.draft?.remotePostId || action.run.draft.status !== DraftStatus.PUBLISHED) throw new ConflictError('增长动作没有可回滚的 WordPress 版本');
+      const job = await jobService.create(tx, { organizationId: orgId, type: JobType.WORDPRESS_ROLLBACK, idempotencyKey: `growth-action-rollback:${action.id}`, payload: { draftId: action.run.draft.id, actionId } });
+      return { statusCode: 202, data: { job } };
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);

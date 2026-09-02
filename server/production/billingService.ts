@@ -97,8 +97,10 @@ export const billingService = {
         data: { txHash: txHash.toLowerCase(), status: PaymentStatus.VERIFYING, submittedAt: new Date() }
       });
       return paymentResponse(updated);
-    } catch (error: any) {
-      if (error?.code === 'P2002') throw new ConflictError('该交易哈希已被使用');
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictError('该交易哈希已被使用');
+      }
       throw error;
     }
   },
@@ -143,8 +145,8 @@ export const billingService = {
         });
         return { credited: true, balanceMicros: organization.creditBalanceMicros.toString() };
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-    } catch (error: any) {
-      if (error?.code === 'P2002') {
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const payment = await database.paymentIntent.findUniqueOrThrow({ where: { id: paymentIntentId }, include: { organization: true } });
         return { credited: false, balanceMicros: payment.organization.creditBalanceMicros.toString() };
       }

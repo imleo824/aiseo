@@ -1,4 +1,4 @@
-import { ExternalServiceError, ValidationError } from '../domain/errors';
+import { ConflictError, ExternalServiceError, ValidationError } from '../domain/errors';
 import { resolvePublicHttpsOrigin } from '../utils/networkSafety';
 import { createHash } from 'crypto';
 import { decryptSecret, encryptSecret } from './crypto';
@@ -46,6 +46,19 @@ export type WordPressSiteContext = {
   internalLinks: Array<{ title: string; url: string }>;
 };
 
+export type WordPressEditableSnapshot = {
+  postId: string;
+  resourceType: 'posts' | 'pages';
+  url: string;
+  status: string;
+  modifiedAt?: string;
+  slug: string;
+  title: string;
+  content: string;
+  contentChecksum: string;
+  contentLength: number;
+};
+
 const plainText = (value: string): string => sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }).replace(/\s+/g, ' ').trim();
 
 const comparableUrl = (value: string): string => {
@@ -66,6 +79,60 @@ export const wordPressService = {
     return decryptSecret<WordPressCredentials>(Buffer.from(encrypted));
   },
 
+  async applicationPasswordAuthorizationUrl(domain: string): Promise<string> {
+    const origin = await resolvePublicHttpsOrigin(domain);
+    const root = await requestJson<{ authentication?: { 'application-passwords'?: { endpoints?: { authorization?: string } } } }>(`${origin}/wp-json`, { headers: { accept: 'application/json' } });
+    const endpoint = root.authentication?.['application-passwords']?.endpoints?.authorization;
+    if (!endpoint) throw new ValidationError('该 WordPress 站点未公开 Application Password 授权入口，请确认 WordPress 版本和 HTTPS 配置');
+    const url = new URL(endpoint);
+    if (url.protocol !== 'https:' || url.origin !== origin) throw new ValidationError('WordPress 返回了不安全或跨站的授权地址');
+    return url.toString();
+  },
+
+  async inspectSiteHealth(domain: string): Promise<{
+    origin: string;
+    homepageStatus: number;
+    canonical: string | null;
+    robots: { status: number; available: boolean; blocksAll: boolean };
+    sitemap: { url: string | null; status: number | null; available: boolean };
+    restApi: boolean;
+  }> {
+    const origin = await resolvePublicHttpsOrigin(domain);
+    const [homepage, robots, rest] = await Promise.all([
+      fetch(origin, { redirect: 'manual', signal: AbortSignal.timeout(12_000), headers: { accept: 'text/html' } }),
+      fetch(`${origin}/robots.txt`, { redirect: 'manual', signal: AbortSignal.timeout(12_000), headers: { accept: 'text/plain' } }),
+      fetch(`${origin}/wp-json`, { redirect: 'manual', signal: AbortSignal.timeout(12_000), headers: { accept: 'application/json' } })
+    ]);
+    if (!homepage.ok) throw new ValidationError(`网站首页不可访问 (${homepage.status})`);
+    if (!rest.ok) throw new ValidationError(`WordPress REST API 不可访问 (${rest.status})`);
+    const [html, robotsText] = await Promise.all([homepage.text(), robots.ok ? robots.text() : Promise.resolve('')]);
+    const canonicalMatch = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)
+      || html.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["']canonical["']/i);
+    let sitemapUrl: string | null = null;
+    let sitemapStatus: number | null = null;
+    for (const path of ['/wp-sitemap.xml', '/sitemap.xml']) {
+      const response = await fetch(`${origin}${path}`, { redirect: 'manual', signal: AbortSignal.timeout(12_000), headers: { accept: 'application/xml,text/xml' } });
+      if (response.ok) {
+        sitemapUrl = `${origin}${path}`;
+        sitemapStatus = response.status;
+        break;
+      }
+      sitemapStatus = response.status;
+    }
+    return {
+      origin,
+      homepageStatus: homepage.status,
+      canonical: canonicalMatch?.[1] || null,
+      robots: {
+        status: robots.status,
+        available: robots.ok,
+        blocksAll: /(?:^|\n)\s*user-agent\s*:\s*\*\s*(?:\r?\n)+(?:[^\n]*\n)*?\s*disallow\s*:\s*\/\s*(?:#.*)?$/im.test(robotsText)
+      },
+      sitemap: { url: sitemapUrl, status: sitemapStatus, available: Boolean(sitemapUrl) },
+      restApi: rest.ok
+    };
+  },
+
   async testConnection(domain: string, encrypted: Uint8Array): Promise<{ user: string; siteName: string }> {
     const origin = await resolvePublicHttpsOrigin(domain);
     const credentials = this.decrypt(encrypted);
@@ -83,16 +150,7 @@ export const wordPressService = {
     };
   },
 
-  async inspectTarget(input: { domain: string; encrypted: Uint8Array; targetUrl: string }): Promise<{
-    postId: string;
-    resourceType: 'posts' | 'pages';
-    url: string;
-    status: string;
-    modifiedAt?: string;
-    title: string;
-    contentChecksum: string;
-    contentLength: number;
-  }> {
+  async inspectTarget(input: { domain: string; encrypted: Uint8Array; targetUrl: string }): Promise<WordPressEditableSnapshot> {
     const origin = await resolvePublicHttpsOrigin(input.domain);
     const target = new URL(input.targetUrl);
     if (target.protocol !== 'https:' || target.origin !== origin) throw new ValidationError('增长动作目标必须是已验证 WordPress 站点内的 HTTPS URL');
@@ -119,7 +177,9 @@ export const wordPressService = {
       url: matched.resource.link,
       status: String(matched.resource.status || 'unknown'),
       modifiedAt: matched.resource.modified_gmt,
+      slug: String(matched.resource.slug || slug),
       title,
+      content,
       contentChecksum: createHash('sha256').update(content).digest('hex'),
       contentLength: Buffer.byteLength(content, 'utf8')
     };
@@ -154,19 +214,47 @@ export const wordPressService = {
     };
   },
 
-  async publish(input: { domain: string; encrypted: Uint8Array; title: string; slug: string; html: string }): Promise<{ postId: string; url: string }> {
+  async publish(input: { domain: string; encrypted: Uint8Array; title: string; slug: string; html: string; deliveryId: string }): Promise<{ postId: string; url: string }> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.deliveryId)) throw new ValidationError('WordPress 交付幂等标识无效');
     const origin = await resolvePublicHttpsOrigin(input.domain);
     const credentials = this.decrypt(input.encrypted);
     const auth = authorization(credentials);
-    const existing = await requestJson<WordPressEditableResource[]>(`${origin}/wp-json/wp/v2/posts?slug=${encodeURIComponent(input.slug)}&context=edit&status=any`, { headers: { authorization: auth, accept: 'application/json' } });
-    if (Array.isArray(existing) && existing[0]?.id && existing[0]?.link) return { postId: String(existing[0].id), url: String(existing[0].link) };
+    const marker = `<!-- aiseo-delivery:${input.deliveryId} -->`;
+    const existing = await requestJson<WordPressEditableResource[]>(`${origin}/wp-json/wp/v2/posts?slug=${encodeURIComponent(input.slug)}&context=edit&status=any&_fields=id,link,content`, { headers: { authorization: auth, accept: 'application/json' } });
+    const replay = existing.find((post) => String(post.content?.raw || post.content?.rendered || '').includes(marker));
+    if (replay?.id && replay.link) return { postId: String(replay.id), url: String(replay.link) };
+    if (existing.length) throw new ConflictError('WordPress 已存在相同 slug 的其他内容，已停止发布以避免误绑定或覆盖');
     const body = await requestJson<{ id?: number; link?: string }>(`${origin}/wp-json/wp/v2/posts`, {
       method: 'POST',
       headers: { authorization: auth, 'content-type': 'application/json' },
-      body: JSON.stringify({ title: input.title, slug: input.slug, content: input.html, status: 'publish' })
+      body: JSON.stringify({ title: input.title, slug: input.slug, content: `${marker}\n${input.html}`, status: 'publish' })
     });
     if (!body.id || !body.link) throw new ExternalServiceError('WordPress 未返回文章 ID 或链接');
     return { postId: String(body.id), url: String(body.link) };
+  },
+
+  async update(input: { domain: string; encrypted: Uint8Array; snapshot: WordPressEditableSnapshot; title: string; html: string }): Promise<{ postId: string; url: string }> {
+    if (!/^\d+$/.test(input.snapshot.postId)) throw new ValidationError('WordPress 内容 ID 无效');
+    const origin = await resolvePublicHttpsOrigin(input.domain);
+    const credentials = this.decrypt(input.encrypted);
+    const body = await requestJson<{ id?: number; link?: string }>(`${origin}/wp-json/wp/v2/${input.snapshot.resourceType}/${input.snapshot.postId}`, {
+      method: 'POST',
+      headers: { authorization: authorization(credentials), 'content-type': 'application/json' },
+      body: JSON.stringify({ title: input.title, content: input.html, status: 'publish' })
+    });
+    if (!body.id || !body.link) throw new ExternalServiceError('WordPress 更新后未返回内容 ID 或链接');
+    return { postId: String(body.id), url: String(body.link) };
+  },
+
+  async restore(input: { domain: string; encrypted: Uint8Array; snapshot: WordPressEditableSnapshot }): Promise<void> {
+    if (!/^\d+$/.test(input.snapshot.postId)) throw new ValidationError('WordPress 内容 ID 无效');
+    const origin = await resolvePublicHttpsOrigin(input.domain);
+    const credentials = this.decrypt(input.encrypted);
+    await requestJson(`${origin}/wp-json/wp/v2/${input.snapshot.resourceType}/${input.snapshot.postId}`, {
+      method: 'POST',
+      headers: { authorization: authorization(credentials), 'content-type': 'application/json' },
+      body: JSON.stringify({ title: input.snapshot.title, content: input.snapshot.content, status: input.snapshot.status })
+    });
   },
 
   async rollback(input: { domain: string; encrypted: Uint8Array; postId: string }): Promise<void> {

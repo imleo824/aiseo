@@ -1,10 +1,10 @@
 export abstract class AppError extends Error {
   public abstract readonly statusCode: number;
   public abstract readonly errorCode: string;
-  public readonly details?: any;
+  public readonly details?: unknown;
   public readonly timestamp: string;
 
-  constructor(message: string, details?: any) {
+  constructor(message: string, details?: unknown) {
     super(message);
     this.name = this.constructor.name;
     this.details = details;
@@ -71,4 +71,3 @@ export class InsufficientCreditsError extends AppError {
   public readonly statusCode = 402;
   public readonly errorCode = 'INSUFFICIENT_CREDITS';
 }
-

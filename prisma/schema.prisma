@@ -37,6 +37,7 @@ enum IntegrationProvider {
 }
 
 enum JobType {
+  GROWTH_RUN
   AUTONOMOUS_EXECUTION
   GSC_SYNC
   DATAFORSEO_KEYWORD_SCAN
@@ -51,37 +52,56 @@ enum JobType {
   INDEXING_MONITOR
 }
 
-enum ExecutionMode {
+enum GrowthProgramMode {
   ONCE
-  SCHEDULED
+  CONTINUOUS
 }
 
-enum ExecutionSourceType {
+enum GrowthInputType {
   KEYWORD
-  REWRITE_URL
-  COMPETITOR_URL
+  REFERENCE_URL
+  COMPETITOR_SITE
 }
 
-enum ExecutionStatus {
+enum GrowthProgramStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  BLOCKED
+}
+
+enum GrowthRunStatus {
   QUEUED
   RUNNING
-  AWAITING_REVIEW
-  PUBLISHING
-  MONITORING
-  SUCCEEDED
+  NEEDS_REVIEW
+  DELIVERED
+  BLOCKED
   FAILED
   CANCELLED
 }
 
-enum ExecutionStage {
-  INTAKE
-  SOURCE_CAPTURE
-  KEYWORD_RESEARCH
-  CONTENT_GENERATION
-  QUALITY_GATE
-  PUBLISHING
-  MONITORING
+enum GrowthRunStageCode {
+  UNDERSTAND
+  DISCOVER
+  DECIDE
+  EXECUTE
+  LEARN
+}
+
+enum GrowthRunStageStatus {
+  PENDING
+  RUNNING
   COMPLETED
+  SKIPPED
+  BLOCKED
+  FAILED
+}
+
+enum GrowthRunTrigger {
+  USER
+  SCHEDULED
+  DATA_CHANGE
+  OBSERVATION
 }
 
 enum JobStatus {
@@ -137,18 +157,6 @@ enum OpportunityStatus {
   CONVERTED
 }
 
-enum AutomationStatus {
-  ACTIVE
-  PAUSED
-  DISABLED
-}
-
-enum ScheduleType {
-  INTERVAL
-  DAILY
-  WEEKLY
-}
-
 enum PaymentStatus {
   AWAITING_TRANSFER
   VERIFYING
@@ -202,46 +210,6 @@ enum NotificationStatus {
   ARCHIVED
 }
 
-enum GrowthStateStatus {
-  NEEDS_BASELINE
-  BASELINING
-  ACTIVE
-  OBSERVING
-  PAUSED
-  BLOCKED
-}
-
-enum GrowthAutonomyLevel {
-  OBSERVE_ONLY
-  GUIDED
-  AUTONOMOUS
-}
-
-enum GrowthCycleTrigger {
-  MANUAL_START
-  DATA_CHANGE
-  OBSERVATION_DUE
-  SCHEDULED_REFRESH
-  RECOVERY
-}
-
-enum GrowthCycleStatus {
-  QUEUED
-  RUNNING
-  OBSERVING
-  SUCCEEDED
-  FAILED
-  CANCELLED
-}
-
-enum GrowthStage {
-  REALITY
-  OPPORTUNITY
-  DECISION
-  EXECUTION
-  LEARNING
-}
-
 enum GrowthDecisionStatus {
   PROPOSED
   SELECTED
@@ -293,6 +261,7 @@ enum GrowthObservationStatus {
 }
 
 enum GrowthOutcome {
+  NOT_READY
   WIN
   NEUTRAL
   LOSS
@@ -306,6 +275,7 @@ model Profile {
   platformRole        PlatformRole         @default(USER) @map("platform_role")
   suspendedAt         DateTime?            @map("suspended_at")
   deletionRequestedAt DateTime?            @map("deletion_requested_at")
+  erasureClaimedAt    DateTime?            @map("erasure_claimed_at")
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
   memberships         OrganizationMember[]
@@ -332,8 +302,9 @@ model Organization {
   dataSnapshots        DataSnapshot[]
   keywordScans         KeywordScan[]
   opportunities        Opportunity[]
-  executionRuns        ExecutionRun[]
-  automationTasks      AutomationTask[]
+  growthPrograms       GrowthProgram[]
+  growthRuns           GrowthRun[]
+  growthRunStages      GrowthRunStage[]
   jobs                 JobRun[]
   drafts               ContentDraft[]
   publishAttempts      PublishAttempt[]
@@ -346,8 +317,6 @@ model Organization {
   termsAcceptances     TermsAcceptance[]
   notifications        Notification[]
   indexingObservations IndexingObservation[]
-  growthStates         SiteGrowthState[]
-  growthCycles         GrowthCycle[]
   growthDecisions      GrowthDecision[]
   growthActions        GrowthAction[]
   growthObservations   GrowthObservation[]
@@ -391,15 +360,14 @@ model Site {
   dataSnapshots                 DataSnapshot[]
   keywordScans                  KeywordScan[]
   opportunities                 Opportunity[]
-  automationTasks               AutomationTask[]
+  growthPrograms                GrowthProgram[]
+  growthRuns                    GrowthRun[]
+  growthRunStages               GrowthRunStage[]
   drafts                        ContentDraft[]
   indexingObservations          IndexingObservation[]
-  growthState                   SiteGrowthState?
-  growthCycles                  GrowthCycle[]
   growthDecisions               GrowthDecision[]
   growthActions                 GrowthAction[]
   growthObservations            GrowthObservation[]
-  executionRuns                 ExecutionRun[]
 
   @@unique([organizationId, domain])
   @@index([organizationId, createdAt])
@@ -543,7 +511,7 @@ model Opportunity {
   drafts                   ContentDraft[]
   decisions                GrowthDecision[]
   actions                  GrowthAction[]
-  executionRuns            ExecutionRun[]
+  growthRuns               GrowthRun[]
 
   @@unique([siteId, sourceKey])
   @@index([organizationId, siteId, status, createdAt])
@@ -553,62 +521,110 @@ model Opportunity {
   @@map("opportunities")
 }
 
-model SiteGrowthState {
-  id                  String              @id @default(uuid()) @db.Uuid
-  organizationId      String              @map("organization_id") @db.Uuid
-  siteId              String              @unique @map("site_id") @db.Uuid
-  status              GrowthStateStatus   @default(NEEDS_BASELINE)
-  autonomyLevel       GrowthAutonomyLevel @default(OBSERVE_ONLY) @map("autonomy_level")
-  stateVersion        BigInt              @default(0) @map("state_version")
-  businessProfile     Json?               @map("business_profile")
-  protectedPaths      Json                @default("[]") @map("protected_paths")
-  baselineCompletedAt DateTime?           @map("baseline_completed_at")
-  lastCycleAt         DateTime?           @map("last_cycle_at")
-  nextDecisionAt      DateTime?           @map("next_decision_at")
-  lastDataWatermark   DateTime?           @map("last_data_watermark")
-  pausedAt            DateTime?           @map("paused_at")
-  blockedReason       String?             @map("blocked_reason")
-  createdAt           DateTime            @default(now()) @map("created_at")
-  updatedAt           DateTime            @updatedAt @map("updated_at")
-  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site                Site                @relation(fields: [siteId], references: [id], onDelete: Cascade)
+model GrowthProgram {
+  id                String              @id @default(uuid()) @db.Uuid
+  organizationId    String              @map("organization_id") @db.Uuid
+  siteId            String              @map("site_id") @db.Uuid
+  mode              GrowthProgramMode
+  inputType         GrowthInputType     @map("input_type")
+  inputValue        String              @map("input_value")
+  inputFingerprint  String              @map("input_fingerprint")
+  status            GrowthProgramStatus @default(ACTIVE)
+  budgetLimitMicros BigInt?             @map("budget_limit_micros")
+  nextRunAt         DateTime?           @map("next_run_at")
+  lastRunAt         DateTime?           @map("last_run_at")
+  lockedUntil       DateTime?           @map("locked_until")
+  consecutiveWins   Int                 @default(0) @map("consecutive_wins")
+  deliveredRunCount Int                 @default(0) @map("delivered_run_count")
+  lastError         String?             @map("last_error")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site              Site                @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  runs              GrowthRun[]
 
-  @@index([organizationId, status, nextDecisionAt])
-  @@map("site_growth_states")
+  @@unique([organizationId, inputFingerprint])
+  @@index([status, nextRunAt])
+  @@index([organizationId, siteId, createdAt(sort: Desc)])
+  @@map("growth_programs")
 }
 
-model GrowthCycle {
-  id             String             @id @default(uuid()) @db.Uuid
-  organizationId String             @map("organization_id") @db.Uuid
-  siteId         String             @map("site_id") @db.Uuid
-  jobRunId       String?            @unique @map("job_run_id") @db.Uuid
-  trigger        GrowthCycleTrigger
-  status         GrowthCycleStatus  @default(QUEUED)
-  stage          GrowthStage        @default(REALITY)
-  stateVersion   BigInt             @map("state_version")
-  inputWatermark DateTime?          @map("input_watermark")
-  summary        Json?
-  errorCode      String?            @map("error_code")
-  errorMessage   String?            @map("error_message")
-  startedAt      DateTime?          @map("started_at")
-  finishedAt     DateTime?          @map("finished_at")
-  createdAt      DateTime           @default(now()) @map("created_at")
-  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site           Site               @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  jobRun         JobRun?            @relation(fields: [jobRunId], references: [id], onDelete: SetNull)
-  decisions      GrowthDecision[]
-  actions        GrowthAction[]
+model GrowthRun {
+  id                 String             @id @default(uuid()) @db.Uuid
+  organizationId     String             @map("organization_id") @db.Uuid
+  siteId             String             @map("site_id") @db.Uuid
+  programId          String             @map("program_id") @db.Uuid
+  jobRunId           String?            @unique @map("job_run_id") @db.Uuid
+  opportunityId      String?            @map("opportunity_id") @db.Uuid
+  draftId            String?            @map("draft_id") @db.Uuid
+  trigger            GrowthRunTrigger
+  status             GrowthRunStatus    @default(QUEUED)
+  currentStage       GrowthRunStageCode @default(UNDERSTAND) @map("current_stage")
+  occurrenceKey      String             @map("occurrence_key")
+  resolvedKeyword    String?            @map("resolved_keyword")
+  selectedActionType GrowthActionType?  @map("selected_action_type")
+  targetUrl          String?            @map("target_url")
+  knowledgeSourceIds String[]           @default([]) @map("knowledge_source_ids") @db.Uuid
+  delivery           Json?
+  observation        Json?
+  errorCode          String?            @map("error_code")
+  errorMessage       String?            @map("error_message")
+  startedAt          DateTime?          @map("started_at")
+  deliveredAt        DateTime?          @map("delivered_at")
+  finishedAt         DateTime?          @map("finished_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site               Site               @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  program            GrowthProgram      @relation(fields: [programId], references: [id], onDelete: Cascade)
+  jobRun             JobRun?            @relation(fields: [jobRunId], references: [id], onDelete: SetNull)
+  opportunity        Opportunity?       @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  draft              ContentDraft?      @relation(fields: [draftId], references: [id], onDelete: SetNull)
+  stages             GrowthRunStage[]
+  decisions          GrowthDecision[]
+  actions            GrowthAction[]
 
-  @@index([organizationId, siteId, createdAt])
-  @@index([siteId, status, createdAt])
-  @@map("growth_cycles")
+  @@unique([programId, occurrenceKey])
+  @@index([organizationId, siteId, createdAt(sort: Desc)])
+  @@index([programId, status, createdAt(sort: Desc)])
+  @@index([siteId, status, updatedAt])
+  @@index([opportunityId])
+  @@index([draftId])
+  @@map("growth_runs")
+}
+
+model GrowthRunStage {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  siteId         String               @map("site_id") @db.Uuid
+  runId          String               @map("run_id") @db.Uuid
+  stage          GrowthRunStageCode
+  status         GrowthRunStageStatus @default(PENDING)
+  summary        String?
+  processedCount Int                  @default(0) @map("processed_count")
+  totalCount     Int?                 @map("total_count")
+  evidence       Json                 @default("[]")
+  errorCode      String?              @map("error_code")
+  errorMessage   String?              @map("error_message")
+  startedAt      DateTime?            @map("started_at")
+  finishedAt     DateTime?            @map("finished_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site           Site                 @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  run            GrowthRun            @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, stage])
+  @@index([organizationId, runId, stage])
+  @@index([siteId, status, updatedAt])
+  @@map("growth_run_stages")
 }
 
 model GrowthDecision {
   id                 String               @id @default(uuid()) @db.Uuid
   organizationId     String               @map("organization_id") @db.Uuid
   siteId             String               @map("site_id") @db.Uuid
-  cycleId            String               @map("cycle_id") @db.Uuid
+  runId              String               @map("run_id") @db.Uuid
   opportunityId      String               @map("opportunity_id") @db.Uuid
   status             GrowthDecisionStatus @default(PROPOSED)
   rank               Int
@@ -620,11 +636,11 @@ model GrowthDecision {
   updatedAt          DateTime             @updatedAt @map("updated_at")
   organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   site               Site                 @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  cycle              GrowthCycle          @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  run                GrowthRun            @relation(fields: [runId], references: [id], onDelete: Cascade)
   opportunity        Opportunity          @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
   action             GrowthAction?
 
-  @@unique([cycleId, opportunityId])
+  @@unique([runId, opportunityId])
   @@index([organizationId, siteId, status, rank])
   @@index([siteId])
   @@index([opportunityId])
@@ -635,7 +651,7 @@ model GrowthAction {
   id                  String                 @id @default(uuid()) @db.Uuid
   organizationId      String                 @map("organization_id") @db.Uuid
   siteId              String                 @map("site_id") @db.Uuid
-  cycleId             String                 @map("cycle_id") @db.Uuid
+  runId               String                 @map("run_id") @db.Uuid
   decisionId          String                 @unique @map("decision_id") @db.Uuid
   opportunityId       String                 @map("opportunity_id") @db.Uuid
   type                GrowthActionType
@@ -658,14 +674,14 @@ model GrowthAction {
   updatedAt           DateTime               @updatedAt @map("updated_at")
   organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   site                Site                   @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  cycle               GrowthCycle            @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  run                 GrowthRun              @relation(fields: [runId], references: [id], onDelete: Cascade)
   decision            GrowthDecision         @relation(fields: [decisionId], references: [id], onDelete: Cascade)
   opportunity         Opportunity            @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
   observations        GrowthObservation[]
 
   @@index([organizationId, siteId, status, observeUntil])
   @@index([siteId, targetUrl, cooldownUntil])
-  @@index([cycleId])
+  @@index([runId])
   @@index([opportunityId])
   @@map("growth_actions")
 }
@@ -695,30 +711,6 @@ model GrowthObservation {
   @@map("growth_observations")
 }
 
-model AutomationTask {
-  id             String           @id @default(uuid()) @db.Uuid
-  organizationId String           @map("organization_id") @db.Uuid
-  siteId         String           @map("site_id") @db.Uuid
-  name           String
-  status         AutomationStatus @default(PAUSED)
-  scheduleType   ScheduleType     @map("schedule_type")
-  scheduleConfig Json             @map("schedule_config")
-  nextRunAt      DateTime         @map("next_run_at")
-  lastRunAt      DateTime?        @map("last_run_at")
-  lockedUntil    DateTime?        @map("locked_until")
-  lastError      String?          @map("last_error")
-  createdAt      DateTime         @default(now()) @map("created_at")
-  updatedAt      DateTime         @updatedAt @map("updated_at")
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site           Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  executionRuns  ExecutionRun[]
-
-  @@index([status, nextRunAt])
-  @@index([organizationId, siteId])
-  @@index([siteId])
-  @@map("automation_tasks")
-}
-
 model JobRun {
   id             String          @id @default(uuid()) @db.Uuid
   organizationId String          @map("organization_id") @db.Uuid
@@ -739,55 +731,14 @@ model JobRun {
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   creditHold     CreditHold?
   publishAttempt PublishAttempt?
-  growthCycle    GrowthCycle?
+  growthRun      GrowthRun?
   usageRecords   UsageRecord[]
-  executionRun   ExecutionRun?
 
   @@unique([organizationId, type, idempotencyKey])
   @@index([organizationId, status, createdAt])
   @@index([status, heartbeatAt])
   @@index([status, availableAt])
   @@map("job_runs")
-}
-
-model ExecutionRun {
-  id                 String              @id @default(uuid()) @db.Uuid
-  organizationId     String              @map("organization_id") @db.Uuid
-  siteId             String              @map("site_id") @db.Uuid
-  automationTaskId   String?             @map("automation_task_id") @db.Uuid
-  jobRunId           String?             @unique @map("job_run_id") @db.Uuid
-  mode               ExecutionMode
-  sourceType         ExecutionSourceType @map("source_type")
-  sourceValue        String              @map("source_value")
-  sourceFingerprint  String              @map("source_fingerprint")
-  status             ExecutionStatus     @default(QUEUED)
-  stage              ExecutionStage      @default(INTAKE)
-  resolvedKeyword    String?             @map("resolved_keyword")
-  knowledgeSourceIds String[]            @default([]) @map("knowledge_source_ids") @db.Uuid
-  opportunityId      String?             @map("opportunity_id") @db.Uuid
-  draftId            String?             @map("draft_id") @db.Uuid
-  result             Json?
-  errorCode          String?             @map("error_code")
-  errorMessage       String?             @map("error_message")
-  startedAt          DateTime?           @map("started_at")
-  finishedAt         DateTime?           @map("finished_at")
-  createdAt          DateTime            @default(now()) @map("created_at")
-  updatedAt          DateTime            @updatedAt @map("updated_at")
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site               Site                @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  automationTask     AutomationTask?      @relation(fields: [automationTaskId], references: [id], onDelete: SetNull)
-  jobRun             JobRun?              @relation(fields: [jobRunId], references: [id], onDelete: SetNull)
-  opportunity        Opportunity?         @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
-  draft              ContentDraft?        @relation(fields: [draftId], references: [id], onDelete: SetNull)
-
-  @@unique([organizationId, sourceFingerprint])
-  @@index([organizationId, siteId, createdAt(sort: Desc)])
-  @@index([siteId])
-  @@index([status, stage, updatedAt])
-  @@index([automationTaskId, createdAt(sort: Desc)])
-  @@index([opportunityId])
-  @@index([draftId])
-  @@map("execution_runs")
 }
 
 model ContentDraft {
@@ -814,7 +765,7 @@ model ContentDraft {
   reviews              DraftReview[]
   publishAttempts      PublishAttempt[]
   indexingObservations IndexingObservation[]
-  executionRuns        ExecutionRun[]
+  growthRuns           GrowthRun[]
 
   @@index([organizationId, siteId, status, createdAt])
   @@index([siteId])
@@ -831,7 +782,7 @@ model DraftReview {
   comment    String?
   createdAt  DateTime       @default(now()) @map("created_at")
   draft      ContentDraft   @relation(fields: [draftId], references: [id], onDelete: Cascade)
-  reviewer   Profile        @relation(fields: [reviewerId], references: [id], onDelete: Restrict)
+  reviewer   Profile        @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
 
   @@index([draftId, createdAt])
   @@index([reviewerId])
@@ -1039,7 +990,7 @@ model TermsAcceptance {
   acceptedAt     DateTime      @default(now()) @map("accepted_at")
   ipHash         String?       @map("ip_hash")
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  profile        Profile       @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  profile        Profile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@unique([profileId, organizationId, document, version])
   @@index([organizationId])

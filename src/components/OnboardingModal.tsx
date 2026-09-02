@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Language, SiteType } from '../types/seo';
+import { Language, SiteType, WordPressSite } from '../types/seo';
 import {
   X,
   Globe,
@@ -16,10 +16,9 @@ interface OnboardingModalProps {
     name: string;
     siteType?: SiteType;
     siteLanguage?: Language | string;
-    wpUsername?: string;
-    wpAppPassword?: string;
     niche?: string;
-  }) => Promise<void>;
+  }) => Promise<WordPressSite | void>;
+  onAuthorizeWordPress: (siteId: string) => Promise<{ authorizationUrl: string }>;
 }
 
 const getDefaultLanguage = (): string => {
@@ -34,14 +33,13 @@ const getDefaultLanguage = (): string => {
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   isOpen,
   onClose,
-  onAddSite
+  onAddSite,
+  onAuthorizeWordPress
 }) => {
   const [domain, setDomain] = useState('');
   const [name, setName] = useState('');
   const siteType: SiteType = 'WORDPRESS';
   const [siteLanguage, setSiteLanguage] = useState<string>(getDefaultLanguage());
-  const [wpUsername, setWpUsername] = useState('');
-  const [wpAppPassword, setWpAppPassword] = useState('');
   const [niche, setNiche] = useState('企业出海与技术服务');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,16 +55,16 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     const cleanDomain = domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
 
     try {
-      await onAddSite({
+      const site = await onAddSite({
         domain: cleanDomain,
         name: name.trim() || cleanDomain,
         siteType,
         siteLanguage,
-        wpUsername: wpUsername.trim() || undefined,
-        wpAppPassword: wpAppPassword.trim() || undefined,
         niche: niche.trim() || undefined
       });
-      onClose();
+      if (!site) throw new Error('站点创建后未返回记录');
+      const authorization = await onAuthorizeWordPress(site.id);
+      window.location.assign(authorization.authorizationUrl);
     } catch (submissionError) {
       setError(submissionError instanceof Error ? submissionError.message : '站点保存失败，请检查配置后重试。');
     } finally {
@@ -168,51 +166,21 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             </div>
           </div>
 
-          {/* WordPress credentials are shown only for the selected, supported connector. */}
+          {/* WordPress grants credentials on the customer site; secrets are never entered here. */}
           <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
             <div className="font-semibold text-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <Key className="w-3.5 h-3.5 text-slate-700" />
-                <span>WordPress 发布凭证</span>
+                <span>WordPress 官方授权</span>
               </div>
               <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-normal border border-emerald-200">
-                支持后期修改
+                无需安装插件
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-slate-600 font-medium">管理员用户名</label>
-                <input
-                  type="text"
-                  placeholder="例如：admin"
-                  value={wpUsername}
-                  onChange={e => setWpUsername(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-slate-400"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-slate-600 font-medium">应用密码</label>
-                <input
-                  type="password"
-                  placeholder="如: xxxx xxxx xxxx xxxx"
-                  value={wpAppPassword}
-                  onChange={e => setWpAppPassword(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900 font-mono focus:outline-none focus:border-slate-400"
-                />
-              </div>
-            </div>
-
-            {siteType === 'WORDPRESS' && (
-              <div className="p-2.5 bg-amber-50/80 border border-amber-200/80 rounded-lg text-[11px] text-amber-900 space-y-1">
-                <div className="font-bold flex items-center gap-1 text-amber-800">
-                  💡 如何获得 WordPress 应用密码？
-                </div>
-                <p className="leading-relaxed text-amber-900/90">
-                  登录 WP 管理后台 &rarr; 导航至 <strong>「用户」&rarr;「个人资料」</strong> &rarr; 滑动至最下方 <strong>「应用密码」</strong> &rarr; 输入名称并生成，直接复制填入上框即可。
-                </p>
-              </div>
-            )}
+            <p className="text-[11px] leading-5 text-slate-600">
+              点击下方按钮后会跳转到您的 WordPress 站点。请在站点内批准授权，系统随后自动验证读取、创建、更新和发布权限；凭证不会显示在浏览器中。
+            </p>
           </div>
 
           {/* Footer Actions */}
@@ -229,7 +197,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               disabled={!domain.trim() || submitting}
               className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-semibold transition disabled:opacity-50"
             >
-              {submitting ? '保存中...' : '添加站点'}
+              {submitting ? '正在连接...' : '连接 WordPress'}
             </button>
           </div>
 

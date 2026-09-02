@@ -28,13 +28,12 @@ import {
 interface MainDashboardProps {
   sites: WordPressSite[];
   drafts: ArticleDraft[];
-  onTriggerScan: (keyword?: string, siteId?: string) => Promise<any>;
   onRollback?: (draftId: string) => Promise<void>;
-  onRunCruise?: (
+  onStartGrowthProgram: (
     siteIds: string[],
     addLog: (msg: string) => void,
     setPipelineStep: (step: number, status: PipelineStepStatus) => void,
-    keyword?: string
+    source?: { type: 'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE'; value: string }
   ) => Promise<ArticleDraft | undefined>;
   onOpenOnboarding?: () => void;
 }
@@ -46,9 +45,8 @@ const initialPipelineStepStates = (): PipelineStepStates => Object.fromEntries(
 export const MainDashboard: React.FC<MainDashboardProps> = ({
   sites = [],
   drafts = [],
-  onTriggerScan,
   onRollback,
-  onRunCruise,
+  onStartGrowthProgram,
   onOpenOnboarding
 }) => {
   const safeSites = useMemo(() => sites || [], [sites]);
@@ -63,7 +61,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     }
   }, [safeSites, selectedSiteId]);
 
-  // 三种真实执行入口：自定义关键词、客户授权旧文更新、竞品差异化研究。
+  // 三种增长线索：关键词、参考文章、竞品站点。
   const [mode, setMode] = useState<'KEYWORD' | 'REWRITE' | 'COMPETITOR'>('KEYWORD');
   const [keywordInput, setKeywordInput] = useState<string>('');
   const [rewriteInput, setRewriteInput] = useState<string>('');
@@ -114,27 +112,29 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
       return;
     }
 
-    let keywordToUse = overrideKeyword;
+    let source: { type: 'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE'; value: string } | undefined;
 
-    if (!keywordToUse) {
+    if (overrideKeyword?.trim()) {
+      source = { type: 'KEYWORD', value: overrideKeyword.trim() };
+    } else {
       if (mode === 'KEYWORD') {
         if (!keywordInput.trim()) {
           showToast('请输入一个核心关键词或主题');
           return;
         }
-        keywordToUse = keywordInput.trim();
+        source = { type: 'KEYWORD', value: keywordInput.trim() };
       } else if (mode === 'REWRITE') {
         if (!rewriteInput.trim()) {
-          showToast('请输入您拥有使用授权的旧文章 URL 或素材');
+          showToast('请输入一篇参考文章的完整 HTTPS 地址');
           return;
         }
-        keywordToUse = `[二次创作/改写] ${rewriteInput.trim()}`;
+        source = { type: 'REFERENCE_URL', value: rewriteInput.trim() };
       } else if (mode === 'COMPETITOR') {
         if (!competitorInput.trim()) {
           showToast('请输入竞品网站 URL');
           return;
         }
-        keywordToUse = `[竞品对标截流] ${competitorInput.trim()}`;
+        source = { type: 'COMPETITOR_SITE', value: competitorInput.trim() };
       }
     }
     const targetSiteIds = targetSiteId ? [targetSiteId] : safeSites.map(s => s.id);
@@ -149,28 +149,18 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     };
 
     try {
-      if (onRunCruise) {
-        const publishedDraft = await onRunCruise(targetSiteIds, addLog, setPipelineStep, keywordToUse || undefined);
-        if (publishedDraft?.status === 'PUBLISHED') {
-          setLatestPublishedDraft(publishedDraft);
-        }
-        showToast(publishedDraft?.status === 'PUBLISHED'
-          ? '文章已发布'
-          : publishedDraft?.status === 'QUALITY_FAILED'
-            ? '文章已生成，但未通过质量门禁'
-            : publishedDraft
-              ? '草稿已生成，请到“我的内容”审核发布'
-              : '执行未返回草稿，请查看任务日志');
-      } else {
-        setPipelineStep(1, 'RUNNING');
-        addLog(`[意图挖掘] 分析长尾关键词: ${keywordToUse || activeSite?.niche || '站点主题'}`);
-        await onTriggerScan(keywordToUse || undefined, targetSiteId);
-
-        addLog('[流程中止] 当前工作区未连接真实执行处理器，未生成、发布或推送任何内容。');
-        setPipelineStep(1, 'FAILED');
-        showToast('执行处理器未连接，未执行发布操作');
+      const publishedDraft = await onStartGrowthProgram(targetSiteIds, addLog, setPipelineStep, source);
+      if (publishedDraft?.status === 'PUBLISHED') {
+        setLatestPublishedDraft(publishedDraft);
       }
-    } catch (e: any) {
+      showToast(publishedDraft?.status === 'PUBLISHED'
+        ? '内容已发布'
+        : publishedDraft?.status === 'QUALITY_FAILED'
+          ? '内容未通过质量门禁，未修改站点且未扣费'
+          : publishedDraft
+            ? '交付草稿已生成，请到“我的内容”审核发布'
+            : '本轮未产生内容动作，请查看真实执行日志');
+    } catch (e: unknown) {
       addLog(`[执行异常] ${e instanceof Error ? e.message : String(e)}`);
       setPipelineStepStates((previous) => {
         const failedStates = { ...previous };
@@ -310,8 +300,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 }`}
               >
                 <Repeat className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                <span className="hidden sm:inline">二次创作</span>
-                <span className="inline sm:hidden">二创</span>
+                <span className="hidden sm:inline">参考文章</span>
+                <span className="inline sm:hidden">参考</span>
               </button>
 
               <button
@@ -359,13 +349,13 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               </div>
             )}
 
-            {/* 模式 2：客户授权旧文的差异化更新 */}
+            {/* 模式 2：参考文章只用于提取事实、结构和信息缺口 */}
             {mode === 'REWRITE' && (
               <div className="space-y-2.5 animate-in fade-in duration-150 bg-slate-50/70 p-3.5 sm:p-4 rounded-xl border border-slate-200/60">
                 <div className="flex items-center justify-between text-xs text-slate-500">
                   <span className="font-semibold text-slate-700 flex items-center gap-1.5">
                     <Link2 className="w-3.5 h-3.5 text-slate-500" />
-                    输入已授权的旧文章 URL 或素材
+                    输入参考文章 URL
                   </span>
                 </div>
                 <div className="relative">
@@ -373,7 +363,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                     type="url"
                     value={rewriteInput}
                     onChange={(e) => setRewriteInput(e.target.value)}
-                    placeholder="仅限您拥有使用授权的文章链接 (如 https://example.com/blog/...)"
+                    placeholder="https://example.com/blog/...（系统不会近似改写或复制）"
                     className="w-full px-3.5 py-2.5 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs"
                   />
                   {rewriteInput && (
@@ -423,7 +413,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 <>
                   <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
                   <span className="truncate">
-                    {activeSite?.connectorStatus !== 'CONNECTED' ? '请先完成 WordPress 真实连接测试' : mode === 'KEYWORD' ? (keywordInput ? `针对「${keywordInput.slice(0, 16)}${keywordInput.length > 16 ? '...' : ''}」开始执行` : '输入关键词后开始执行') : mode === 'REWRITE' ? '开始二创内容执行' : (competitorInput ? `针对竞品「${competitorInput.slice(0, 16)}」开始执行` : '输入竞品站点后开始执行')}
+                    {activeSite?.connectorStatus !== 'CONNECTED' ? '请先授权连接 WordPress' : mode === 'KEYWORD' ? (keywordInput ? `针对「${keywordInput.slice(0, 16)}${keywordInput.length > 16 ? '...' : ''}」开始执行` : '输入关键词后开始执行') : mode === 'REWRITE' ? '以参考文章发现信息缺口并执行' : (competitorInput ? `针对竞品「${competitorInput.slice(0, 16)}」开始执行` : '输入竞品站点后开始执行')}
                   </span>
                   <ArrowRight className="w-4 h-4 shrink-0" />
                 </>
@@ -449,8 +439,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               </svg>
             </div>
             <span className="text-xs font-bold text-slate-500 tracking-wider uppercase bg-white px-4 z-10 text-center">
-              <span className="hidden sm:inline">8 阶段生产链路 · 发布与收录在人工审核后继续</span>
-              <span className="inline sm:hidden">8 阶段自动巡航</span>
+              <span className="hidden sm:inline">5 阶段真实增长链路 · 发布完成即交付，效果观察独立继续</span>
+              <span className="inline sm:hidden">5 阶段真实进度</span>
             </span>
           </div>
 

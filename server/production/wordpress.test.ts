@@ -18,7 +18,19 @@ afterEach(() => {
 });
 
 describe('WordPress atomic read executor', () => {
-  it('captures an exact editable resource without exposing its content', async () => {
+  it('discovers the official same-origin Application Password authorization endpoint', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ authentication: { 'application-passwords': { endpoints: { authorization: 'https://example.com/wp-admin/authorize-application.php' } } } }), { status: 200 })));
+    const { wordPressService } = await import('./wordpress');
+    await expect(wordPressService.applicationPasswordAuthorizationUrl('example.com')).resolves.toBe('https://example.com/wp-admin/authorize-application.php');
+  });
+
+  it('rejects a cross-origin Application Password authorization endpoint', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ authentication: { 'application-passwords': { endpoints: { authorization: 'https://attacker.test/authorize' } } } }), { status: 200 })));
+    const { wordPressService } = await import('./wordpress');
+    await expect(wordPressService.applicationPasswordAuthorizationUrl('example.com')).rejects.toThrow('跨站');
+  });
+
+  it('captures the exact editable resource needed for a lossless rollback without credentials', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify([{
         id: 42,
@@ -39,7 +51,8 @@ describe('WordPress atomic read executor', () => {
     expect(result).toMatchObject({ postId: '42', resourceType: 'posts', url: 'https://example.com/guides/crm/', title: 'Enterprise CRM Guide', status: 'publish' });
     expect(result.contentChecksum).toMatch(/^[a-f0-9]{64}$/);
     expect(result.contentLength).toBeGreaterThan(0);
-    expect(JSON.stringify(result)).not.toContain('Customer-owned page content');
+    expect(result.content).toContain('Customer-owned page content');
+    expect(JSON.stringify(result)).not.toContain('abcd efgh');
   });
 
   it('rejects a cross-origin target before requesting WordPress', async () => {
@@ -72,6 +85,34 @@ describe('WordPress atomic read executor', () => {
     const encrypted = wordPressService.encrypt({ username: 'editor', applicationPassword: 'abcd efgh' });
 
     await expect(wordPressService.testConnection('example.com', encrypted)).rejects.toThrow('不允许重定向');
+  });
+
+  it('recognizes only its own delivery marker when a publish job is retried', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify([{
+      id: 42,
+      link: 'https://example.com/verified-delivery/',
+      content: { raw: '<!-- aiseo-delivery:00000000-0000-4000-8000-000000000042 -->\n<p>Delivered</p>' }
+    }]), { status: 200 })));
+    const { wordPressService } = await import('./wordpress');
+    const encrypted = wordPressService.encrypt({ username: 'editor', applicationPassword: 'abcd efgh' });
+
+    await expect(wordPressService.publish({
+      domain: 'example.com', encrypted, title: 'Verified delivery', slug: 'verified-delivery', html: '<p>Delivered</p>', deliveryId: '00000000-0000-4000-8000-000000000042'
+    })).resolves.toEqual({ postId: '42', url: 'https://example.com/verified-delivery/' });
+  });
+
+  it('stops on an unrelated existing slug instead of treating it as a successful retry', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify([{
+      id: 9,
+      link: 'https://example.com/existing/',
+      content: { raw: '<p>Customer-authored content</p>' }
+    }]), { status: 200 })));
+    const { wordPressService } = await import('./wordpress');
+    const encrypted = wordPressService.encrypt({ username: 'editor', applicationPassword: 'abcd efgh' });
+
+    await expect(wordPressService.publish({
+      domain: 'example.com', encrypted, title: 'New content', slug: 'existing', html: '<p>New</p>', deliveryId: '00000000-0000-4000-8000-000000000042'
+    })).rejects.toThrow('相同 slug');
   });
 
   it('builds a bounded site inventory with real internal links', async () => {

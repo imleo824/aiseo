@@ -2,7 +2,7 @@ begin;
 create schema if not exists extensions;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
-select plan(45);
+select plan(48);
 
 select is(
   (select count(*) from pg_class
@@ -11,7 +11,8 @@ select is(
      'public.organization_members'::regclass, 'public.sites'::regclass,
      'public.integration_connections'::regclass, 'public.knowledge_sources'::regclass,
      'public.data_snapshots'::regclass, 'public.keyword_scans'::regclass,
-     'public.opportunities'::regclass, 'public.automation_tasks'::regclass,
+     'public.opportunities'::regclass, 'public.growth_programs'::regclass,
+     'public.growth_runs'::regclass, 'public.growth_run_stages'::regclass,
      'public.job_runs'::regclass, 'public.content_drafts'::regclass,
      'public.draft_reviews'::regclass, 'public.publish_attempts'::regclass,
      'public.indexing_observations'::regclass, 'public.payment_packages'::regclass,
@@ -20,12 +21,11 @@ select is(
      'public.usage_records'::regclass, 'public.idempotency_keys'::regclass,
      'public.audit_events'::regclass, 'public.terms_acceptances'::regclass,
      'public.notifications'::regclass, 'public.worker_heartbeats'::regclass,
-     'public.system_settings'::regclass, 'public.execution_runs'::regclass,
-     'public.site_growth_states'::regclass, 'public.growth_cycles'::regclass,
+     'public.system_settings'::regclass,
      'public.growth_decisions'::regclass, 'public.growth_actions'::regclass,
      'public.growth_observations'::regclass
    ]) and relrowsecurity),
-  33::bigint,
+  32::bigint,
   'every business table has RLS enabled'
 );
 
@@ -37,7 +37,7 @@ select ok(not (select rolcanlogin from pg_roles where rolname = 'app_backend'), 
 select ok(not (select rolcanlogin from pg_roles where rolname = 'app_worker'), 'migration never stores or enables the Worker login credential');
 select ok(not has_schema_privilege('anon', 'public', 'usage'), 'anon cannot access the business schema');
 select ok(not has_schema_privilege('authenticated', 'public', 'usage'), 'authenticated cannot access the business schema');
-select ok(not has_schema_privilege('service_role', 'public', 'usage'), 'Auth service role cannot access the business schema through Data API');
+select ok(has_schema_privilege('service_role', 'public', 'usage'), 'service role has schema usage required for the single erasure RPC');
 select ok(not has_table_privilege('service_role', 'public.sites', 'select,insert,update,delete'), 'Auth service role has no business-table privileges');
 select ok(has_function_privilege('app_backend', 'private.is_active_auth_session(uuid)', 'execute'), 'Web may validate a sensitive Auth session');
 select ok(not has_function_privilege('anon', 'private.is_active_auth_session(uuid)', 'execute'), 'anon cannot inspect Auth sessions');
@@ -45,15 +45,17 @@ select ok(not has_table_privilege('app_backend', 'public.job_runs', 'update'), '
 select ok(not has_table_privilege('app_backend', 'public.payment_intents', 'delete'), 'Web cannot delete payment records');
 select ok(not has_table_privilege('app_worker', 'public.profiles', 'update'), 'Worker cannot mutate profile authorization state');
 select ok(not has_table_privilege('app_worker', 'public.payment_intents', 'insert'), 'Worker cannot manufacture payment intents');
-select ok(not has_table_privilege('anon', 'public.site_growth_states', 'select,insert,update,delete'), 'anon cannot access growth state');
-select ok(has_table_privilege('app_backend', 'public.site_growth_states', 'select,insert,update'), 'Web may start and pause site growth state');
+select ok(not has_table_privilege('anon', 'public.growth_programs', 'select,insert,update,delete'), 'anon cannot access growth programs');
+select ok(has_table_privilege('app_backend', 'public.growth_programs', 'select,insert,update') and not has_table_privilege('app_backend', 'public.growth_programs', 'delete'), 'Web may create, pause and resume growth programs without deleting history');
+select ok(has_table_privilege('app_backend', 'public.growth_run_stages', 'select,insert') and not has_table_privilege('app_backend', 'public.growth_run_stages', 'update,delete'), 'Web may create initial stage records but cannot forge progress');
 select ok(not has_table_privilege('app_backend', 'public.growth_decisions', 'insert'), 'Web cannot manufacture growth decisions');
 select ok(not has_table_privilege('app_backend', 'public.growth_actions', 'insert'), 'Web cannot manufacture growth actions');
 select ok(not has_table_privilege('app_backend', 'public.growth_observations', 'insert'), 'Web cannot manufacture growth observations');
-select ok(has_table_privilege('app_worker', 'public.growth_observations', 'select,insert,update,delete'), 'Worker owns the evidence lifecycle without bypassing RLS');
-select ok(not has_table_privilege('anon', 'public.execution_runs', 'select,insert,update,delete'), 'anon cannot access autonomous execution records');
-select ok(has_table_privilege('app_backend', 'public.execution_runs', 'select,insert,update') and not has_table_privilege('app_backend', 'public.execution_runs', 'delete'), 'Web may manage but not delete execution records');
-select ok(has_table_privilege('app_worker', 'public.execution_runs', 'select,insert,update,delete'), 'Worker owns execution lifecycle records');
+select ok(has_table_privilege('app_worker', 'public.growth_observations', 'select,insert,update'), 'Worker owns the evidence lifecycle without bypassing RLS');
+select ok(not has_table_privilege('app_worker', 'public.growth_observations', 'delete'), 'Worker cannot erase growth evidence');
+select ok(to_regclass('public.execution_runs') is null and to_regclass('public.growth_cycles') is null and to_regclass('public.automation_tasks') is null, 'legacy duplicate engines are absent');
+select ok(has_function_privilege('service_role', 'public.claim_due_account_erasures(integer)', 'execute'), 'isolated Edge Function can claim due account erasures');
+select ok(not has_function_privilege('app_backend', 'public.claim_due_account_erasures(integer)', 'execute') and not has_function_privilege('app_worker', 'public.claim_due_account_erasures(integer)', 'execute'), 'application services cannot invoke delayed erasure');
 
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
 values
@@ -76,12 +78,24 @@ set local role app_backend;
 insert into public.sites (id, organization_id, domain, name, updated_at)
 values ('00000000-0000-0000-0000-0000000000a3', (select organization_id from rls_context where label = 'a'), 'org-a.example.test', 'Org A site', now());
 select is((select count(*) from public.sites), 1::bigint, 'owner can select own organization rows');
-insert into public.site_growth_states (id, organization_id, site_id)
-values ('00000000-0000-0000-0000-0000000000a4', (select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000a3');
-select is((select count(*) from public.site_growth_states), 1::bigint, 'owner can create and select own growth state');
-insert into public.execution_runs (id, organization_id, site_id, mode, source_type, source_value, source_fingerprint, updated_at)
-values ('00000000-0000-0000-0000-0000000000a5', (select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000a3', 'ONCE', 'KEYWORD', 'WordPress SEO', 'rls-owner-execution', now());
-select is((select count(*) from public.execution_runs), 1::bigint, 'owner can create and select an execution record');
+insert into public.growth_programs (id, organization_id, site_id, mode, input_type, input_value, input_fingerprint)
+values ('00000000-0000-0000-0000-0000000000a4', (select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000a3', 'ONCE', 'KEYWORD', 'WordPress SEO', 'rls-owner-program');
+select is((select count(*) from public.growth_programs), 1::bigint, 'owner can create and select own growth program');
+insert into public.growth_runs (id, organization_id, site_id, program_id, trigger, occurrence_key)
+values ('00000000-0000-0000-0000-0000000000a5', (select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000a3', '00000000-0000-0000-0000-0000000000a4', 'USER', 'rls-owner-run');
+insert into public.growth_run_stages (organization_id, site_id, run_id, stage)
+values ((select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000a3', '00000000-0000-0000-0000-0000000000a5', 'UNDERSTAND');
+select ok((select count(*) from public.growth_runs) = 1 and (select count(*) from public.growth_run_stages) = 1, 'owner can create a run with durable stages');
+reset role;
+
+insert into public.sites (id, organization_id, domain, name, updated_at)
+values ('00000000-0000-0000-0000-0000000000b3', (select organization_id from rls_context where label = 'b'), 'org-b.example.test', 'Org B site', now());
+set local role app_worker;
+select throws_like(
+  format('insert into public.growth_programs (organization_id, site_id, mode, input_type, input_value, input_fingerprint) values (%L, %L, %L, %L, %L, %L)', (select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000b3', 'ONCE', 'KEYWORD', 'cross tenant', 'cross-tenant-integrity'),
+  '%site does not belong to organization%',
+  'database rejects a cross-tenant site reference even for the Worker'
+);
 reset role;
 
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password, created_at, updated_at)
@@ -99,8 +113,8 @@ select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000b2', true
 select set_config('app.organization_id', (select organization_id::text from rls_context where label = 'b'), true);
 set local role app_backend;
 select is((select count(*) from public.sites), 0::bigint, 'cross-organization SELECT is denied');
-select is((select count(*) from public.site_growth_states), 0::bigint, 'cross-organization growth-state SELECT is denied');
-select is((select count(*) from public.execution_runs), 0::bigint, 'cross-organization execution SELECT is denied');
+select is((select count(*) from public.growth_programs), 0::bigint, 'cross-organization growth-program SELECT is denied');
+select is((select count(*) from public.growth_runs), 0::bigint, 'cross-organization growth-run SELECT is denied');
 select throws_like(
   format('insert into public.sites (organization_id, domain, name, updated_at) values (%L, %L, %L, now())', (select organization_id from rls_context where label = 'a'), 'cross.example.test', 'Cross org'),
   '%row-level security%',
@@ -119,15 +133,15 @@ select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000b2', true
 select set_config('app.organization_id', (select organization_id::text from rls_context where label = 'a'), true);
 set local role app_backend;
 select is((select count(*) from public.sites), 1::bigint, 'viewer can SELECT organization rows');
-select is((select count(*) from public.execution_runs), 1::bigint, 'viewer can SELECT organization execution rows');
+select is((select count(*) from public.growth_runs), 1::bigint, 'viewer can SELECT organization growth runs');
 select throws_like(
   format('insert into public.sites (organization_id, domain, name, updated_at) values (%L, %L, %L, now())', (select organization_id from rls_context where label = 'a'), 'viewer-write.example.test', 'Viewer write'),
   '%row-level security%',
   'viewer cannot INSERT organization rows'
 );
 select is((with changed as (update public.sites set name = 'viewer changed' returning id) select count(*) from changed), 0::bigint, 'viewer cannot UPDATE organization rows');
-select is((with changed as (update public.site_growth_states set status = 'PAUSED' returning id) select count(*) from changed), 0::bigint, 'viewer cannot UPDATE growth state');
-select is((with changed as (update public.execution_runs set status = 'CANCELLED' returning id) select count(*) from changed), 0::bigint, 'viewer cannot UPDATE execution rows');
+select is((with changed as (update public.growth_programs set status = 'PAUSED' returning id) select count(*) from changed), 0::bigint, 'viewer cannot UPDATE growth programs');
+select is((with changed as (update public.growth_runs set status = 'CANCELLED' returning id) select count(*) from changed), 0::bigint, 'viewer cannot UPDATE growth runs');
 reset role;
 
 update public.organizations set credit_balance_micros = 1000000 where id = (select organization_id from rls_context where label = 'a');

@@ -1,13 +1,21 @@
 # AISEO
 
-AISEO is a production SEO SaaS built on one runtime path:
+AISEO is a production SEO SaaS built on one runtime path. A customer connects
+WordPress and supplies one growth clue (a keyword, reference article URL, or
+competitor site); the system then runs the same durable five-stage engine for
+one-time and continuous work:
 
 - Supabase Auth (email/password, PKCE, verified email) and Supabase Postgres
-- Stateless Express `/api`
+- Stateless Express `/api/v1`
 - Redis/BullMQ Worker with Postgres-backed queue reconciliation
 - React 19 + TanStack Query
-- GSC, DataForSEO, OpenAI/Gemini and WordPress
+- WordPress native Application Password authorization
+- DataForSEO and OpenAI/Gemini for execution; optional GSC for measured outcomes
 - TRC20 USDT payment intents and an append-only bigint-microcredit ledger
+
+The five committed stages are Understand, Discover, Decide, Execute, and Learn.
+GSC is not a first-run prerequisite. Without it, AISEO reports only verifiable
+delivery and leading indicators and never claims measured traffic growth.
 
 There is no JSON database, in-memory session store, browser-accessible business Data API, demo data, synthetic metric fallback or non-WordPress CMS adapter.
 

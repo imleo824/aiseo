@@ -109,8 +109,8 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
       } else {
         setAdjustMessage({ type: 'error', text: res.message || '操作失败' });
       }
-    } catch (err: any) {
-      setAdjustMessage({ type: 'error', text: err.message || '网络或系统异常，请重试' });
+    } catch (err: unknown) {
+      setAdjustMessage({ type: 'error', text: err instanceof Error ? err.message : '网络或系统异常，请重试' });
     } finally {
       setSubmitting(false);
     }

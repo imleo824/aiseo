@@ -7,7 +7,7 @@ export interface LogPayload {
   traceId?: string;
   tenantId?: string;
   durationMs?: number;
-  data?: any;
+  data?: unknown;
   timestamp: string;
 }
 
@@ -27,7 +27,7 @@ class StructuredLogger {
     }
   }
 
-  public info(module: string, message: string, meta?: { traceId?: string; tenantId?: string; durationMs?: number; data?: any }): void {
+  public info(module: string, message: string, meta?: { traceId?: string; tenantId?: string; durationMs?: number; data?: unknown }): void {
     this.formatOutput({
       level: 'INFO',
       module,
@@ -40,7 +40,7 @@ class StructuredLogger {
     });
   }
 
-  public warn(module: string, message: string, meta?: { traceId?: string; tenantId?: string; durationMs?: number; data?: any }): void {
+  public warn(module: string, message: string, meta?: { traceId?: string; tenantId?: string; durationMs?: number; data?: unknown }): void {
     this.formatOutput({
       level: 'WARN',
       module,
@@ -53,7 +53,7 @@ class StructuredLogger {
     });
   }
 
-  public error(module: string, message: string, meta?: { traceId?: string; tenantId?: string; durationMs?: number; data?: any }): void {
+  public error(module: string, message: string, meta?: { traceId?: string; tenantId?: string; durationMs?: number; data?: unknown }): void {
     this.formatOutput({
       level: 'ERROR',
       module,
@@ -72,7 +72,7 @@ class StructuredLogger {
     const tenantId = typeof metaOrTraceId === 'object' ? metaOrTraceId?.tenantId : undefined;
 
     return {
-      done: (message?: string, extraData?: any) => {
+      done: (message?: string, extraData?: unknown) => {
         const durationMs = Date.now() - start;
         this.info(module, message || `${operationName} completed`, {
           traceId,
@@ -82,9 +82,9 @@ class StructuredLogger {
         });
         return durationMs;
       },
-      fail: (err: any) => {
+      fail: (err: unknown) => {
         const durationMs = Date.now() - start;
-        this.error(module, `${operationName} failed after ${durationMs}ms: ${err?.message || err}`, {
+        this.error(module, `${operationName} failed after ${durationMs}ms: ${err instanceof Error ? err.message : String(err)}`, {
           traceId,
           tenantId,
           durationMs,

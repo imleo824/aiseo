@@ -16,7 +16,7 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<ApiEnve
   headers.set('authorization', `Bearer ${session.access_token}`);
   if (init.body) headers.set('content-type', 'application/json');
   if (init.method && !['GET', 'HEAD'].includes(init.method) && !headers.has('idempotency-key')) headers.set('idempotency-key', crypto.randomUUID());
-  const response = await fetch(`/api${path}`, { ...init, headers, credentials: 'omit' });
+  const response = await fetch(`/api/v1${path}`, { ...init, headers, credentials: 'omit' });
   const payload = await response.json().catch(() => ({})) as ApiEnvelope<T> & ApiErrorEnvelope;
   if (!response.ok) throw new ApiError(response.status, payload.error?.code || 'API_ERROR', payload.error?.message || '请求失败', payload.error?.details, payload.error?.traceId);
   return payload;

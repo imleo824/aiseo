@@ -298,7 +298,7 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
             <div className="flex items-center gap-2">
               <select
                 value={timeFilter}
-                onChange={e => setTimeFilter(e.target.value as any)}
+                onChange={e => setTimeFilter(e.target.value as 'ALL' | 'TODAY' | 'WEEK' | 'MONTH')}
                 className="flex-1 sm:flex-none px-3 py-1.5 text-xs bg-slate-50 border border-slate-200/80 rounded-lg text-slate-700 focus:outline-none focus:border-slate-400 transition-colors cursor-pointer"
               >
                 <option value="ALL">全部时间</option>
@@ -328,7 +328,7 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
             </div>
             <h4 className="text-sm font-bold text-slate-900 mb-1">暂无符合条件的账单明细</h4>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              当前暂未查询到相关交易记录，完成充值或执行自动发文、巡航任务后将在此处实时生成对账流水。
+              当前暂未查询到相关交易记录，完成充值或执行自然流量增长任务后将在此处生成真实对账流水。
             </p>
           </div>
         ) : (

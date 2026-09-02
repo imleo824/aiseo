@@ -66,7 +66,7 @@ export interface ServiceConnectionTestResult {
   latencyMs: number;
   statusCode?: number;
   message: string;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
   testedAt: string;
 }
 
@@ -292,14 +292,11 @@ export type PipelineStepStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'PARTIAL'
 export type PipelineStepStates = Record<number, PipelineStepStatus>;
 
 export const AUTOMATION_PIPELINE_STAGES = [
-  { number: 1, title: '意图挖掘' },
-  { number: 2, title: '知识检索' },
-  { number: 3, title: '大纲策划' },
-  { number: 4, title: '长文智造' },
-  { number: 5, title: '质量核验' },
-  { number: 6, title: '智能内链' },
-  { number: 7, title: '站点发布' },
-  { number: 8, title: '收录监测' }
+  { number: 1, code: 'UNDERSTAND', title: '了解网站' },
+  { number: 2, code: 'DISCOVER', title: '发现机会' },
+  { number: 3, code: 'DECIDE', title: '选择动作' },
+  { number: 4, code: 'EXECUTE', title: '执行与发布' },
+  { number: 5, code: 'LEARN', title: '观察与学习' }
 ] as const;
 
 export const AUTOMATION_PIPELINE_STAGE_COUNT = AUTOMATION_PIPELINE_STAGES.length;
@@ -368,7 +365,7 @@ export interface AutomatedTask {
   scheduleType: 'DAILY' | 'INTERVAL' | 'WEEKLY';
   scheduleTime: string;
   targetKeywordTopic: string;
-  sourceType?: 'KEYWORD' | 'REWRITE_URL' | 'COMPETITOR_URL';
+  sourceType?: 'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE';
   articleCountPerRun: number;
   totalArticles?: number; // 累计文章
   status: 'ACTIVE' | 'PAUSED';
@@ -437,17 +434,6 @@ export interface UsageLedgerItem {
   costPerIndexedPage: number;
   budgetLimit: number;
   budgetUsed: number;
-}
-
-export interface GrowthMetrics {
-  monthlyOrganicVisits: number;
-  monthlyVisitsGrowthPct: number;
-  top10KeywordsCount: number;
-  newTop10KeywordsThisMonth: number;
-  newlyIndexedPagesCount: number;
-  activeAutopilotTasksCount: number;
-  pausedTasksCount: number;
-  nextBestOpportunity?: Opportunity;
 }
 
 export interface BaiduSubmissionLog {

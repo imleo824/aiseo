@@ -2,13 +2,11 @@ import React from 'react';
 import { AUTOMATION_PIPELINE_STAGES, PipelineStepStates, PipelineStepStatus } from '../../types/seo';
 import {
   Check,
-  Terminal as TerminalIcon,
   Search,
   Sparkles,
   FileText,
-  Link2,
-  Send,
-  Share2,
+  Activity,
+  Terminal as TerminalIcon,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
@@ -28,13 +26,10 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
 
   const stageIcons: Record<number, React.ReactNode> = {
     1: <Search className="w-4 h-4" />,
-    2: <TerminalIcon className="w-4 h-4" />,
+    2: <Sparkles className="w-4 h-4" />,
     3: <Sparkles className="w-4 h-4" />,
     4: <FileText className="w-4 h-4" />,
-    5: <Check className="w-4 h-4" />,
-    6: <Link2 className="w-4 h-4" />,
-    7: <Send className="w-4 h-4" />,
-    8: <Share2 className="w-4 h-4" />
+    5: <Activity className="w-4 h-4" />
   };
 
   const isRunning = activePipelineStep !== null;
@@ -42,7 +37,7 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
   return (
     <div className="space-y-4 pt-1">
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 sm:gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
         {AUTOMATION_PIPELINE_STAGES.map((stage) => {
           const status: PipelineStepStatus = stepStates[stage.number]
             || (activePipelineStep === stage.number ? 'RUNNING' : 'PENDING');

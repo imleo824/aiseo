@@ -4,7 +4,6 @@ import {
   Clock,
   Play,
   Pause,
-  Trash2,
   Plus,
   CheckCircle2,
   X,
@@ -20,7 +19,6 @@ interface ProAutopilotTasksTabProps {
   tasks: AutomatedTask[];
   onCreateTask: (task: Partial<AutomatedTask>) => Promise<void>;
   onToggleTask: (taskId: string, currentStatus: 'ACTIVE' | 'PAUSED') => Promise<void>;
-  onDeleteTask: (taskId: string) => Promise<void>;
   onRunTaskNow: (taskId: string) => Promise<{ success?: boolean; message?: string } | void>;
 }
 
@@ -29,25 +27,20 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
   tasks = [],
   onCreateTask,
   onToggleTask,
-  onDeleteTask,
   onRunTaskNow
 }) => {
   const safeSites = useMemo(() => sites || [], [sites]);
   const safeTasks = useMemo(() => tasks || [], [tasks]);
-  const eligibleSites = useMemo(() => safeSites.filter((site) => site.autopilotEnabled && site.connectorStatus === 'CONNECTED'), [safeSites]);
+  const eligibleSites = useMemo(() => safeSites.filter((site) => site.connectorStatus === 'CONNECTED'), [safeSites]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Modal Form State
-  const [taskName, setTaskName] = useState('');
   const [siteId, setSiteId] = useState('');
-  const [scheduleType, setScheduleType] = useState<'DAILY' | 'INTERVAL' | 'WEEKLY'>('DAILY');
-  const [scheduleTime, setScheduleTime] = useState('09:00');
   const [targetKeywordTopic, setTargetKeywordTopic] = useState('');
-  const [sourceType, setSourceType] = useState<'KEYWORD' | 'REWRITE_URL' | 'COMPETITOR_URL'>('KEYWORD');
-  const [articleCountPerRun, setArticleCountPerRun] = useState(1);
+  const [sourceType, setSourceType] = useState<'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE'>('KEYWORD');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const showToast = (msg: string) => {
@@ -57,23 +50,19 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
 
   const handleOpenCreateModal = () => {
     if (!eligibleSites.length) {
-      showToast('请先完成 3 次人工批准发布，并为站点显式开启自动发布');
+      showToast('请先授权连接一个 WordPress 站点');
       return;
     }
-    setTaskName('');
     setSiteId(eligibleSites[0].id);
-    setScheduleType('DAILY');
-    setScheduleTime('09:00');
     setTargetKeywordTopic('');
     setSourceType('KEYWORD');
-    setArticleCountPerRun(1);
     setIsModalOpen(true);
   };
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!taskName.trim() || !targetKeywordTopic.trim()) {
-      showToast('请输入任务名称和执行目标');
+    if (!siteId || !targetKeywordTopic.trim()) {
+      showToast('请选择站点并输入增长线索');
       return;
     }
 
@@ -83,18 +72,18 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
       const siteName = siteId === 'all' ? '全部站点' : (selectedSite?.domain || '特定站点');
 
       await onCreateTask({
-        taskName: taskName.trim(),
+        taskName: `${selectedSite?.name || selectedSite?.domain || '站点'}持续增长`,
         siteId,
         siteName,
-        scheduleType,
-        scheduleTime,
+        scheduleType: 'WEEKLY',
+        scheduleTime: '系统自适应',
         targetKeywordTopic: targetKeywordTopic.trim(),
         sourceType,
-        articleCountPerRun,
+        articleCountPerRun: 1,
         status: 'ACTIVE'
       });
 
-      showToast('定时发文计划已创建！');
+      showToast('持续增长程序已创建');
       setIsModalOpen(false);
     } catch (error) {
       showToast(error instanceof Error ? error.message : '创建失败，请重试');
@@ -128,15 +117,6 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
     }
   };
 
-  const handleDelete = async (taskId: string) => {
-    try {
-      await onDeleteTask(taskId);
-      showToast('已删除任务');
-    } catch {
-      showToast('删除失败');
-    }
-  };
-
   return (
     <div className="w-full space-y-6 sm:space-y-8 animate-in fade-in duration-200">
 
@@ -160,11 +140,11 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                 type="button"
                 onClick={handleOpenCreateModal}
                 disabled={!eligibleSites.length}
-                title={eligibleSites.length ? '新建自动执行计划' : '站点通过自动发布门禁后开放'}
+                title={eligibleSites.length ? '新建持续增长程序' : '请先授权连接 WordPress 站点'}
                 className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-all shadow-xs flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>新建计划</span>
+                <span>新建持续增长</span>
               </button>
             </div>
             <div className="flex items-center gap-2 text-xs self-start sm:self-auto">
@@ -182,9 +162,9 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
             <div className="py-12 text-center space-y-3 bg-slate-50/60 rounded-xl border border-dashed border-slate-200/80 px-4">
               <Bot className="w-10 h-10 text-slate-300 mx-auto" />
               <div className="space-y-1">
-                <div className="text-sm font-bold text-slate-700">暂无托管计划</div>
+                <div className="text-sm font-bold text-slate-700">暂无持续增长程序</div>
                 <div className="text-xs text-slate-500">
-                  点击上方「新建发文计划」开启自动发文。
+                  连接站点并提供一个增长线索，系统会根据新证据选择下一项 SEO 动作。
                 </div>
               </div>
             </div>
@@ -227,11 +207,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                       <div className="flex items-center gap-4 text-xs text-slate-500 flex-wrap">
                         <span className="flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{
-                            task.scheduleType === 'DAILY' ? `每天 ${task.scheduleTime}` :
-                            task.scheduleType === 'WEEKLY' ? `每周 ${task.scheduleTime}` :
-                            `每 ${task.scheduleTime} 小时`
-                          }</span>
+                          <span>系统按新证据调度，新站最多每 7 天一个动作</span>
                         </span>
                         <span className="flex items-center gap-1">
                           <Tag className="w-3.5 h-3.5 text-slate-400" />
@@ -239,11 +215,11 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                         </span>
                         <span className="flex items-center gap-1">
                           <Zap className="w-3.5 h-3.5 text-amber-500" />
-                          <span>每次 {task.articleCountPerRun || 1} 篇</span>
+                          <span>每轮最多 1 个动作</span>
                         </span>
                         <span className="flex items-center gap-1 bg-indigo-50/80 text-indigo-700 border border-indigo-100/90 px-2 py-0.5 rounded-md font-medium">
                           <FileText className="w-3.5 h-3.5 text-indigo-500" />
-                          <span>累计文章: <strong className="text-indigo-950 font-bold ml-0.5">{task.totalArticles ?? 0}</strong> 篇</span>
+                          <span>已交付: <strong className="text-indigo-950 font-bold ml-0.5">{task.totalArticles ?? 0}</strong> 次</span>
                         </span>
                       </div>
                     </div>
@@ -262,12 +238,12 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                         {isRunning ? (
                           <>
                             <div className="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-                            <span>正在生成发布...</span>
+                            <span>正在检查机会...</span>
                           </>
                         ) : (
                           <>
                             <Play className="w-3.5 h-3.5 fill-emerald-600 text-emerald-600" />
-                            <span>立即触发一次</span>
+                            <span>检查新机会</span>
                           </>
                         )}
                       </button>
@@ -285,14 +261,6 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                         {isActive ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(task.id)}
-                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200/80 transition"
-                        title="删除"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
                     </div>
                   </div>
                 );
@@ -307,7 +275,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200/80 rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl animate-in zoom-in-95 duration-150">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 sticky top-0 z-10">
-              <h3 className="font-bold text-slate-900 text-base">新建定时发文计划</h3>
+              <h3 className="font-bold text-slate-900 text-base">新建持续增长程序</h3>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
@@ -318,20 +286,6 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
             </div>
 
             <form onSubmit={handleCreateSubmit} className="p-4 sm:p-6 space-y-4 text-sm">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-800">任务名称</label>
-                </div>
-                <input
-                  type="text"
-                  value={taskName}
-                  onChange={(e) => setTaskName(e.target.value)}
-                  placeholder="例如：每日站点主题内容巡航"
-                  required
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
-                />
-              </div>
-
               <div className="space-y-1.5">
                 <label className="font-bold text-slate-800">目标站点</label>
                 <select
@@ -345,46 +299,13 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="font-bold text-slate-800">调度周期</label>
-                  <select
-                    value={scheduleType}
-                  onChange={(e) => {
-                    const nextType = e.target.value as typeof scheduleType;
-                    setScheduleType(nextType);
-                    setScheduleTime(nextType === 'INTERVAL' ? '4' : '09:00');
-                  }}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
-                  >
-                    <option value="DAILY">每天固定时间</option>
-                    <option value="INTERVAL">按小时轮询</option>
-                    <option value="WEEKLY">每周定时</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-bold text-slate-800">时间参数</label>
-                  <input
-                    type={scheduleType === 'INTERVAL' ? 'number' : 'time'}
-                    value={scheduleTime}
-                    onChange={(e) => setScheduleTime(e.target.value)}
-                    min={scheduleType === 'INTERVAL' ? 1 : undefined}
-                    max={scheduleType === 'INTERVAL' ? 720 : undefined}
-                    step={scheduleType === 'INTERVAL' ? 1 : undefined}
-                    placeholder={scheduleType === 'INTERVAL' ? '间隔小时数' : '执行时间'}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
-                  />
-                </div>
-              </div>
-
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1.5">
                   <label className="font-bold text-slate-800">执行来源</label>
                   <select value={sourceType} onChange={(event) => setSourceType(event.target.value as typeof sourceType)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400">
                     <option value="KEYWORD">关键词</option>
-                    <option value="REWRITE_URL">二创链接</option>
-                    <option value="COMPETITOR_URL">竞品站点</option>
+                    <option value="REFERENCE_URL">参考文章链接</option>
+                    <option value="COMPETITOR_SITE">竞品站点</option>
                   </select>
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
@@ -400,6 +321,10 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                 </div>
               </div>
 
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-xs leading-5 text-indigo-900">
+                无需设置执行时间。系统只在发现新的、可验证的机会时安排动作；没有合格机会会跳过本轮且不扣费。
+              </div>
+
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
                 <button
                   type="button"
@@ -413,7 +338,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                   disabled={isSubmitting}
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition"
                 >
-                  {isSubmitting ? '保存中...' : '保存任务'}
+                  {isSubmitting ? '启动中...' : '启动持续增长'}
                 </button>
               </div>
             </form>
