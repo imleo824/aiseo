@@ -69,6 +69,7 @@ insert into rls_context
 select 'a', organization_id from public.organization_members where profile_id = '00000000-0000-0000-0000-0000000000a1';
 insert into rls_context
 select 'b', organization_id from public.organization_members where profile_id = '00000000-0000-0000-0000-0000000000b2';
+grant select on rls_context to app_backend, app_worker;
 
 select is((select credit_balance_micros from public.organizations where id = (select organization_id from rls_context where label = 'a')), 0::bigint, 'new organization starts with zero credits');
 
