@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 
-export const EXPECTED_MIGRATION_VERSION = '20260902113630';
+export const EXPECTED_MIGRATION_VERSION = '20260903052545';
 
 export type DatabaseSecurityStatus = {
   role: string;
