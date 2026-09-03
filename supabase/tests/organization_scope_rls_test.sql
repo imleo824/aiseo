@@ -2,6 +2,11 @@ begin;
 create schema if not exists extensions;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
+-- Runtime roles deliberately cannot use the extensions schema in production.
+-- Grant pgTAP-only access inside this rolled-back test transaction so assertions
+-- can continue to execute while SET ROLE is exercising the real RLS boundary.
+grant usage on schema extensions to app_backend, app_worker;
+grant execute on all functions in schema extensions to app_backend, app_worker;
 select plan(48);
 
 select is(
