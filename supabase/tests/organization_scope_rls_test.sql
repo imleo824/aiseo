@@ -70,11 +70,13 @@ values
 select is((select count(*) from public.profiles where id in ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b2')), 2::bigint, 'Auth lifecycle creates matching profiles');
 
 create temporary table rls_context (label text primary key, organization_id uuid not null);
+create temporary table rls_results (label text primary key, affected bigint not null);
 insert into rls_context
 select 'a', organization_id from public.organization_members where profile_id = '00000000-0000-0000-0000-0000000000a1';
 insert into rls_context
 select 'b', organization_id from public.organization_members where profile_id = '00000000-0000-0000-0000-0000000000b2';
 grant select on rls_context to app_backend, app_worker;
+grant select, insert on rls_results to app_backend;
 
 select is((select credit_balance_micros from public.organizations where id = (select organization_id from rls_context where label = 'a')), 0::bigint, 'new organization starts with zero credits');
 
@@ -145,10 +147,16 @@ select throws_like(
   '%row-level security%',
   'viewer cannot INSERT organization rows'
 );
-select is((with changed as (update public.sites set name = 'viewer changed' returning id) select count(*) from changed), 0::bigint, 'viewer cannot UPDATE organization rows');
-select is((with changed as (update public.growth_programs set status = 'PAUSED' returning id) select count(*) from changed), 0::bigint, 'viewer cannot UPDATE growth programs');
-select is((with changed as (update public.growth_runs set status = 'CANCELLED' returning id) select count(*) from changed), 0::bigint, 'viewer cannot UPDATE growth runs');
+with changed as (update public.sites set name = 'viewer changed' returning id)
+insert into rls_results select 'viewer_site_update', count(*) from changed;
+with changed as (update public.growth_programs set status = 'PAUSED' returning id)
+insert into rls_results select 'viewer_program_update', count(*) from changed;
+with changed as (update public.growth_runs set status = 'CANCELLED' returning id)
+insert into rls_results select 'viewer_run_update', count(*) from changed;
 reset role;
+select is((select affected from rls_results where label = 'viewer_site_update'), 0::bigint, 'viewer cannot UPDATE organization rows');
+select is((select affected from rls_results where label = 'viewer_program_update'), 0::bigint, 'viewer cannot UPDATE growth programs');
+select is((select affected from rls_results where label = 'viewer_run_update'), 0::bigint, 'viewer cannot UPDATE growth runs');
 
 update public.organizations set credit_balance_micros = 1000000 where id = (select organization_id from rls_context where label = 'a');
 insert into public.ledger_entries (organization_id, type, amount_micros, balance_after_micros, reason, idempotency_key)
