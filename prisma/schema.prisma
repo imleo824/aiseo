@@ -275,7 +275,7 @@ model Profile {
   platformRole        PlatformRole         @default(USER) @map("platform_role")
   suspendedAt         DateTime?            @map("suspended_at")
   deletionRequestedAt DateTime?            @map("deletion_requested_at")
-  erasureClaimedAt    DateTime?            @map("erasure_claimed_at")
+  erasureClaimedAt    DateTime?            @map("erasure_claimed_at") @db.Timestamptz(6)
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
   memberships         OrganizationMember[]
@@ -289,7 +289,7 @@ model Profile {
 }
 
 model Organization {
-  id                   String                  @id @default(uuid()) @db.Uuid
+  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name                 String
   creditBalanceMicros  BigInt                  @default(0) @map("credit_balance_micros")
   disabledAt           DateTime?               @map("disabled_at")
@@ -338,7 +338,7 @@ model OrganizationMember {
 }
 
 model Site {
-  id                            String                  @id @default(uuid()) @db.Uuid
+  id                            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId                String                  @map("organization_id") @db.Uuid
   domain                        String
   name                          String
@@ -375,7 +375,7 @@ model Site {
 }
 
 model IntegrationConnection {
-  id                   String               @id @default(uuid()) @db.Uuid
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId       String               @map("organization_id") @db.Uuid
   siteId               String               @map("site_id") @db.Uuid
   provider             IntegrationProvider
@@ -389,7 +389,7 @@ model IntegrationConnection {
   createdAt            DateTime             @default(now()) @map("created_at")
   updatedAt            DateTime             @updatedAt @map("updated_at")
   site                 Site                 @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  organization         Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization         Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([siteId, provider])
   @@index([organizationId, provider, status])
@@ -397,7 +397,7 @@ model IntegrationConnection {
 }
 
 model KnowledgeSource {
-  id             String              @id @default(uuid()) @db.Uuid
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String              @map("organization_id") @db.Uuid
   siteId         String?             @map("site_id") @db.Uuid
   type           KnowledgeSourceType
@@ -421,7 +421,7 @@ model KnowledgeSource {
 }
 
 model DataSnapshot {
-  id                   String         @id @default(uuid()) @db.Uuid
+  id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId       String         @map("organization_id") @db.Uuid
   siteId               String?        @map("site_id") @db.Uuid
   source               DataSource
@@ -440,19 +440,19 @@ model DataSnapshot {
   keywordScans         KeywordScan[]
   opportunities        Opportunity[]
   drafts               ContentDraft[] @relation("DraftSeoSnapshot")
-  comparisonSnapshot   DataSnapshot?  @relation("SnapshotComparison", fields: [comparisonSnapshotId], references: [id], onDelete: SetNull)
+  comparisonSnapshot   DataSnapshot?  @relation("SnapshotComparison", fields: [comparisonSnapshotId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   comparisonFor        DataSnapshot[] @relation("SnapshotComparison")
 
   @@index([organizationId, source, fetchedAt])
   @@index([siteId, source, fetchedAt])
-  @@index([siteId, source, periodEnd])
+  @@index([siteId, source, periodEnd(sort: Desc)], map: "data_snapshots_site_source_period_end_idx")
   @@index([comparisonSnapshotId])
   @@index([providerTaskId])
   @@map("data_snapshots")
 }
 
 model KeywordScan {
-  id             String        @id @default(uuid()) @db.Uuid
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String        @map("organization_id") @db.Uuid
   siteId         String        @map("site_id") @db.Uuid
   snapshotId     String?       @map("snapshot_id") @db.Uuid
@@ -475,7 +475,7 @@ model KeywordScan {
 }
 
 model Opportunity {
-  id                       String            @id @default(uuid()) @db.Uuid
+  id                       String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId           String            @map("organization_id") @db.Uuid
   siteId                   String            @map("site_id") @db.Uuid
   keywordScanId            String?           @map("keyword_scan_id") @db.Uuid
@@ -515,14 +515,14 @@ model Opportunity {
 
   @@unique([siteId, sourceKey])
   @@index([organizationId, siteId, status, createdAt])
-  @@index([siteId, status, expectedValueMicros])
+  @@index([siteId, status, expectedValueMicros(sort: Desc)], map: "opportunities_site_status_expected_value_idx")
   @@index([keywordScanId])
   @@index([snapshotId])
   @@map("opportunities")
 }
 
 model GrowthProgram {
-  id                String              @id @default(uuid()) @db.Uuid
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId    String              @map("organization_id") @db.Uuid
   siteId            String              @map("site_id") @db.Uuid
   mode              GrowthProgramMode
@@ -531,26 +531,26 @@ model GrowthProgram {
   inputFingerprint  String              @map("input_fingerprint")
   status            GrowthProgramStatus @default(ACTIVE)
   budgetLimitMicros BigInt?             @map("budget_limit_micros")
-  nextRunAt         DateTime?           @map("next_run_at")
-  lastRunAt         DateTime?           @map("last_run_at")
-  lockedUntil       DateTime?           @map("locked_until")
+  nextRunAt         DateTime?           @map("next_run_at") @db.Timestamptz(6)
+  lastRunAt         DateTime?           @map("last_run_at") @db.Timestamptz(6)
+  lockedUntil       DateTime?           @map("locked_until") @db.Timestamptz(6)
   consecutiveWins   Int                 @default(0) @map("consecutive_wins")
   deliveredRunCount Int                 @default(0) @map("delivered_run_count")
   lastError         String?             @map("last_error")
-  createdAt         DateTime            @default(now()) @map("created_at")
-  updatedAt         DateTime            @updatedAt @map("updated_at")
-  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site              Site                @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site              Site                @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   runs              GrowthRun[]
 
-  @@unique([organizationId, inputFingerprint])
-  @@index([status, nextRunAt])
-  @@index([organizationId, siteId, createdAt(sort: Desc)])
+  @@unique([organizationId, inputFingerprint], map: "growth_programs_org_fingerprint_key")
+  @@index([organizationId, siteId, createdAt(sort: Desc)], map: "growth_programs_org_site_created_idx")
+  @@index([siteId], map: "growth_programs_site_id_idx")
   @@map("growth_programs")
 }
 
 model GrowthRun {
-  id                 String             @id @default(uuid()) @db.Uuid
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId     String             @map("organization_id") @db.Uuid
   siteId             String             @map("site_id") @db.Uuid
   programId          String             @map("program_id") @db.Uuid
@@ -569,32 +569,32 @@ model GrowthRun {
   observation        Json?
   errorCode          String?            @map("error_code")
   errorMessage       String?            @map("error_message")
-  startedAt          DateTime?          @map("started_at")
-  deliveredAt        DateTime?          @map("delivered_at")
-  finishedAt         DateTime?          @map("finished_at")
-  createdAt          DateTime           @default(now()) @map("created_at")
-  updatedAt          DateTime           @updatedAt @map("updated_at")
-  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site               Site               @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  program            GrowthProgram      @relation(fields: [programId], references: [id], onDelete: Cascade)
-  jobRun             JobRun?            @relation(fields: [jobRunId], references: [id], onDelete: SetNull)
-  opportunity        Opportunity?       @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
-  draft              ContentDraft?      @relation(fields: [draftId], references: [id], onDelete: SetNull)
+  startedAt          DateTime?          @map("started_at") @db.Timestamptz(6)
+  deliveredAt        DateTime?          @map("delivered_at") @db.Timestamptz(6)
+  finishedAt         DateTime?          @map("finished_at") @db.Timestamptz(6)
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site               Site               @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  program            GrowthProgram      @relation(fields: [programId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  jobRun             JobRun?            @relation(fields: [jobRunId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  opportunity        Opportunity?       @relation(fields: [opportunityId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  draft              ContentDraft?      @relation(fields: [draftId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   stages             GrowthRunStage[]
   decisions          GrowthDecision[]
   actions            GrowthAction[]
 
-  @@unique([programId, occurrenceKey])
-  @@index([organizationId, siteId, createdAt(sort: Desc)])
-  @@index([programId, status, createdAt(sort: Desc)])
-  @@index([siteId, status, updatedAt])
-  @@index([opportunityId])
-  @@index([draftId])
+  @@unique([programId, occurrenceKey], map: "growth_runs_program_occurrence_key")
+  @@index([organizationId, siteId, createdAt(sort: Desc)], map: "growth_runs_org_site_created_idx")
+  @@index([programId, status, createdAt(sort: Desc)], map: "growth_runs_program_status_created_idx")
+  @@index([siteId, status, updatedAt], map: "growth_runs_site_status_updated_idx")
+  @@index([opportunityId], map: "growth_runs_opportunity_idx")
+  @@index([draftId], map: "growth_runs_draft_idx")
   @@map("growth_runs")
 }
 
 model GrowthRunStage {
-  id             String               @id @default(uuid()) @db.Uuid
+  id             String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String               @map("organization_id") @db.Uuid
   siteId         String               @map("site_id") @db.Uuid
   runId          String               @map("run_id") @db.Uuid
@@ -606,22 +606,22 @@ model GrowthRunStage {
   evidence       Json                 @default("[]")
   errorCode      String?              @map("error_code")
   errorMessage   String?              @map("error_message")
-  startedAt      DateTime?            @map("started_at")
-  finishedAt     DateTime?            @map("finished_at")
-  createdAt      DateTime             @default(now()) @map("created_at")
-  updatedAt      DateTime             @updatedAt @map("updated_at")
-  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site           Site                 @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  run            GrowthRun            @relation(fields: [runId], references: [id], onDelete: Cascade)
+  startedAt      DateTime?            @map("started_at") @db.Timestamptz(6)
+  finishedAt     DateTime?            @map("finished_at") @db.Timestamptz(6)
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site           Site                 @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  run            GrowthRun            @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@unique([runId, stage])
-  @@index([organizationId, runId, stage])
-  @@index([siteId, status, updatedAt])
+  @@unique([runId, stage], map: "growth_run_stages_run_stage_key")
+  @@index([organizationId, runId, stage], map: "growth_run_stages_org_run_stage_idx")
+  @@index([siteId, status, updatedAt], map: "growth_run_stages_site_status_updated_idx")
   @@map("growth_run_stages")
 }
 
 model GrowthDecision {
-  id                 String               @id @default(uuid()) @db.Uuid
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId     String               @map("organization_id") @db.Uuid
   siteId             String               @map("site_id") @db.Uuid
   runId              String               @map("run_id") @db.Uuid
@@ -632,23 +632,23 @@ model GrowthDecision {
   scoreVersion       String               @map("score_version")
   rationale          Json
   selectedActionType GrowthActionType?    @map("selected_action_type")
-  createdAt          DateTime             @default(now()) @map("created_at")
-  updatedAt          DateTime             @updatedAt @map("updated_at")
-  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site               Site                 @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  run                GrowthRun            @relation(fields: [runId], references: [id], onDelete: Cascade)
-  opportunity        Opportunity          @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site               Site                 @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  run                GrowthRun            @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  opportunity        Opportunity          @relation(fields: [opportunityId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   action             GrowthAction?
 
-  @@unique([runId, opportunityId])
-  @@index([organizationId, siteId, status, rank])
+  @@unique([runId, opportunityId], map: "growth_decisions_run_opportunity_key")
+  @@index([organizationId, siteId, status, rank], map: "growth_decisions_org_site_status_rank_idx")
   @@index([siteId])
   @@index([opportunityId])
   @@map("growth_decisions")
 }
 
 model GrowthAction {
-  id                  String                 @id @default(uuid()) @db.Uuid
+  id                  String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId      String                 @map("organization_id") @db.Uuid
   siteId              String                 @map("site_id") @db.Uuid
   runId               String                 @map("run_id") @db.Uuid
@@ -664,30 +664,30 @@ model GrowthAction {
   beforeSnapshot      Json?                  @map("before_snapshot")
   afterSnapshot       Json?                  @map("after_snapshot")
   expectedValueMicros BigInt?                @map("expected_value_micros")
-  observationStartsAt DateTime?              @map("observation_starts_at")
-  observeUntil        DateTime?              @map("observe_until")
-  cooldownUntil       DateTime?              @map("cooldown_until")
-  executedAt          DateTime?              @map("executed_at")
-  verifiedAt          DateTime?              @map("verified_at")
-  rolledBackAt        DateTime?              @map("rolled_back_at")
-  createdAt           DateTime               @default(now()) @map("created_at")
-  updatedAt           DateTime               @updatedAt @map("updated_at")
-  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site                Site                   @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  run                 GrowthRun              @relation(fields: [runId], references: [id], onDelete: Cascade)
-  decision            GrowthDecision         @relation(fields: [decisionId], references: [id], onDelete: Cascade)
-  opportunity         Opportunity            @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  observationStartsAt DateTime?              @map("observation_starts_at") @db.Timestamptz(6)
+  observeUntil        DateTime?              @map("observe_until") @db.Timestamptz(6)
+  cooldownUntil       DateTime?              @map("cooldown_until") @db.Timestamptz(6)
+  executedAt          DateTime?              @map("executed_at") @db.Timestamptz(6)
+  verifiedAt          DateTime?              @map("verified_at") @db.Timestamptz(6)
+  rolledBackAt        DateTime?              @map("rolled_back_at") @db.Timestamptz(6)
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site                Site                   @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  run                 GrowthRun              @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  decision            GrowthDecision         @relation(fields: [decisionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  opportunity         Opportunity            @relation(fields: [opportunityId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   observations        GrowthObservation[]
 
-  @@index([organizationId, siteId, status, observeUntil])
-  @@index([siteId, targetUrl, cooldownUntil])
+  @@index([organizationId, siteId, status, observeUntil], map: "growth_actions_org_site_status_observe_idx")
+  @@index([siteId, targetUrl, cooldownUntil], map: "growth_actions_site_url_cooldown_idx")
   @@index([runId])
   @@index([opportunityId])
   @@map("growth_actions")
 }
 
 model GrowthObservation {
-  id                  String                  @id @default(uuid()) @db.Uuid
+  id                  String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId      String                  @map("organization_id") @db.Uuid
   siteId              String                  @map("site_id") @db.Uuid
   actionId            String                  @map("action_id") @db.Uuid
@@ -699,20 +699,20 @@ model GrowthObservation {
   estimatedLiftMicros BigInt?                 @map("estimated_lift_micros")
   confidenceMicros    BigInt?                 @map("confidence_micros")
   outcome             GrowthOutcome?
-  observedAt          DateTime                @default(now()) @map("observed_at")
-  evaluatedAt         DateTime?               @map("evaluated_at")
-  organization        Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site                Site                    @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  action              GrowthAction            @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  observedAt          DateTime                @default(now()) @map("observed_at") @db.Timestamptz(6)
+  evaluatedAt         DateTime?               @map("evaluated_at") @db.Timestamptz(6)
+  organization        Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site                Site                    @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  action              GrowthAction            @relation(fields: [actionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@index([organizationId, siteId, status, observedAt])
+  @@index([organizationId, siteId, status, observedAt(sort: Desc)], map: "growth_observations_org_site_status_observed_idx")
   @@index([siteId])
-  @@index([actionId, observedAt])
+  @@index([actionId, observedAt(sort: Desc)], map: "growth_observations_action_observed_idx")
   @@map("growth_observations")
 }
 
 model JobRun {
-  id             String          @id @default(uuid()) @db.Uuid
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String          @map("organization_id") @db.Uuid
   type           JobType
   status         JobStatus       @default(QUEUED)
@@ -742,7 +742,7 @@ model JobRun {
 }
 
 model ContentDraft {
-  id                   String                @id @default(uuid()) @db.Uuid
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId       String                @map("organization_id") @db.Uuid
   siteId               String                @map("site_id") @db.Uuid
   opportunityId        String?               @map("opportunity_id") @db.Uuid
@@ -761,7 +761,7 @@ model ContentDraft {
   organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   site                 Site                  @relation(fields: [siteId], references: [id], onDelete: Cascade)
   opportunity          Opportunity?          @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
-  seoSnapshot          DataSnapshot          @relation("DraftSeoSnapshot", fields: [seoSnapshotId], references: [id], onDelete: Restrict)
+  seoSnapshot          DataSnapshot          @relation("DraftSeoSnapshot", fields: [seoSnapshotId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   reviews              DraftReview[]
   publishAttempts      PublishAttempt[]
   indexingObservations IndexingObservation[]
@@ -775,14 +775,14 @@ model ContentDraft {
 }
 
 model DraftReview {
-  id         String         @id @default(uuid()) @db.Uuid
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   draftId    String         @map("draft_id") @db.Uuid
   reviewerId String         @map("reviewer_id") @db.Uuid
   decision   ReviewDecision
   comment    String?
   createdAt  DateTime       @default(now()) @map("created_at")
   draft      ContentDraft   @relation(fields: [draftId], references: [id], onDelete: Cascade)
-  reviewer   Profile        @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+  reviewer   Profile        @relation(fields: [reviewerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([draftId, createdAt])
   @@index([reviewerId])
@@ -790,7 +790,7 @@ model DraftReview {
 }
 
 model PublishAttempt {
-  id             String               @id @default(uuid()) @db.Uuid
+  id             String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String               @map("organization_id") @db.Uuid
   draftId        String               @map("draft_id") @db.Uuid
   jobRunId       String?              @unique @map("job_run_id") @db.Uuid
@@ -813,7 +813,7 @@ model PublishAttempt {
 }
 
 model IndexingObservation {
-  id             String        @id @default(uuid()) @db.Uuid
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String        @map("organization_id") @db.Uuid
   siteId         String        @map("site_id") @db.Uuid
   draftId        String?       @map("draft_id") @db.Uuid
@@ -827,7 +827,7 @@ model IndexingObservation {
   createdAt      DateTime      @default(now()) @map("created_at")
   site           Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
   draft          ContentDraft? @relation(fields: [draftId], references: [id], onDelete: SetNull)
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([organizationId, siteId, observedAt])
   @@index([draftId, observedAt])
@@ -862,7 +862,7 @@ model ActionPrice {
 }
 
 model PaymentIntent {
-  id                   String         @id @default(uuid()) @db.Uuid
+  id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId       String         @map("organization_id") @db.Uuid
   packageId            String         @map("package_id")
   network              String         @default("TRC20")
@@ -891,7 +891,7 @@ model PaymentIntent {
 }
 
 model LedgerEntry {
-  id                 String          @id @default(uuid()) @db.Uuid
+  id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId     String          @map("organization_id") @db.Uuid
   type               LedgerEntryType
   amountMicros       BigInt          @map("amount_micros")
@@ -910,7 +910,7 @@ model LedgerEntry {
 }
 
 model CreditHold {
-  id             String           @id @default(uuid()) @db.Uuid
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String           @map("organization_id") @db.Uuid
   jobRunId       String           @unique @map("job_run_id") @db.Uuid
   amountMicros   BigInt           @map("amount_micros")
@@ -927,7 +927,7 @@ model CreditHold {
 }
 
 model UsageRecord {
-  id             String       @id @default(uuid()) @db.Uuid
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String       @map("organization_id") @db.Uuid
   jobRunId       String?      @map("job_run_id") @db.Uuid
   action         String
@@ -936,7 +936,7 @@ model UsageRecord {
   resultId       String?      @map("result_id")
   createdAt      DateTime     @default(now()) @map("created_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  jobRun         JobRun?      @relation(fields: [jobRunId], references: [id], onDelete: SetNull)
+  jobRun         JobRun?      @relation(fields: [jobRunId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([organizationId, createdAt])
   @@index([jobRunId])
@@ -944,7 +944,7 @@ model UsageRecord {
 }
 
 model IdempotencyKey {
-  id             String        @id @default(uuid()) @db.Uuid
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String?       @map("organization_id") @db.Uuid
   profileId      String        @map("profile_id") @db.Uuid
   key            String        @db.Uuid
@@ -963,7 +963,7 @@ model IdempotencyKey {
 }
 
 model AuditEvent {
-  id             String        @id @default(uuid()) @db.Uuid
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String?       @map("organization_id") @db.Uuid
   actorId        String?       @map("actor_id") @db.Uuid
   action         String
@@ -982,7 +982,7 @@ model AuditEvent {
 }
 
 model TermsAcceptance {
-  id             String        @id @default(uuid()) @db.Uuid
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String?       @map("organization_id") @db.Uuid
   profileId      String        @map("profile_id") @db.Uuid
   document       String
@@ -990,7 +990,7 @@ model TermsAcceptance {
   acceptedAt     DateTime      @default(now()) @map("accepted_at")
   ipHash         String?       @map("ip_hash")
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  profile        Profile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile        Profile       @relation(fields: [profileId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([profileId, organizationId, document, version])
   @@index([organizationId])
@@ -998,7 +998,7 @@ model TermsAcceptance {
 }
 
 model Notification {
-  id             String             @id @default(uuid()) @db.Uuid
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String             @map("organization_id") @db.Uuid
   profileId      String?            @map("profile_id") @db.Uuid
   type           String
