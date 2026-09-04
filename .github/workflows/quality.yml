@@ -63,6 +63,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
+          load: true
           push: false
           tags: aiseo:ci
       - run: docker run --rm --entrypoint node aiseo:ci --check dist/server.cjs
