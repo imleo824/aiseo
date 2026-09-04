@@ -25,7 +25,17 @@ jobs:
       - run: npm run lint
       - run: npm run test:coverage
       - run: npm run build
-      - run: npm audit --omit=dev --audit-level=high
+      - name: Audit production dependencies
+        run: |
+          for attempt in 1 2 3; do
+            if npm audit --omit=dev --audit-level=high --fetch-retries=2 --fetch-timeout=60000; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
