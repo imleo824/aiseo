@@ -7,7 +7,7 @@ set local search_path = public, extensions;
 -- can continue to execute while SET ROLE is exercising the real RLS boundary.
 grant usage on schema extensions to app_backend, app_worker;
 grant execute on all functions in schema extensions to app_backend, app_worker;
-select plan(48);
+select plan(50);
 
 select is(
   (select count(*) from pg_class
@@ -61,6 +61,16 @@ select ok(not has_table_privilege('app_worker', 'public.growth_observations', 'd
 select ok(to_regclass('public.execution_runs') is null and to_regclass('public.growth_cycles') is null and to_regclass('public.automation_tasks') is null, 'legacy duplicate engines are absent');
 select ok(has_function_privilege('service_role', 'public.claim_due_account_erasures(integer)', 'execute'), 'isolated Edge Function can claim due account erasures');
 select ok(not has_function_privilege('app_backend', 'public.claim_due_account_erasures(integer)', 'execute') and not has_function_privilege('app_worker', 'public.claim_due_account_erasures(integer)', 'execute'), 'application services cannot invoke delayed erasure');
+select ok(
+  not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.profiles'::regclass
+      and confrelid = 'auth.users'::regclass
+      and contype = 'f'
+  ),
+  'application profiles are not coupled to the Supabase-managed Auth schema by a foreign key'
+);
 
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
 values
@@ -116,6 +126,13 @@ select throws_like(
   'database bootstrap rejects an unverified Auth email'
 );
 reset role;
+
+delete from auth.users where id = '00000000-0000-0000-0000-0000000000c3';
+select is(
+  (select count(*) from public.profiles where id = '00000000-0000-0000-0000-0000000000c3'),
+  0::bigint,
+  'Auth deletion removes the matching application profile through the lifecycle trigger'
+);
 
 select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000b2', true);
 select set_config('app.organization_id', (select organization_id::text from rls_context where label = 'b'), true);
