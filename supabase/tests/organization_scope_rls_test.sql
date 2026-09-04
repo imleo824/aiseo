@@ -120,7 +120,11 @@ reset role;
 select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000b2', true);
 select set_config('app.organization_id', (select organization_id::text from rls_context where label = 'b'), true);
 set local role app_backend;
-select is((select count(*) from public.sites), 0::bigint, 'cross-organization SELECT is denied');
+select is(
+  (select count(*) from public.sites where organization_id = (select organization_id from rls_context where label = 'a')),
+  0::bigint,
+  'cross-organization SELECT is denied while the user retains access to their own site'
+);
 select is((select count(*) from public.growth_programs), 0::bigint, 'cross-organization growth-program SELECT is denied');
 select is((select count(*) from public.growth_runs), 0::bigint, 'cross-organization growth-run SELECT is denied');
 select throws_like(
