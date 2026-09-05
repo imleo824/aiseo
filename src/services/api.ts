@@ -38,16 +38,6 @@ const toLegacySite = (site: ProductionSite): WordPressSite => ({
   gscLastSyncedAt: site.integrations.find((item) => item.provider === 'GSC')?.lastSyncedAt,
   gscLastErrorMessage: site.integrations.find((item) => item.provider === 'GSC')?.lastErrorMessage,
   ga4Connected: false,
-  calibration: {
-    isCalibrating: site.manualPublishSuccesses < 3,
-    daysRemaining: 0,
-    totalApprovedRequired: 3,
-    approvedCount: site.manualPublishSuccesses,
-    rejectedCount: 0,
-    zeroFactErrorStreak: site.manualPublishSuccesses,
-    autoPublishUnlocked: Boolean(site.autoPublishEnabledAt)
-  },
-  autopilotEnabled: Boolean(site.autoPublishEnabledAt),
   createdAt: site.createdAt
 });
 
@@ -263,6 +253,14 @@ export class ApiService {
     return { providers };
   }
 
+  public async getPublishingConfirmationPolicy() {
+    return (await productionApi.get<{ requireManualConfirmation: boolean }>('/admin/publishing-confirmation-policy')).data;
+  }
+
+  public async updatePublishingConfirmationPolicy(requireManualConfirmation: boolean) {
+    return (await productionApi.put<{ requireManualConfirmation: boolean }>('/admin/publishing-confirmation-policy', { requireManualConfirmation })).data;
+  }
+
   // Sites
   public async getSites() {
     const { organizationId } = await this.resolveWorkspace();
@@ -308,12 +306,6 @@ export class ApiService {
     const { organizationId } = await this.resolveWorkspace();
     await productionApi.delete(`/organizations/${organizationId}/sites/${siteId}`);
     return { success: true, deletedId: siteId };
-  }
-
-  public async setAutopilot(siteId: string, enabled: boolean, acceptRisk = false) {
-    const { organizationId } = await this.resolveWorkspace();
-    const result = (await productionApi.post<{ site: ProductionSite }>(`/organizations/${organizationId}/sites/${siteId}/auto-publish`, { enabled, acceptRisk })).data;
-    return { site: toLegacySite(result.site) };
   }
 
   public async authorizeWordPress(siteId: string) {

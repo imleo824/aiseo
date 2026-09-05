@@ -86,8 +86,8 @@ export default function LegacyApp() {
         };
       case 'SYSTEM_SERVICES_CONFIG':
         return {
-          title: '服务集成',
-          desc: '配置 AI 大模型、SERP 搜索引擎与第三方服务集成'
+          title: '全局设置',
+          desc: '控制发布确认策略并查看生产服务集成状态'
         };
       case 'TENANT_MANAGEMENT':
         return {
@@ -223,7 +223,6 @@ export default function LegacyApp() {
               onDeleteSite={actions.handleDeleteSite}
               onTestSiteConnection={actions.handleTestSiteConnection}
               onAuthorizeWordPress={actions.handleAuthorizeWordPress}
-              onSetAutopilot={actions.handleSetAutopilot}
               onRefreshSites={actions.loadTenantData}
               onOpenOnboarding={() => setIsOnboardingOpen(true)}
             />

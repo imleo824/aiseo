@@ -6,15 +6,22 @@ type ProviderStatus = Record<string, boolean | string | number | null | undefine
 
 export const ProSystemServicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [providers, setProviders] = useState<ProviderStatus>({});
+  const [requireManualConfirmation, setRequireManualConfirmation] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
+  const [savingPolicy, setSavingPolicy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await createApiService(tenantId).getProviderStatus();
+      const service = createApiService(tenantId);
+      const [result, publishingPolicy] = await Promise.all([
+        service.getProviderStatus(),
+        service.getPublishingConfirmationPolicy()
+      ]);
       setProviders(result.providers);
+      setRequireManualConfirmation(publishingPolicy.requireManualConfirmation);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : '服务状态加载失败');
     } finally {
@@ -24,10 +31,43 @@ export const ProSystemServicesTab: React.FC<{ tenantId: string }> = ({ tenantId 
 
   useEffect(() => { void load(); }, [tenantId]);
 
+  const updatePublishingPolicy = async () => {
+    if (requireManualConfirmation === null || savingPolicy) return;
+    const next = !requireManualConfirmation;
+    setSavingPolicy(true);
+    setError(null);
+    try {
+      const saved = await createApiService(tenantId).updatePublishingConfirmationPolicy(next);
+      setRequireManualConfirmation(saved.requireManualConfirmation);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : '发布确认策略保存失败');
+    } finally {
+      setSavingPolicy(false);
+    }
+  };
+
   const entries = Object.entries(providers);
   return (
     <div className="w-full space-y-6 animate-in fade-in duration-200">
       <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-sm space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+          <div>
+            <h3 className="font-bold text-slate-900 flex items-center gap-2"><ShieldCheck className="w-4 h-4" />发布确认策略</h3>
+            <p className="text-xs text-slate-500 mt-1">这是全平台唯一开关，对全部客户站点与手动、定时任务同时生效。</p>
+            <p className="text-xs font-medium mt-2 text-slate-700">{requireManualConfirmation ? '开启：内容通过质量门禁后，等待人工确认再发布。' : '关闭：内容通过全部质量与安全门禁后，自动发布到 WordPress。'}</p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={requireManualConfirmation === true}
+            onClick={() => void updatePublishingPolicy()}
+            disabled={loading || savingPolicy || requireManualConfirmation === null}
+            className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${requireManualConfirmation ? 'bg-violet-600' : 'bg-slate-300'}`}
+          >
+            <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${requireManualConfirmation ? 'translate-x-6' : 'translate-x-1'}`} />
+            <span className="sr-only">发布前需人工确认</span>
+          </button>
+        </div>
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div><h3 className="font-bold text-slate-900 flex items-center gap-2"><Activity className="w-4 h-4" />生产服务状态</h3><p className="text-xs text-slate-500 mt-1">密钥由部署平台 Secret 管理，浏览器只读取非敏感配置状态。</p></div>
           <button type="button" onClick={() => void load()} disabled={loading} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"><RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />刷新</button>

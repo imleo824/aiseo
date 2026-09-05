@@ -145,11 +145,6 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     return result.result;
   };
 
-  const handleSetAutopilot = async (siteId: string, enabled: boolean, acceptRisk = false) => {
-    await api.setAutopilot(siteId, enabled, acceptRisk);
-    await queryClient.invalidateQueries({ queryKey: ['tenant', workspaceKey, 'sites'] });
-  };
-
   const handleCreateTask = async (taskData: Partial<AutomatedTask>) => {
     await api.createTask(taskData);
     await queryClient.invalidateQueries({ queryKey: ['tenant', workspaceKey, 'growth-programs'] });
@@ -182,7 +177,6 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
       handleAddSite,
       handleAuthorizeWordPress,
       handleTestSiteConnection,
-      handleSetAutopilot,
       handleCreateTask,
       handleToggleTask,
       handleRunTaskNow

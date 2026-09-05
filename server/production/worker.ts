@@ -16,7 +16,6 @@ import {
   PaymentStatus,
   Prisma,
   PublishAttemptStatus,
-  PublishPolicy,
   SiteConnectionStatus
 } from '@prisma/client';
 import { Job, Worker } from 'bullmq';
@@ -40,6 +39,7 @@ import { assertDatabaseSecurity } from './databaseSecurity';
 import { logger } from '../utils/logger';
 import { resolvePublicHttpsOrigin } from '../utils/networkSafety';
 import { ValidationError } from '../domain/errors';
+import { parsePublishingConfirmationPolicy, PUBLISH_CONFIRMATION_SETTING_KEY } from './publishingPolicy';
 
 type QueuePayload = { jobRunId?: string; system?: boolean };
 type Evidence = Array<Record<string, unknown>>;
@@ -48,6 +48,11 @@ const workerId = `${process.env.RAILWAY_REPLICA_ID || process.env.HOSTNAME || 'l
 const startedAt = new Date();
 const day = 86_400_000;
 const escapeMarkup = (value: string): string => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+const requiresManualConfirmation = async (): Promise<boolean> => {
+  const setting = await workerPrisma.systemSetting.findUnique({ where: { key: PUBLISH_CONFIRMATION_SETTING_KEY } });
+  return parsePublishingConfirmationPolicy(setting?.value).requireManualConfirmation;
+};
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -308,10 +313,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
         return run.id;
       }
     }
-    const canAutoPublish = run.site.publishPolicy === PublishPolicy.AUTO_PUBLISH
-      && run.site.manualPublishSuccesses >= 3
-      && Boolean(run.site.autoPublishTermsAcceptedAt)
-      && Boolean(run.site.autoPublishEnabledAt);
+    const canAutoPublish = !await requiresManualConfirmation();
     action = await workerPrisma.$transaction(async (tx) => {
       const decision = await tx.growthDecision.create({ data: {
         organizationId: run!.organizationId,
@@ -419,7 +421,11 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
     };
   }
   await workerPrisma.$transaction(async (tx) => {
-    const automatic = action!.autonomyDecision === GrowthAutonomyDecision.AUTO_EXECUTE && generated.qualityReport.passed;
+    // Read the global policy again immediately before creating the delivery so a
+    // platform administrator can safely turn review on while a run is active.
+    const publishingSetting = await tx.systemSetting.findUnique({ where: { key: PUBLISH_CONFIRMATION_SETTING_KEY } });
+    const automatic = generated.qualityReport.passed
+      && !parsePublishingConfirmationPolicy(publishingSetting?.value).requireManualConfirmation;
     const draft = await tx.contentDraft.create({ data: {
       organizationId: run!.organizationId,
       siteId: run!.siteId,
@@ -473,8 +479,22 @@ const processWordPressPublish = async (jobRunId: string): Promise<string> => {
   const action = await workerPrisma.growthAction.findFirst({ where: { id: payload.actionId, organizationId: job.organizationId }, include: { run: { include: { program: true } }, site: true } });
   const draft = await workerPrisma.contentDraft.findFirst({ where: { id: payload.draftId, organizationId: job.organizationId }, include: { reviews: true } });
   const approved = draft?.reviews.some(({ decision }) => decision === 'APPROVED');
-  const automatic = payload.automated === true && action?.autonomyDecision === GrowthAutonomyDecision.AUTO_EXECUTE && action.site.publishPolicy === PublishPolicy.AUTO_PUBLISH;
-  if (!action || !draft || !action.site.wordpressCredentials || draft.status !== DraftStatus.PUBLISHING || (!approved && !automatic)) throw new Error('草稿、审批或 WordPress 发布门禁不可用');
+  const automaticRequested = payload.automated === true;
+  const manualConfirmationRequired = await requiresManualConfirmation();
+  if (!action || !draft || !action.site.wordpressCredentials || draft.status !== DraftStatus.PUBLISHING) throw new Error('草稿或 WordPress 发布门禁不可用');
+  if (!approved && automaticRequested && manualConfirmationRequired) {
+    await workerPrisma.$transaction(async (tx) => {
+      const now = new Date();
+      await tx.contentDraft.update({ where: { id: draft.id }, data: { status: DraftStatus.PENDING_REVIEW } });
+      await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.REVIEW_REQUIRED } });
+      await tx.growthRun.update({ where: { id: action.runId }, data: { status: GrowthRunStatus.NEEDS_REVIEW, delivery: { draftId: draft.id, actionId: action.id, manualReviewRequired: true, reason: 'GLOBAL_PUBLISH_CONFIRMATION_ENABLED' } } });
+      await tx.publishAttempt.updateMany({ where: { jobRunId }, data: { status: PublishAttemptStatus.FAILED, errorCode: 'GLOBAL_PUBLISH_CONFIRMATION_ENABLED', errorMessage: '全局发布确认已开启，自动发布改为等待人工确认。', finishedAt: now } });
+      await tx.auditEvent.create({ data: { organizationId: job.organizationId, action: 'AUTO_PUBLISH_CONVERTED_TO_REVIEW', targetType: 'growth_action', targetId: action.id, metadata: { policy: 'publishing.confirmation' } } });
+    });
+    return action.id;
+  }
+  const automatic = automaticRequested && !manualConfirmationRequired;
+  if (!approved && !automatic) throw new Error('草稿尚未通过人工审批');
   let published: { postId: string; url: string };
   if (action.type === GrowthActionType.CREATE_CONTENT) {
     published = await wordPressService.publish({ domain: action.site.domain, encrypted: action.site.wordpressCredentials, title: draft.title, slug: draft.slug, html: draft.html, deliveryId: draft.id });
@@ -489,7 +509,6 @@ const processWordPressPublish = async (jobRunId: string): Promise<string> => {
     const baselineSnapshot = gscConnection ? await tx.dataSnapshot.findFirst({ where: { organizationId: job.organizationId, siteId: action.siteId, source: DataSource.GSC, status: DataStatus.LIVE }, orderBy: { fetchedAt: 'desc' } }) : null;
     await tx.contentDraft.update({ where: { id: draft.id }, data: { status: DraftStatus.PUBLISHED, remotePostId: published.postId, publishedUrl: published.url } });
     await tx.publishAttempt.updateMany({ where: { jobRunId }, data: { status: PublishAttemptStatus.SUCCEEDED, remotePostId: published.postId, remoteUrl: published.url, finishedAt: now } });
-    await tx.site.update({ where: { id: action.siteId }, data: { manualPublishSuccesses: { increment: automatic ? 0 : 1 } } });
     await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.OBSERVING, executedAt: now, verifiedAt: now, afterSnapshot: { postId: published.postId, url: published.url, publishedAt: now.toISOString(), mutation: action.type }, observationStartsAt: now, observeUntil: new Date(now.getTime() + 56 * day) } });
     await tx.growthObservation.create({ data: { organizationId: job.organizationId, siteId: action.siteId, actionId: action.id, sourceSnapshotId: baselineSnapshot?.id, baseline: { source: baselineSnapshot ? 'GSC' : 'UNAVAILABLE', snapshotId: baselineSnapshot?.id || null, collectedAt: baselineSnapshot?.fetchedAt || null, note: baselineSnapshot ? 'Pre-action GSC snapshot' : 'GSC not connected; traffic change will not be claimed' } } });
     await tx.growthRun.update({ where: { id: action.runId }, data: { status: GrowthRunStatus.DELIVERED, currentStage: GrowthRunStageCode.LEARN, deliveredAt: now, finishedAt: now, delivery: { draftId: draft.id, actionId: action.id, publishedUrl: published.url, remotePostId: published.postId, deliveredAt: now.toISOString() } } });

@@ -15,16 +15,6 @@ const connectedSite = {
   whitelistedCategories: [],
   gscConnected: false,
   ga4Connected: false,
-  calibration: {
-    isCalibrating: true,
-    daysRemaining: 0,
-    totalApprovedRequired: 3,
-    approvedCount: 0,
-    rejectedCount: 0,
-    zeroFactErrorStreak: 0,
-    autoPublishUnlocked: false
-  },
-  autopilotEnabled: false,
   createdAt: '2026-09-02T00:00:00.000Z'
 };
 

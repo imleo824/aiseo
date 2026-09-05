@@ -7,7 +7,7 @@ set local search_path = public, extensions;
 -- can continue to execute while SET ROLE is exercising the real RLS boundary.
 grant usage on schema extensions to app_backend, app_worker;
 grant execute on all functions in schema extensions to app_backend, app_worker;
-select plan(50);
+select plan(52);
 
 select is(
   (select count(*) from pg_class
@@ -59,6 +59,19 @@ select ok(not has_table_privilege('app_backend', 'public.growth_observations', '
 select ok(has_table_privilege('app_worker', 'public.growth_observations', 'select,insert,update'), 'Worker owns the evidence lifecycle without bypassing RLS');
 select ok(not has_table_privilege('app_worker', 'public.growth_observations', 'delete'), 'Worker cannot erase growth evidence');
 select ok(to_regclass('public.execution_runs') is null and to_regclass('public.growth_cycles') is null and to_regclass('public.automation_tasks') is null, 'legacy duplicate engines are absent');
+select is(
+  (select value ->> 'requireManualConfirmation' from public.system_settings where key = 'publishing.confirmation'),
+  'false',
+  'global publishing defaults to automatic delivery'
+);
+select ok(
+  not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'sites'
+      and column_name in ('publish_policy', 'manual_publish_successes', 'auto_publish_terms_accepted_at', 'auto_publish_enabled_at')
+  ),
+  'obsolete per-site publishing gates are removed'
+);
 select ok(has_function_privilege('service_role', 'public.claim_due_account_erasures(integer)', 'execute'), 'isolated Edge Function can claim due account erasures');
 select ok(not has_function_privilege('app_backend', 'public.claim_due_account_erasures(integer)', 'execute') and not has_function_privilege('app_worker', 'public.claim_due_account_erasures(integer)', 'execute'), 'application services cannot invoke delayed erasure');
 select ok(

@@ -347,16 +347,6 @@ export interface ArticleDraft {
   createdAt: string;
 }
 
-export interface CalibrationStatus {
-  isCalibrating: boolean;
-  daysRemaining: number;
-  totalApprovedRequired: number;
-  approvedCount: number;
-  rejectedCount: number;
-  zeroFactErrorStreak: number;
-  autoPublishUnlocked: boolean;
-}
-
 export interface AutomatedTask {
   id: string;
   siteId: string;
@@ -399,8 +389,6 @@ export interface WordPressSite {
   ga4Connected: boolean;
   currentWeeklyPublished?: number;
   lastWeeklyResetAt?: string;
-  calibration: CalibrationStatus;
-  autopilotEnabled?: boolean;
   createdAt: string;
 }
 

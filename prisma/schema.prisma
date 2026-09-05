@@ -26,12 +26,6 @@ enum SiteConnectionStatus {
   FAILED
 }
 
-enum PublishPolicy {
-  MANUAL_REVIEW
-  AUTO_PUBLISH
-  PAUSED
-}
-
 enum IntegrationProvider {
   GSC
 }
@@ -348,10 +342,6 @@ model Site {
   wordpressStatus               SiteConnectionStatus    @default(NOT_CONFIGURED) @map("wordpress_status")
   wordpressUser                 String?                 @map("wordpress_user")
   wordpressVerifiedAt           DateTime?               @map("wordpress_verified_at")
-  publishPolicy                 PublishPolicy           @default(MANUAL_REVIEW) @map("publish_policy")
-  manualPublishSuccesses        Int                     @default(0) @map("manual_publish_successes")
-  autoPublishTermsAcceptedAt    DateTime?               @map("auto_publish_terms_accepted_at")
-  autoPublishEnabledAt          DateTime?               @map("auto_publish_enabled_at")
   createdAt                     DateTime                @default(now()) @map("created_at")
   updatedAt                     DateTime                @updatedAt @map("updated_at")
   organization                  Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)

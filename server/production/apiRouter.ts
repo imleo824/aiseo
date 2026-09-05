@@ -1,5 +1,5 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
-import { DraftStatus, GrowthActionStatus, GrowthInputType, GrowthProgramMode, GrowthProgramStatus, GrowthRunStatus, JobType, OrganizationRole, Prisma, PublishPolicy, ReviewDecision, SiteConnectionStatus } from '@prisma/client';
+import { DraftStatus, GrowthActionStatus, GrowthInputType, GrowthProgramMode, GrowthProgramStatus, GrowthRunStatus, JobType, OrganizationRole, Prisma, ReviewDecision, SiteConnectionStatus } from '@prisma/client';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../domain/errors';
@@ -15,6 +15,7 @@ import { gscProvider } from './providers';
 import { wordPressService } from './wordpress';
 import { gscComparisonWindow } from './growthEngine';
 import { growthProgramService } from './growthProgramService';
+import { parsePublishingConfirmationPolicy, PUBLISH_CONFIRMATION_SETTING_KEY } from './publishingPolicy';
 
 const roleRank: Record<OrganizationRole, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2, OWNER: 3 };
 const idSchema = z.string().uuid();
@@ -140,7 +141,7 @@ apiRouter.get('/integrations/wordpress/callback', asyncRoute(async (request, res
   const encrypted = wordPressService.encrypt({ username, applicationPassword });
   const verified = await wordPressService.testConnection(site.domain, encrypted);
   await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
-    await tx.site.update({ where: { id: state.siteId }, data: { wordpressCredentials: encrypted, wordpressCredentialKeyVersion: currentEncryptionKeyVersion(), wordpressStatus: SiteConnectionStatus.CONNECTED, wordpressUser: verified.user, wordpressVerifiedAt: new Date(), publishPolicy: PublishPolicy.MANUAL_REVIEW } });
+    await tx.site.update({ where: { id: state.siteId }, data: { wordpressCredentials: encrypted, wordpressCredentialKeyVersion: currentEncryptionKeyVersion(), wordpressStatus: SiteConnectionStatus.CONNECTED, wordpressUser: verified.user, wordpressVerifiedAt: new Date() } });
     await tx.idempotencyKey.deleteMany({ where: { organizationId: state.organizationId, profileId: state.profileId, key: state.nonce } });
     await tx.auditEvent.create({ data: { organizationId: state.organizationId, actorId: state.profileId, action: 'WORDPRESS_AUTHORIZED', targetType: 'site', targetId: state.siteId, metadata: { user: verified.user, siteName: verified.siteName, authorization: 'APPLICATION_PASSWORD_FLOW' } } });
   });
@@ -178,7 +179,7 @@ apiRouter.get('/me/export', asyncRoute(async (request, response) => {
     const memberships = await tx.organizationMember.findMany({ where: { profileId }, include: { organization: true } });
     const ids = memberships.map(({ organizationId: id }) => id);
     const [sites, knowledgeSources, snapshots, opportunities, growthPrograms, growthRuns, growthActions, growthObservations, drafts, ledger, payments, auditEvents] = await Promise.all([
-      tx.site.findMany({ where: { organizationId: { in: ids } }, select: { id: true, organizationId: true, name: true, domain: true, language: true, wordpressStatus: true, publishPolicy: true, createdAt: true } }),
+      tx.site.findMany({ where: { organizationId: { in: ids } }, select: { id: true, organizationId: true, name: true, domain: true, language: true, wordpressStatus: true, createdAt: true } }),
       tx.knowledgeSource.findMany({ where: { organizationId: { in: ids } } }),
       tx.dataSnapshot.findMany({ where: { organizationId: { in: ids } } }),
       tx.opportunity.findMany({ where: { organizationId: { in: ids } } }),
@@ -247,7 +248,7 @@ apiRouter.get('/organizations/:organizationId/sites', asyncRoute(async (request,
   const profileId = userId(request), orgId = organizationId(request);
   const sites = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    return tx.site.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' }, select: { id: true, name: true, domain: true, language: true, wordpressStatus: true, wordpressUser: true, wordpressVerifiedAt: true, publishPolicy: true, manualPublishSuccesses: true, autoPublishTermsAcceptedAt: true, autoPublishEnabledAt: true, createdAt: true, integrations: { select: { id: true, provider: true, propertyId: true, status: true, lastSyncedAt: true, lastErrorCode: true, lastErrorMessage: true } } } });
+    return tx.site.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' }, select: { id: true, name: true, domain: true, language: true, wordpressStatus: true, wordpressUser: true, wordpressVerifiedAt: true, createdAt: true, integrations: { select: { id: true, provider: true, propertyId: true, status: true, lastSyncedAt: true, lastErrorCode: true, lastErrorMessage: true } } } });
   });
   sendData(response, sites);
 }));
@@ -282,7 +283,7 @@ apiRouter.put('/organizations/:organizationId/sites/:siteId', asyncRoute(async (
       const existing = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } });
       if (!existing) throw new NotFoundError('站点不存在');
       const domainChanged = Boolean(domain && domain !== existing.domain);
-      const site = await tx.site.update({ where: { id: siteId }, data: { name: input.name, domain, language: input.language, ...(domainChanged ? { wordpressStatus: SiteConnectionStatus.VERIFYING, wordpressVerifiedAt: null, publishPolicy: PublishPolicy.MANUAL_REVIEW, autoPublishEnabledAt: null } : {}) } });
+      const site = await tx.site.update({ where: { id: siteId }, data: { name: input.name, domain, language: input.language, ...(domainChanged ? { wordpressStatus: SiteConnectionStatus.VERIFYING, wordpressVerifiedAt: null } : {}) } });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_UPDATED', targetType: 'site', targetId: siteId, metadata: { fields: Object.keys(input), domainChanged } } });
       return { statusCode: 200, data: { site } };
     } });
@@ -360,36 +361,6 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/test-connection', a
   }
 }));
 
-apiRouter.post('/organizations/:organizationId/sites/:siteId/auto-publish', asyncRoute(async (request, response) => {
-  await revalidateSensitiveSession(request);
-  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request);
-  const input = parseBody(z.object({ enabled: z.boolean(), acceptRisk: z.boolean().default(false) }), request);
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {
-      const site = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } });
-      if (!site) throw new NotFoundError('站点不存在');
-      if (!input.enabled) {
-        const updated = await tx.site.update({ where: { id: siteId }, data: { publishPolicy: PublishPolicy.MANUAL_REVIEW, autoPublishEnabledAt: null } });
-        return { statusCode: 200, data: { site: updated } };
-      }
-      const [snapshotCount, knowledgeCount] = await Promise.all([
-        tx.dataSnapshot.count({ where: { organizationId: orgId, siteId, status: 'LIVE', source: { in: ['GSC', 'DATAFORSEO'] } } }),
-        tx.knowledgeSource.count({ where: { organizationId: orgId, OR: [{ siteId }, { siteId: null }], status: 'LIVE' } })
-      ]);
-      if (site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !site.wordpressVerifiedAt) throw new ConflictError('WordPress 连接未通过验证');
-      if (snapshotCount < 1 || knowledgeCount < 1) throw new ConflictError('至少需要一个真实数据快照和系统自动建立的站点事实语料');
-      if (site.manualPublishSuccesses < 3) throw new ConflictError('需要连续完成 3 次人工批准并成功发布');
-      if (!input.acceptRisk) throw new ConflictError('必须接受自动发布风险条款');
-      const now = new Date();
-      const updated = await tx.site.update({ where: { id: siteId }, data: { publishPolicy: PublishPolicy.AUTO_PUBLISH, autoPublishTermsAcceptedAt: site.autoPublishTermsAcceptedAt || now, autoPublishEnabledAt: now } });
-      await tx.termsAcceptance.create({ data: { organizationId: orgId, profileId, document: 'AUTO_PUBLISH_RISK', version: '2026-08-28' } });
-      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'AUTO_PUBLISH_ENABLED', targetType: 'site', targetId: siteId } });
-      return { statusCode: 200, data: { site: updated } };
-    } });
-  });
-  sendData(response, outcome.data, outcome.statusCode);
-}));
 
 apiRouter.post('/organizations/:organizationId/sites/:siteId/gsc/authorize', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request);
@@ -768,6 +739,43 @@ const assertPlatformAdmin = async (tx: TransactionClient, profileId: string): Pr
   const profile = await tx.profile.findUnique({ where: { id: profileId } });
   if (profile?.platformRole !== 'PLATFORM_ADMIN' || profile.suspendedAt) throw new ForbiddenError('仅平台管理员可访问');
 };
+
+apiRouter.get('/admin/publishing-confirmation-policy', asyncRoute(async (request, response) => {
+  const profileId = userId(request);
+  const policy = await withRequestScope({ profileId }, async (tx) => {
+    await assertPlatformAdmin(tx, profileId);
+    const setting = await tx.systemSetting.findUnique({ where: { key: PUBLISH_CONFIRMATION_SETTING_KEY } });
+    return parsePublishingConfirmationPolicy(setting?.value);
+  });
+  sendData(response, policy);
+}));
+
+apiRouter.put('/admin/publishing-confirmation-policy', asyncRoute(async (request, response) => {
+  await revalidateSensitiveSession(request);
+  const profileId = userId(request);
+  const key = idempotencyKey(request);
+  const input = parseBody(z.object({ requireManualConfirmation: z.boolean() }), request);
+  const policy = await withRequestScope({ profileId }, async (tx) => {
+    await assertPlatformAdmin(tx, profileId);
+    const value = { requireManualConfirmation: input.requireManualConfirmation };
+    const setting = await tx.systemSetting.upsert({
+      where: { key: PUBLISH_CONFIRMATION_SETTING_KEY },
+      create: { key: PUBLISH_CONFIRMATION_SETTING_KEY, value },
+      update: { value }
+    });
+    await tx.auditEvent.create({
+      data: {
+        actorId: profileId,
+        action: 'PUBLISHING_CONFIRMATION_POLICY_UPDATED',
+        targetType: 'system_setting',
+        targetId: setting.key,
+        metadata: { ...value, idempotencyKey: key }
+      }
+    });
+    return parsePublishingConfirmationPolicy(setting.value);
+  });
+  sendData(response, policy);
+}));
 
 apiRouter.get('/admin/organizations', asyncRoute(async (request, response) => {
   const profileId = userId(request);

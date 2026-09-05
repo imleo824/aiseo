@@ -109,7 +109,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'SYSTEM_SERVICES_CONFIG',
-      label: '服务集成',
+      label: '全局设置',
       icon: <Cpu className="w-4 h-4" />
     },
   ];

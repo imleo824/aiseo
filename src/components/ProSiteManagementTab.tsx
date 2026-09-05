@@ -23,7 +23,6 @@ interface ProSiteManagementTabProps {
   onDeleteSite?: (siteId: string) => Promise<void>;
   onTestSiteConnection?: (siteId: string) => Promise<unknown>;
   onAuthorizeWordPress?: (siteId: string) => Promise<{ authorizationUrl: string }>;
-  onSetAutopilot?: (siteId: string, enabled: boolean, acceptRisk?: boolean) => Promise<void>;
   onRefreshSites?: () => Promise<void>;
   onOpenOnboarding: () => void;
 }
@@ -34,7 +33,6 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
   onDeleteSite,
   onTestSiteConnection,
   onAuthorizeWordPress,
-  onSetAutopilot,
   onRefreshSites,
   onOpenOnboarding
 }) => {
@@ -42,7 +40,6 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
   const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
   const [gscSite, setGscSite] = useState<WordPressSite | null>(null);
   const [confirmDeleteSiteId, setConfirmDeleteSiteId] = useState<string | null>(null);
-  const [confirmAutopilotSiteId, setConfirmAutopilotSiteId] = useState<string | null>(null);
 
   const [editForm, setEditForm] = useState<{
     name: string;
@@ -137,27 +134,6 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
       await onDeleteSite(siteId);
       setConfirmDeleteSiteId(null);
       showToast('已解绑站点');
-    }
-  };
-
-  const handleAutopilot = async (site: WordPressSite) => {
-    if (!onSetAutopilot) return;
-    try {
-      if (site.autopilotEnabled) {
-        await onSetAutopilot(site.id, false, false);
-        showToast('自动发布已关闭，恢复人工审核');
-        return;
-      }
-      if (confirmAutopilotSiteId !== site.id) {
-        setConfirmAutopilotSiteId(site.id);
-        showToast('再次点击确认，表示接受自动发布风险条款；系统仍会校验全部门禁');
-        return;
-      }
-      await onSetAutopilot(site.id, true, true);
-      setConfirmAutopilotSiteId(null);
-      showToast('该站点已通过门禁并开启自动发布');
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : '自动发布门禁校验失败');
     }
   };
 
@@ -267,12 +243,6 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                       </button>
 
                       <button type="button" onClick={() => setGscSite(site)} className={`flex-1 sm:flex-none px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition ${site.gscConnected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-slate-700 border-slate-200'}`}>GSC：{site.gscConnected ? '已连接' : '未连接'}</button>
-
-                      {onSetAutopilot && (
-                        <button type="button" onClick={() => void handleAutopilot(site)} className={`flex-1 sm:flex-none px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition ${site.autopilotEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : confirmAutopilotSiteId === site.id ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-white text-slate-700 border-slate-200'}`}>
-                          {site.autopilotEnabled ? '自动发布：已开启' : confirmAutopilotSiteId === site.id ? '确认接受风险并开启' : '自动发布：未开启'}
-                        </button>
-                      )}
 
                       <button
                         type="button"
