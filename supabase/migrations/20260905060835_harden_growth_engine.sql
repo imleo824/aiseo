@@ -127,7 +127,7 @@ CREATE TABLE public.site_snapshots (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
   site_id uuid NOT NULL REFERENCES public.sites(id) ON DELETE CASCADE,
-  run_id uuid NOT NULL UNIQUE REFERENCES public.growth_runs(id) ON DELETE CASCADE,
+  run_id uuid NOT NULL REFERENCES public.growth_runs(id) ON DELETE CASCADE,
   status public."DataStatus" NOT NULL DEFAULT 'LIVE',
   source_version text NOT NULL,
   market jsonb NOT NULL,
@@ -137,6 +137,7 @@ CREATE TABLE public.site_snapshots (
   audited_page_count integer NOT NULL DEFAULT 0,
   fetched_at timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT site_snapshots_run_key UNIQUE (run_id),
   CONSTRAINT site_snapshots_counts_valid CHECK (
     page_count >= 0 AND audited_page_count >= 0 AND audited_page_count <= page_count
   ),
