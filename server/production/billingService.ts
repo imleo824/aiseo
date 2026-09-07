@@ -1,10 +1,21 @@
 import { CreditHoldStatus, LedgerEntryType, PaymentStatus, Prisma, type PrismaClient } from '@prisma/client';
 import { ConflictError, InsufficientCreditsError, NotFoundError, ValidationError } from '../domain/errors';
 import { env } from './env';
-import type { TransactionClient } from './prisma';
+import { retrySerializableOperation, type TransactionClient } from './prisma';
 
 const USDT_MICROS = 1_000_000n;
 const TX_HASH_PATTERN = /^[a-fA-F0-9]{64}$/;
+
+export const lockOrganizationBalance = async (tx: TransactionClient, organizationId: string) => {
+  await tx.$queryRaw`
+    SELECT pg_advisory_xact_lock(
+      hashtextextended(${'aiseo-ledger:' + organizationId}, 0)
+    )
+  `;
+  const organization = await tx.organization.findUnique({ where: { id: organizationId } });
+  if (!organization) throw new NotFoundError('组织不存在');
+  return organization;
+};
 
 export const formatMicros = (amount: bigint, scale = USDT_MICROS): string => {
   const whole = amount / scale;
@@ -107,7 +118,7 @@ export const billingService = {
 
   async creditConfirmedPayment(database: PrismaClient, paymentIntentId: string, verification: Prisma.InputJsonValue): Promise<{ credited: boolean; balanceMicros: string }> {
     try {
-      return await database.$transaction(async (tx) => {
+      return await retrySerializableOperation(() => database.$transaction(async (tx) => {
         const paymentRows = await tx.$queryRaw<Array<{ id: string }>>`
           SELECT id FROM public.payment_intents WHERE id = ${paymentIntentId}::uuid FOR UPDATE
         `;
@@ -120,6 +131,7 @@ export const billingService = {
         if (payment.status !== PaymentStatus.VERIFYING && payment.status !== PaymentStatus.CONFIRMED) {
           throw new ConflictError('充值意图状态不允许入账');
         }
+        await lockOrganizationBalance(tx, payment.organizationId);
         const organization = await tx.organization.update({
           where: { id: payment.organizationId },
           data: { creditBalanceMicros: { increment: payment.creditMicros } }
@@ -144,7 +156,7 @@ export const billingService = {
           data: { organizationId: payment.organizationId, action: 'PAYMENT_CREDITED', targetType: 'payment_intent', targetId: payment.id, metadata: verification }
         });
         return { credited: true, balanceMicros: organization.creditBalanceMicros.toString() };
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const payment = await database.paymentIntent.findUniqueOrThrow({ where: { id: paymentIntentId }, include: { organization: true } });
@@ -156,7 +168,10 @@ export const billingService = {
 
   async reserveCredits(tx: TransactionClient, organizationId: string, jobRunId: string, amountMicros: bigint, reason: string): Promise<void> {
     if (amountMicros <= 0n) throw new ValidationError('信用占用金额必须为正数');
-    const organization = await tx.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { creditBalanceMicros: true } });
+    // Serialize every balance/hold mutation with the same transaction-scoped
+    // lock. Unlike SELECT FOR UPDATE this does not accidentally require an
+    // EDITOR to satisfy the organizations UPDATE RLS policy.
+    const organization = await lockOrganizationBalance(tx, organizationId);
     const holds = await tx.creditHold.aggregate({ where: { organizationId, status: CreditHoldStatus.HELD }, _sum: { amountMicros: true } });
     const held = holds._sum.amountMicros || 0n;
     if (organization.creditBalanceMicros - held < amountMicros) throw new InsufficientCreditsError('可用积分不足');
@@ -164,6 +179,12 @@ export const billingService = {
   },
 
   async settleCreditHold(tx: TransactionClient, jobRunId: string, resultType: string, resultId: string): Promise<void> {
+    const locatedHold = await tx.creditHold.findUnique({ where: { jobRunId } });
+    if (!locatedHold || locatedHold.status === CreditHoldStatus.SETTLED) return;
+    await lockOrganizationBalance(tx, locatedHold.organizationId);
+    // Release and settlement use the same organization lock. Re-read after
+    // acquiring it so a concurrent failure path can never be overwritten by a
+    // stale HELD value observed before waiting for the lock.
     const hold = await tx.creditHold.findUnique({ where: { jobRunId } });
     if (!hold || hold.status === CreditHoldStatus.SETTLED) return;
     if (hold.status !== CreditHoldStatus.HELD) throw new ConflictError('已释放的信用占用不能结算');
@@ -187,6 +208,12 @@ export const billingService = {
   },
 
   async releaseCreditHold(tx: TransactionClient, jobRunId: string): Promise<void> {
-    await tx.creditHold.updateMany({ where: { jobRunId, status: CreditHoldStatus.HELD }, data: { status: CreditHoldStatus.RELEASED, releasedAt: new Date() } });
+    const hold = await tx.creditHold.findUnique({ where: { jobRunId } });
+    if (!hold || hold.status !== CreditHoldStatus.HELD) return;
+    await lockOrganizationBalance(tx, hold.organizationId);
+    await tx.creditHold.updateMany({
+      where: { jobRunId, status: CreditHoldStatus.HELD },
+      data: { status: CreditHoldStatus.RELEASED, releasedAt: new Date() }
+    });
   }
 };

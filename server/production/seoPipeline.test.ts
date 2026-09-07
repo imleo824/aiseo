@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assessSourceOriginality, deterministicActionQualityGate, selectRelevantInternalLinks } from './seoPipeline';
+import { assessSourceOriginality, deterministicActionQualityGate, insertContextualInternalLinks, selectRelevantInternalLinks } from './seoPipeline';
 
 describe('selectRelevantInternalLinks', () => {
   it('selects only relevant, stable internal links', () => {
@@ -29,6 +29,23 @@ describe('content safety gates', () => {
     const original = '<article><h2>Existing section</h2><p>Original customer content remains unchanged.</p></article>';
     expect(deterministicActionQualityGate({ actionType: 'UPDATE_TITLE', title: 'A Better Existing Page Title', html: original, beforeHtml: original }).passed).toBe(true);
     expect(deterministicActionQualityGate({ actionType: 'UPDATE_TITLE', title: 'Changed title', html: `${original}<p>unexpected rewrite</p>`, beforeHtml: original }).passed).toBe(false);
-    expect(deterministicActionQualityGate({ actionType: 'ADD_INTERNAL_LINKS', title: 'Existing Page Title', html: `${original}<section><a href="https://example.com/related">Related</a></section>`, beforeHtml: original, insertedInternalLinks: 1 }).passed).toBe(true);
+    const linked = insertContextualInternalLinks(original, [{ title: 'Original customer content', url: 'https://example.com/related' }]);
+    expect(linked.inserted).toHaveLength(1);
+    expect(deterministicActionQualityGate({ actionType: 'ADD_INTERNAL_LINKS', title: 'Existing Page Title', html: linked.html, beforeHtml: original, insertedInternalLinks: linked.inserted.length }).passed).toBe(true);
+  });
+
+  it('requires a refresh to change the page while retaining its verified topic', () => {
+    const original = '<article><h2>WordPress SEO foundations</h2><p>Technical optimization, internal links, crawlability, and useful content help readers discover the right pages.</p></article>';
+    const refreshed = '<article><h2>WordPress SEO foundations</h2><p>Technical optimization and crawlability help search engines discover useful pages.</p><h2>Internal linking workflow</h2><p>Use contextual internal links so readers can reach the right related content.</p></article>';
+    const common = {
+      actionType: 'CONTENT_REFRESH' as const,
+      title: 'WordPress SEO Foundations Guide',
+      beforeHtml: original,
+      requiredTopics: ['WordPress SEO foundations', 'Internal linking workflow'],
+      declaredCoveredTopics: ['WordPress SEO foundations', 'Internal linking workflow']
+    };
+    expect(deterministicActionQualityGate({ ...common, html: refreshed }).passed).toBe(true);
+    expect(deterministicActionQualityGate({ ...common, html: original }).passed).toBe(false);
+    expect(deterministicActionQualityGate({ ...common, html: '<article><h2>Luxury cruises</h2><p>Unrelated travel deals and resort packages for vacation planning.</p></article>' }).passed).toBe(false);
   });
 });

@@ -29,9 +29,17 @@ export type GrowthAction = {
   targetUrl?: string;
   expectedValueMicros?: string;
   plan: Record<string, unknown>;
+  evidence?: ActionEvidence[];
+  pageVersions?: PageVersion[];
+  measurements?: MeasurementSample[];
   createdAt: string;
   decision?: { rank: number; scoreMicros: string; rationale: Record<string, unknown> };
 };
+export type ActionEvidence = { id: string; type: string; sourceRef?: string; payload: Record<string, unknown>; createdAt: string };
+export type PageVersion = { id: string; kind: 'BEFORE' | 'AFTER' | 'ROLLBACK'; remotePostId: string; resourceType: string; url: string; title: string; contentChecksum: string; remoteModifiedAt?: string; createdAt: string };
+export type MeasurementSample = { id: string; source: 'GSC' | 'LEADING_INDICATORS'; windowDays: 7 | 14 | 28 | 56; baseline: Record<string, unknown>; measurement: Record<string, unknown>; confidenceMicros: string; outcome: 'NOT_READY' | 'WIN' | 'NEUTRAL' | 'LOSS' | 'INCONCLUSIVE'; observedAt: string };
+export type SiteSnapshotSummary = { id: string; status: string; sourceVersion: string; market: Record<string, unknown>; health: Record<string, unknown>; corpusChecksum: string; pageCount: number; auditedPageCount: number; fetchedAt: string; pages?: Array<{ id: string; url: string; resourceType: string; status: string; modifiedAt?: string; title: string; wordCount: number; contentChecksum: string; technicalEvidence: Record<string, unknown> }> };
+export type GrowthCandidate = { id: string; status: 'PROPOSED' | 'SELECTED' | 'DEFERRED' | 'REJECTED' | 'EXECUTED'; rank: number; scoreMicros: string; scoreVersion: string; rationale: Record<string, unknown>; opportunity: Opportunity; action?: Pick<GrowthAction, 'id' | 'type' | 'status' | 'targetUrl'> };
 export type GrowthProgram = {
   id: string;
   siteId: string;
@@ -77,9 +85,18 @@ export type GrowthRun = {
   stages: GrowthRunStage[];
   actions?: GrowthAction[];
   draft?: Draft;
+  siteSnapshot?: SiteSnapshotSummary;
   measurement?: { gscConnected: boolean; lastSyncedAt?: string; trafficClaimAllowed: boolean };
   createdAt: string;
   updatedAt: string;
+};
+export type GrowthStatus = {
+  program: GrowthProgram | null;
+  run: GrowthRun | null;
+  action: GrowthAction | null;
+  stages: GrowthRunStage[];
+  blocker: { code: string; message?: string } | null;
+  measurement: { gscConnected: boolean; lastSyncedAt?: string; trafficClaimAllowed: boolean; targetUrl?: string };
 };
 export type Draft = {
   id: string;

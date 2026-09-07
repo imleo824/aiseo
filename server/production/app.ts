@@ -11,17 +11,32 @@ import { prisma } from './prisma';
 import { EXPECTED_MIGRATION_VERSION, inspectDatabaseSecurity } from './databaseSecurity';
 import { serializePublicRuntimeConfig } from './publicRuntimeConfig';
 
-const securityHeaders = (_request: Request, response: Response, next: NextFunction): void => {
-  const supabaseOrigin = (() => { try { return env.supabaseUrl ? new URL(env.supabaseUrl).origin : ''; } catch { return ''; } })();
+export const buildContentSecurityPolicy = (input: {
+  runtime: 'development' | 'test' | 'production';
+  supabaseUrl: string;
+  sentryDsn: string;
+}): string => {
+  const supabaseOrigin = (() => { try { return input.supabaseUrl ? new URL(input.supabaseUrl).origin : ''; } catch { return ''; } })();
   const supabaseWebSocketOrigin = supabaseOrigin.replace(/^http/, 'ws');
-  const sentryOrigin = (() => { try { return env.browserSentryDsn ? new URL(env.browserSentryDsn).origin : ''; } catch { return ''; } })();
+  const sentryOrigin = (() => { try { return input.sentryDsn ? new URL(input.sentryDsn).origin : ''; } catch { return ''; } })();
   const connectSources = ["'self'", supabaseOrigin, supabaseWebSocketOrigin, sentryOrigin, 'https://challenges.cloudflare.com'].filter(Boolean).join(' ');
+  // Vite's React Refresh preamble is an inline module in development/test.
+  // Production assets remain protected by the stricter no-inline policy.
+  const scriptSources = ["'self'", ...(input.runtime === 'production' ? [] : ["'unsafe-inline'"]), 'https://challenges.cloudflare.com'].join(' ');
+  return `default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src ${scriptSources}; frame-src https://challenges.cloudflare.com; connect-src ${connectSources}`;
+};
+
+const securityHeaders = (_request: Request, response: Response, next: NextFunction): void => {
   response.setHeader('X-Content-Type-Options', 'nosniff');
   response.setHeader('X-Frame-Options', 'DENY');
   response.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  response.setHeader('Content-Security-Policy', `default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src ${connectSources}`);
+  response.setHeader('Content-Security-Policy', buildContentSecurityPolicy({
+    runtime: env.runtime,
+    supabaseUrl: env.supabaseUrl,
+    sentryDsn: env.browserSentryDsn
+  }));
   next();
 };
 

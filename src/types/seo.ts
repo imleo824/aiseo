@@ -242,7 +242,6 @@ export interface Opportunity {
   searchIntent?: SearchIntentType;
   cannibalizationRiskScore?: number; // 0-100, 0 = no risk
   riskLevel: RiskLevel;
-  estimatedMonthlyVisitsGain: number;
   demandEvidence: DemandEvidence;
   scoreBreakdown: ScoreBreakdown;
   status: OpportunityStatus;
@@ -440,7 +439,6 @@ export interface CompetitorAttackKeyword {
   type: CompetitorAttackKeywordType;
   typeLabel: string;
   intent: string;
-  estimatedMonthlyTraffic: number;
   attackAngle: string;
   difficulty: 'LOW' | 'MEDIUM' | 'HIGH';
   recommendedH2s: string[];

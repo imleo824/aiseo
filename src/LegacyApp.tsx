@@ -49,6 +49,7 @@ export default function LegacyApp() {
     account,
     transactions,
     allTenants,
+    growthStatuses,
     loading,
     actions
   } = useTenantData(activeTenantId, globalLanguage, (newTid) => {
@@ -210,6 +211,7 @@ export default function LegacyApp() {
             <MainDashboard
               sites={sites}
               drafts={drafts}
+              growthStatuses={growthStatuses}
               onRollback={actions.handleRollback}
               onStartGrowthProgram={actions.handleStartGrowthProgram}
               onOpenOnboarding={() => setIsOnboardingOpen(true)}

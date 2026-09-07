@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import type { TransactionClient } from './prisma';
 import { jobService } from './jobService';
+import { ConflictError } from '../domain/errors';
 
 export const GROWTH_STAGES = [
   GrowthRunStageCode.UNDERSTAND,
@@ -45,6 +46,13 @@ export const growthProgramService = {
     if (existing) {
       const run = existing.runs[0] || null;
       return { program: existing, run, job: run?.jobRunId ? await tx.jobRun.findUnique({ where: { id: run.jobRunId } }) : null, replayed: true };
+    }
+    if (input.mode === GrowthProgramMode.CONTINUOUS) {
+      const active = await tx.growthProgram.findFirst({
+        where: { siteId: input.siteId, mode: GrowthProgramMode.CONTINUOUS, status: 'ACTIVE' },
+        select: { id: true }
+      });
+      if (active) throw new ConflictError('该站点已有一个持续增长程序，请先暂停现有程序再创建新的持续程序');
     }
 
     const now = new Date();

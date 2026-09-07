@@ -1,5 +1,6 @@
 import React from 'react';
 import { AUTOMATION_PIPELINE_STAGES, PipelineStepStates, PipelineStepStatus } from '../../types/seo';
+import type { GrowthRunStage } from '../../types/api';
 import {
   Check,
   Search,
@@ -15,14 +16,17 @@ interface PipelineVisualizerProps {
   activePipelineStep: number | null;
   stepStates: PipelineStepStates;
   executionLogs: string[];
+  stageDetails?: GrowthRunStage[];
 }
 
 export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
   activePipelineStep,
   stepStates,
-  executionLogs
+  executionLogs,
+  stageDetails = []
 }) => {
   const [showLogs, setShowLogs] = React.useState<boolean>(true);
+  const [expandedStage, setExpandedStage] = React.useState<number | null>(null);
 
   const stageIcons: Record<number, React.ReactNode> = {
     1: <Search className="w-4 h-4" />,
@@ -39,6 +43,7 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
         {AUTOMATION_PIPELINE_STAGES.map((stage) => {
+          const detail = stageDetails.find((item) => item.stage === stage.code);
           const status: PipelineStepStatus = stepStates[stage.number]
             || (activePipelineStep === stage.number ? 'RUNNING' : 'PENDING');
           const isActive = status === 'RUNNING';
@@ -60,8 +65,11 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
                     : `步骤 ${stage.number}`;
 
           return (
-            <div
+            <button
+              type="button"
               key={stage.number}
+              onClick={() => detail && setExpandedStage((current) => current === stage.number ? null : stage.number)}
+              aria-expanded={detail ? expandedStage === stage.number : undefined}
               className={`p-3 sm:p-3.5 rounded-xl border text-center transition-all duration-200 flex flex-col items-center justify-center gap-1.5 ${
                 isActive
                   ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-emerald-500/30'
@@ -74,7 +82,7 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
                   : isFailed
                   ? 'bg-rose-50/90 text-rose-950 border-rose-200 shadow-sm'
                   : 'bg-slate-50/80 text-slate-600 border-slate-200/80'
-              }`}
+              } ${detail ? 'cursor-pointer hover:-translate-y-0.5' : 'cursor-default'}`}
             >
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition ${
                 isActive
@@ -131,10 +139,41 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
                   {statusLabel}
                 </div>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
+
+      {expandedStage !== null && (() => {
+        const stage = AUTOMATION_PIPELINE_STAGES.find((item) => item.number === expandedStage);
+        const detail = stageDetails.find((item) => item.stage === stage?.code);
+        if (!stage || !detail) return null;
+        return (
+          <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm space-y-3 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="font-bold text-slate-900">{stage.title} · 真实执行证据</div>
+              <div className="text-xs text-slate-500">
+                已处理 {detail.processedCount}{typeof detail.totalCount === 'number' ? ` / ${detail.totalCount}` : ''}
+              </div>
+            </div>
+            {detail.summary && <p className="text-slate-700 leading-relaxed">{detail.summary}</p>}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+              <span>开始：{detail.startedAt ? new Date(detail.startedAt).toLocaleString() : '尚未开始'}</span>
+              <span>完成：{detail.finishedAt ? new Date(detail.finishedAt).toLocaleString() : '尚未完成'}</span>
+            </div>
+            {detail.errorMessage && <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-rose-800">阻止原因：{detail.errorMessage}</div>}
+            {detail.evidence.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {detail.evidence.map((evidence, index) => (
+                  <span key={`${String(evidence.type || 'EVIDENCE')}-${index}`} className="rounded-md bg-slate-100 border border-slate-200 px-2 py-1 text-xs font-mono text-slate-600">
+                    {String(evidence.type || 'EVIDENCE')}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Terminal Log Stream */}
       {executionLogs.length > 0 && (

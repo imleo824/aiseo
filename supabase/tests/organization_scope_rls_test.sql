@@ -7,7 +7,7 @@ set local search_path = public, extensions;
 -- can continue to execute while SET ROLE is exercising the real RLS boundary.
 grant usage on schema extensions to app_backend, app_worker;
 grant execute on all functions in schema extensions to app_backend, app_worker;
-select plan(52);
+select plan(60);
 
 select is(
   (select count(*) from pg_class
@@ -28,9 +28,12 @@ select is(
      'public.notifications'::regclass, 'public.worker_heartbeats'::regclass,
      'public.system_settings'::regclass,
      'public.growth_decisions'::regclass, 'public.growth_actions'::regclass,
-     'public.growth_observations'::regclass
+     'public.site_snapshots'::regclass, 'public.site_page_snapshots'::regclass,
+     'public.action_evidence'::regclass, 'public.page_versions'::regclass,
+     'public.measurement_samples'::regclass, 'public.site_mutation_leases'::regclass,
+     'public.policy_versions'::regclass
    ]) and relrowsecurity),
-  32::bigint,
+  38::bigint,
   'every business table has RLS enabled'
 );
 
@@ -51,14 +54,40 @@ select ok(not has_table_privilege('app_backend', 'public.payment_intents', 'dele
 select ok(not has_table_privilege('app_worker', 'public.profiles', 'update'), 'Worker cannot mutate profile authorization state');
 select ok(not has_table_privilege('app_worker', 'public.payment_intents', 'insert'), 'Worker cannot manufacture payment intents');
 select ok(not has_table_privilege('anon', 'public.growth_programs', 'select,insert,update,delete'), 'anon cannot access growth programs');
-select ok(has_table_privilege('app_backend', 'public.growth_programs', 'select,insert,update') and not has_table_privilege('app_backend', 'public.growth_programs', 'delete'), 'Web may create, pause and resume growth programs without deleting history');
-select ok(has_table_privilege('app_backend', 'public.growth_run_stages', 'select,insert') and not has_table_privilege('app_backend', 'public.growth_run_stages', 'update,delete'), 'Web may create initial stage records but cannot forge progress');
+select ok(
+  has_table_privilege('app_backend', 'public.growth_programs', 'select')
+  and has_table_privilege('app_backend', 'public.growth_programs', 'insert')
+  and has_table_privilege('app_backend', 'public.growth_programs', 'update')
+  and not has_table_privilege('app_backend', 'public.growth_programs', 'delete'),
+  'Web may create, pause and resume growth programs without deleting history'
+);
+select ok(
+  has_table_privilege('app_backend', 'public.growth_run_stages', 'select')
+  and has_table_privilege('app_backend', 'public.growth_run_stages', 'insert')
+  and not has_table_privilege('app_backend', 'public.growth_run_stages', 'update,delete'),
+  'Web may create initial stage records but cannot forge progress'
+);
 select ok(not has_table_privilege('app_backend', 'public.growth_decisions', 'insert'), 'Web cannot manufacture growth decisions');
 select ok(not has_table_privilege('app_backend', 'public.growth_actions', 'insert'), 'Web cannot manufacture growth actions');
-select ok(not has_table_privilege('app_backend', 'public.growth_observations', 'insert'), 'Web cannot manufacture growth observations');
-select ok(has_table_privilege('app_worker', 'public.growth_observations', 'select,insert,update'), 'Worker owns the evidence lifecycle without bypassing RLS');
-select ok(not has_table_privilege('app_worker', 'public.growth_observations', 'delete'), 'Worker cannot erase growth evidence');
+select ok(not has_table_privilege('app_backend', 'public.measurement_samples', 'insert'), 'Web cannot manufacture measurement samples');
+select ok(
+  has_table_privilege('app_worker', 'public.measurement_samples', 'select')
+  and has_table_privilege('app_worker', 'public.measurement_samples', 'insert')
+  and not has_table_privilege('app_worker', 'public.measurement_samples', 'update'),
+  'Worker can append but cannot rewrite measurement samples'
+);
+select ok(not has_table_privilege('app_worker', 'public.measurement_samples', 'delete'), 'Worker cannot erase measurement evidence');
+select ok(to_regclass('public.idempotency_keys_global_profile_key_key') is not null, 'platform writes have a partial unique idempotency boundary');
 select ok(to_regclass('public.execution_runs') is null and to_regclass('public.growth_cycles') is null and to_regclass('public.automation_tasks') is null, 'legacy duplicate engines are absent');
+select is(
+  (
+    select string_agg(enumlabel, ',' order by enumsortorder)
+    from pg_enum
+    where enumtypid = 'public."GrowthActionType"'::regtype
+  ),
+  'UPDATE_TITLE,ADD_INTERNAL_LINKS,CONTENT_REFRESH,ADD_CONTENT_SECTION,CREATE_CONTENT,DIAGNOSE_ONLY',
+  'growth action enum contains only fully implemented and reversible Worker actions'
+);
 select is(
   (select value ->> 'requireManualConfirmation' from public.system_settings where key = 'publishing.confirmation'),
   'false',
@@ -119,6 +148,28 @@ values ((select organization_id from rls_context where label = 'a'), '00000000-0
 select ok((select count(*) from public.growth_runs) = 1 and (select count(*) from public.growth_run_stages) = 1, 'owner can create a run with durable stages');
 reset role;
 
+insert into public.site_snapshots (
+  id, organization_id, site_id, run_id, source_version, market, health,
+  corpus_checksum, page_count, audited_page_count
+)
+values (
+  '00000000-0000-0000-0000-0000000000a6',
+  (select organization_id from rls_context where label = 'a'),
+  '00000000-0000-0000-0000-0000000000a3',
+  '00000000-0000-0000-0000-0000000000a5',
+  'site-understanding-4', '{}'::jsonb, '{}'::jsonb, repeat('a', 64), 1, 0
+);
+select throws_like(
+  $$update public.site_snapshots set page_count = 2 where id = '00000000-0000-0000-0000-0000000000a6'$$,
+  '%append-only%',
+  'site snapshots cannot be rewritten'
+);
+select throws_like(
+  $$delete from public.site_snapshots where id = '00000000-0000-0000-0000-0000000000a6'$$,
+  '%append-only%',
+  'site snapshots cannot be erased by ordinary database operations'
+);
+
 insert into public.sites (id, organization_id, domain, name, updated_at)
 values ('00000000-0000-0000-0000-0000000000b3', (select organization_id from rls_context where label = 'b'), 'org-b.example.test', 'Org B site', now());
 set local role app_worker;
@@ -157,6 +208,7 @@ select is(
 );
 select is((select count(*) from public.growth_programs), 0::bigint, 'cross-organization growth-program SELECT is denied');
 select is((select count(*) from public.growth_runs), 0::bigint, 'cross-organization growth-run SELECT is denied');
+select is((select count(*) from public.site_snapshots), 0::bigint, 'cross-organization site-snapshot SELECT is denied');
 select throws_like(
   format('insert into public.sites (organization_id, domain, name, updated_at) values (%L, %L, %L, now())', (select organization_id from rls_context where label = 'a'), 'cross.example.test', 'Cross org'),
   '%row-level security%',
@@ -176,6 +228,7 @@ select set_config('app.organization_id', (select organization_id::text from rls_
 set local role app_backend;
 select is((select count(*) from public.sites), 1::bigint, 'viewer can SELECT organization rows');
 select is((select count(*) from public.growth_runs), 1::bigint, 'viewer can SELECT organization growth runs');
+select is((select count(*) from public.site_snapshots), 1::bigint, 'viewer can SELECT immutable evidence for their organization');
 select throws_like(
   format('insert into public.sites (organization_id, domain, name, updated_at) values (%L, %L, %L, now())', (select organization_id from rls_context where label = 'a'), 'viewer-write.example.test', 'Viewer write'),
   '%row-level security%',
@@ -206,6 +259,35 @@ select throws_like(
   'user cannot self-promote to platform administrator'
 );
 reset role;
+
+insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
+values ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-0000000000d4', 'authenticated', 'authenticated', 'erasure@example.test', crypt('StrongPassword1', gen_salt('bf')), now(), now(), now());
+insert into rls_context
+select 'd', organization_id from public.organization_members where profile_id = '00000000-0000-0000-0000-0000000000d4';
+insert into public.sites (id, organization_id, domain, name, updated_at)
+values ('00000000-0000-0000-0000-0000000000d5', (select organization_id from rls_context where label = 'd'), 'erase.example.test', 'Erase site', now());
+insert into public.growth_programs (id, organization_id, site_id, mode, input_type, input_value, input_fingerprint)
+values ('00000000-0000-0000-0000-0000000000d6', (select organization_id from rls_context where label = 'd'), '00000000-0000-0000-0000-0000000000d5', 'ONCE', 'KEYWORD', 'erase', 'erasure-program');
+insert into public.growth_runs (id, organization_id, site_id, program_id, trigger, occurrence_key)
+values ('00000000-0000-0000-0000-0000000000d7', (select organization_id from rls_context where label = 'd'), '00000000-0000-0000-0000-0000000000d5', '00000000-0000-0000-0000-0000000000d6', 'USER', 'erasure-run');
+insert into public.site_snapshots (id, organization_id, site_id, run_id, source_version, market, health, corpus_checksum, page_count, audited_page_count)
+values ('00000000-0000-0000-0000-0000000000d8', (select organization_id from rls_context where label = 'd'), '00000000-0000-0000-0000-0000000000d5', '00000000-0000-0000-0000-0000000000d7', 'site-understanding-4', '{}'::jsonb, '{}'::jsonb, repeat('d', 64), 0, 0);
+update public.profiles set deletion_requested_at = now() - interval '31 days'
+where id = '00000000-0000-0000-0000-0000000000d4';
+create temporary table erasure_results (profile_id uuid primary key);
+grant select, insert on erasure_results to service_role;
+grant usage on schema extensions to service_role;
+grant execute on all functions in schema extensions to service_role;
+set local role service_role;
+select set_config('request.jwt.claim.role', 'service_role', true);
+insert into erasure_results select profile_id from public.claim_due_account_erasures(1);
+reset role;
+select is((select count(*) from erasure_results where profile_id = '00000000-0000-0000-0000-0000000000d4'), 1::bigint, 'isolated erasure worker claims the due account');
+select ok(
+  not exists (select 1 from public.sites where id = '00000000-0000-0000-0000-0000000000d5')
+  and not exists (select 1 from public.site_snapshots where id = '00000000-0000-0000-0000-0000000000d8'),
+  'account erasure cascades through immutable customer content while retaining protected financial records'
+);
 
 select * from finish();
 rollback;

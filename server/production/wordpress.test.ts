@@ -115,25 +115,91 @@ describe('WordPress atomic read executor', () => {
     })).rejects.toThrow('相同 slug');
   });
 
-  it('builds a bounded site inventory with real internal links', async () => {
-    const repeated = 'WordPress SEO performance guidance '.repeat(10);
+  it('recognizes a completed existing-page update after a worker crash', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify([{
+      id: 42,
+      link: 'https://example.com/existing/',
+      slug: 'existing',
+      status: 'publish',
+      modified_gmt: '2026-09-01T01:02:03',
+      title: { raw: 'Optimized title' },
+      content: { raw: '<!-- aiseo-delivery:00000000-0000-4000-8000-000000000042 -->\n<p>Delivered update</p>' }
+    }]), { status: 200 })));
+    const { wordPressService } = await import('./wordpress');
+    const encrypted = wordPressService.encrypt({ username: 'editor', applicationPassword: 'abcd efgh' });
+
+    const result = await wordPressService.update({
+      domain: 'example.com',
+      encrypted,
+      deliveryId: '00000000-0000-4000-8000-000000000042',
+      title: 'Optimized title',
+      html: '<p>Delivered update</p>',
+      snapshot: {
+        postId: '42', resourceType: 'posts', url: 'https://example.com/existing/', status: 'publish',
+        modifiedAt: '2026-08-31T01:02:03', slug: 'existing', title: 'Old title', content: '<p>Old</p>',
+        contentChecksum: 'old-checksum', contentLength: 10
+      }
+    });
+
+    expect(result).toMatchObject({ postId: '42', url: 'https://example.com/existing/' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes an update marker and captures the exact remote version', async () => {
+    const deliveryId = '00000000-0000-4000-8000-000000000042';
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify([{
+        id: 42, link: 'https://example.com/existing/', slug: 'existing', status: 'publish',
+        modified_gmt: '2026-08-31T01:02:03', title: { raw: 'Old title' }, content: { raw: '<p>Old</p>' }
+      }]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 42, link: 'https://example.com/existing/' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{
+        id: 42, link: 'https://example.com/existing/', slug: 'existing', status: 'publish',
+        modified_gmt: '2026-09-01T01:02:03', title: { raw: 'New title' },
+        content: { raw: `<!-- aiseo-delivery:${deliveryId} -->\n<p>New</p>` }
+      }]), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { wordPressService } = await import('./wordpress');
+    const encrypted = wordPressService.encrypt({ username: 'editor', applicationPassword: 'abcd efgh' });
+
+    await expect(wordPressService.update({
+      domain: 'example.com', encrypted, deliveryId, title: 'New title', html: '<p>New</p>',
+      snapshot: {
+        postId: '42', resourceType: 'posts', url: 'https://example.com/existing/', status: 'publish',
+        modifiedAt: '2026-08-31T01:02:03', slug: 'existing', title: 'Old title', content: '<p>Old</p>',
+        contentChecksum: '279ed9cf4ee53166ea98e845aeb30e6a19a347d9c3511656a450fe1a82c1f271', contentLength: 10
+      }
+    })).resolves.toMatchObject({ postId: '42', snapshot: { title: 'New title' } });
+
+    const request = fetchMock.mock.calls[1][1] as RequestInit;
+    expect(String(request.body)).toContain(`aiseo-delivery:${deliveryId}`);
+  });
+
+  it('builds a bounded site inventory with real internal links', async () => {
+    const repeated = 'WordPress SEO performance guidance '.repeat(10);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/wp-json')) return new Response(JSON.stringify({ name: 'Example', description: 'SEO services', url: 'https://example.com' }), { status: 200 });
+      if (url.includes('/wp-json/wp/v2/settings')) return new Response(JSON.stringify({ title: 'Example', description: 'SEO services', url: 'https://example.com', language: 'en-US' }), { status: 200 });
+      if (url.includes('/wp-json/wp/v2/types')) return new Response(JSON.stringify({ post: { rest_base: 'posts', viewable: true }, page: { rest_base: 'pages', viewable: true } }), { status: 200 });
+      if (url.includes('/wp-json/wp/v2/posts?')) return new Response(JSON.stringify([{
         id: 42,
         link: 'https://example.com/wordpress-seo/',
         slug: 'wordpress-seo',
         status: 'publish',
         title: { raw: 'WordPress SEO Guide' },
         content: { raw: `<p>${repeated}</p><script>ignored()</script>` }
-      }]), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify([{
+      }]), { status: 200, headers: { 'x-wp-total': '1', 'x-wp-totalpages': '1' } });
+      if (url.includes('/wp-json/wp/v2/pages?')) return new Response(JSON.stringify([{
         id: 7,
         link: 'https://example.com/about/',
         slug: 'about',
         status: 'publish',
         title: { rendered: 'About the company' },
         content: { rendered: '<p>Verified company page content for source grounding.</p>' }
-      }]), { status: 200 }));
+      }]), { status: 200, headers: { 'x-wp-total': '1', 'x-wp-totalpages': '1' } });
+      return new Response(JSON.stringify([]), { status: 200, headers: { 'x-wp-total': '0', 'x-wp-totalpages': '1' } });
+    });
     vi.stubGlobal('fetch', fetchMock);
     const { wordPressService } = await import('./wordpress');
     const encrypted = wordPressService.encrypt({ username: 'editor', applicationPassword: 'abcd efgh' });

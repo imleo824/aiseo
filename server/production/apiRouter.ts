@@ -4,7 +4,7 @@ import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../domain/errors';
 import { revokeOwnSessions, revalidateSensitiveSession, requireAuth } from './auth';
-import { billingService } from './billingService';
+import { billingService, lockOrganizationBalance } from './billingService';
 import { asyncRoute, cursorPage, parseBody, sendData } from './http';
 import { executeIdempotent, requireIdempotencyKey } from './idempotency';
 import { jobService } from './jobService';
@@ -13,7 +13,7 @@ import { currentEncryptionKeyVersion, encryptSecret } from './crypto';
 import { env } from './env';
 import { gscProvider } from './providers';
 import { wordPressService } from './wordpress';
-import { gscComparisonWindow } from './growthEngine';
+import { gscComparisonWindow } from './gscData';
 import { growthProgramService } from './growthProgramService';
 import { parsePublishingConfirmationPolicy, PUBLISH_CONFIRMATION_SETTING_KEY } from './publishingPolicy';
 
@@ -178,21 +178,22 @@ apiRouter.get('/me/export', asyncRoute(async (request, response) => {
   const data = await withRequestScope({ profileId }, async (tx) => {
     const memberships = await tx.organizationMember.findMany({ where: { profileId }, include: { organization: true } });
     const ids = memberships.map(({ organizationId: id }) => id);
-    const [sites, knowledgeSources, snapshots, opportunities, growthPrograms, growthRuns, growthActions, growthObservations, drafts, ledger, payments, auditEvents] = await Promise.all([
+    const [sites, knowledgeSources, snapshots, siteSnapshots, opportunities, growthPrograms, growthRuns, growthActions, measurementSamples, drafts, ledger, payments, auditEvents] = await Promise.all([
       tx.site.findMany({ where: { organizationId: { in: ids } }, select: { id: true, organizationId: true, name: true, domain: true, language: true, wordpressStatus: true, createdAt: true } }),
       tx.knowledgeSource.findMany({ where: { organizationId: { in: ids } } }),
       tx.dataSnapshot.findMany({ where: { organizationId: { in: ids } } }),
+      tx.siteSnapshot.findMany({ where: { organizationId: { in: ids } }, include: { pages: true } }),
       tx.opportunity.findMany({ where: { organizationId: { in: ids } } }),
       tx.growthProgram.findMany({ where: { organizationId: { in: ids } } }),
       tx.growthRun.findMany({ where: { organizationId: { in: ids } }, include: { stages: true } }),
-      tx.growthAction.findMany({ where: { organizationId: { in: ids } } }),
-      tx.growthObservation.findMany({ where: { organizationId: { in: ids } } }),
+      tx.growthAction.findMany({ where: { organizationId: { in: ids } }, include: { evidence: true, pageVersions: true } }),
+      tx.measurementSample.findMany({ where: { organizationId: { in: ids } } }),
       tx.contentDraft.findMany({ where: { organizationId: { in: ids } }, include: { reviews: true, publishAttempts: true } }),
       tx.ledgerEntry.findMany({ where: { organizationId: { in: ids } } }),
       tx.paymentIntent.findMany({ where: { organizationId: { in: ids } } }),
       tx.auditEvent.findMany({ where: { organizationId: { in: ids } }, take: 10_000 })
     ]);
-    return { exportedAt: new Date().toISOString(), profile: request.authUser, organizations: memberships, sites, knowledgeSources, snapshots, opportunities, growthPrograms, growthRuns, growthActions, growthObservations, drafts, ledger, payments, auditEvents };
+    return { exportedAt: new Date().toISOString(), profile: request.authUser, organizations: memberships, sites, knowledgeSources, snapshots, siteSnapshots, opportunities, growthPrograms, growthRuns, growthActions, measurementSamples, drafts, ledger, payments, auditEvents };
   });
   response.setHeader('Content-Disposition', `attachment; filename="aiseo-export-${new Date().toISOString().slice(0, 10)}.json"`);
   sendData(response, data);
@@ -203,11 +204,20 @@ apiRouter.delete('/me', asyncRoute(async (request, response) => {
   const profileId = userId(request);
   const input = parseBody(z.object({ confirmEmail: z.string().email() }), request);
   if (input.confirmEmail.toLowerCase() !== request.authUser?.email?.toLowerCase()) throw new ValidationError('确认邮箱与当前账号不一致');
-  idempotencyKey(request);
+  const key = idempotencyKey(request);
   if (!request.accessToken) throw new ForbiddenError('会话令牌缺失');
-  await withRequestScope({ profileId }, async (tx) => { await tx.$executeRaw`SELECT private.request_account_deletion()`; });
+  const outcome = await withSerializableScope({ profileId }, (tx) => executeIdempotent({
+    tx,
+    profileId,
+    key,
+    body: input,
+    execute: async () => {
+      await tx.$executeRaw`SELECT private.request_account_deletion()`;
+      return { statusCode: 202, data: { deletionRequested: true, purgeAfter: new Date(Date.now() + 30 * 86_400_000).toISOString() } };
+    }
+  }));
   await revokeOwnSessions(request.accessToken);
-  sendData(response, { deletionRequested: true, sessionsRevoked: true, purgeAfter: new Date(Date.now() + 30 * 86_400_000).toISOString() }, 202);
+  sendData(response, { ...outcome.data, sessionsRevoked: true }, outcome.statusCode);
 }));
 
 apiRouter.get('/organizations', asyncRoute(async (request, response) => {
@@ -227,7 +237,7 @@ apiRouter.get('/organizations/:organizationId/members', asyncRoute(async (reques
 
 apiRouter.post('/organizations/:organizationId/members', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), key = idempotencyKey(request), input = parseBody(memberSchema, request);
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {
       const target = await tx.profile.findUnique({ where: { id: input.profileId } });
@@ -258,7 +268,7 @@ apiRouter.post('/organizations/:organizationId/sites', asyncRoute(async (request
   const domainUrl = new URL(input.domain.startsWith('http') ? input.domain : `https://${input.domain}`);
   if (domainUrl.protocol !== 'https:' || domainUrl.pathname !== '/' || domainUrl.search || domainUrl.hash) throw new ValidationError('站点必须是公网 HTTPS 域名');
   const domain = domainUrl.hostname.toLowerCase();
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { ...input, domain }, execute: async () => {
       const site = await tx.site.create({ data: { organizationId: orgId, name: input.name, domain, language: input.language } });
@@ -277,7 +287,7 @@ apiRouter.put('/organizations/:organizationId/sites/:siteId', asyncRoute(async (
     if (domainUrl.protocol !== 'https:' || domainUrl.pathname !== '/' || domainUrl.search || domainUrl.hash) throw new ValidationError('站点必须是公网 HTTPS 域名');
     domain = domainUrl.hostname.toLowerCase();
   }
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { ...input, domain }, execute: async () => {
       const existing = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } });
@@ -294,7 +304,7 @@ apiRouter.put('/organizations/:organizationId/sites/:siteId', asyncRoute(async (
 apiRouter.delete('/organizations/:organizationId/sites/:siteId', asyncRoute(async (request, response) => {
   await revalidateSensitiveSession(request);
   const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request);
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.OWNER);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { siteId }, execute: async () => {
       const site = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId }, include: { _count: { select: { drafts: true } } } });
@@ -325,7 +335,7 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/wordpress/authorize
   authorizationUrl.searchParams.set('app_id', site.id);
   authorizationUrl.searchParams.set('success_url', `${env.appBaseUrl}/api/v1/integrations/wordpress/callback?state=${encodeURIComponent(state)}`);
   authorizationUrl.searchParams.set('reject_url', `${env.appBaseUrl}/?wordpress=cancelled&siteId=${encodeURIComponent(siteId)}`);
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, (tx) => executeIdempotent({
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, (tx) => executeIdempotent({
     tx,
     organizationId: orgId,
     profileId,
@@ -350,11 +360,15 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/test-connection', a
   });
   try {
     const result = await wordPressService.testConnection(site.domain, site.wordpressCredentials!);
-    await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
-      await tx.site.update({ where: { id: siteId }, data: { wordpressStatus: SiteConnectionStatus.CONNECTED, wordpressUser: result.user, wordpressVerifiedAt: new Date() } });
-      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'WORDPRESS_CONNECTION_VERIFIED', targetType: 'site', targetId: siteId, metadata: { idempotencyKey: key, user: result.user } } });
+    const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
+      await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
+      return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { siteId }, execute: async () => {
+        await tx.site.update({ where: { id: siteId }, data: { wordpressStatus: SiteConnectionStatus.CONNECTED, wordpressUser: result.user, wordpressVerifiedAt: new Date() } });
+        await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'WORDPRESS_CONNECTION_VERIFIED', targetType: 'site', targetId: siteId, metadata: { user: result.user } } });
+        return { statusCode: 200, data: { connected: true, ...result } };
+      } });
     });
-    sendData(response, { connected: true, ...result });
+    sendData(response, outcome.data, outcome.statusCode);
   } catch (error) {
     await withRequestScope({ profileId, organizationId: orgId }, (tx) => tx.site.update({ where: { id: siteId }, data: { wordpressStatus: SiteConnectionStatus.FAILED, wordpressVerifiedAt: null } }).then(() => undefined));
     throw error;
@@ -367,7 +381,7 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/gsc/authorize', asy
   const input = parseBody(z.object({ propertyId: z.string().trim().min(3).max(500) }), request);
   if (!input.propertyId.startsWith('sc-domain:') && !/^https:\/\//.test(input.propertyId)) throw new ValidationError('GSC 属性必须是 sc-domain: 或 HTTPS URL');
   const nonce = randomUUID();
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { siteId, ...input }, execute: async () => {
       if (!await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } })) throw new NotFoundError('站点不存在');
@@ -385,7 +399,7 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/gsc/sync', asyncRou
   if (input.startDate > input.endDate) throw new ValidationError('GSC 开始日期不能晚于结束日期');
   const comparisonWindow = gscComparisonWindow(input.startDate, input.endDate);
   if (!comparisonWindow || comparisonWindow.periodDays < 7 || comparisonWindow.periodDays > 90) throw new ValidationError('GSC 同步窗口必须为 7 到 90 天');
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {
       const connection = await tx.integrationConnection.findUnique({ where: { siteId_provider: { siteId, provider: 'GSC' } } });
@@ -400,13 +414,16 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/gsc/sync', asyncRou
 apiRouter.delete('/organizations/:organizationId/sites/:siteId/gsc', asyncRoute(async (request, response) => {
   await revalidateSensitiveSession(request);
   const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId);
-  idempotencyKey(request);
-  await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const key = idempotencyKey(request);
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
-    await tx.integrationConnection.deleteMany({ where: { organizationId: orgId, siteId, provider: 'GSC' } });
-    await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'GSC_DISCONNECTED', targetType: 'site', targetId: siteId } });
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { siteId }, execute: async () => {
+      await tx.integrationConnection.deleteMany({ where: { organizationId: orgId, siteId, provider: 'GSC' } });
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'GSC_DISCONNECTED', targetType: 'site', targetId: siteId } });
+      return { statusCode: 200, data: { disconnected: true } };
+    } });
   });
-  sendData(response, { disconnected: true });
+  sendData(response, outcome.data, outcome.statusCode);
 }));
 
 apiRouter.post('/organizations/:organizationId/sites/:siteId/growth-programs', asyncRoute(async (request, response) => {
@@ -475,11 +492,80 @@ const changeProgramStatus = (status: GrowthProgramStatus) => asyncRoute(async (r
 apiRouter.post('/organizations/:organizationId/growth-programs/:programId/pause', changeProgramStatus(GrowthProgramStatus.PAUSED));
 apiRouter.post('/organizations/:organizationId/growth-programs/:programId/resume', changeProgramStatus(GrowthProgramStatus.ACTIVE));
 
+apiRouter.get('/organizations/:organizationId/sites/:siteId/growth-status', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId);
+  const status = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
+    const site = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId }, select: { id: true } });
+    if (!site) throw new NotFoundError('站点不存在');
+    const [program, run, gsc] = await Promise.all([
+      tx.growthProgram.findFirst({ where: { organizationId: orgId, siteId }, orderBy: { updatedAt: 'desc' } }),
+      tx.growthRun.findFirst({
+        where: { organizationId: orgId, siteId },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          program: true,
+          stages: { orderBy: { createdAt: 'asc' } },
+          opportunity: true,
+          siteSnapshot: { select: { id: true, status: true, sourceVersion: true, market: true, health: true, corpusChecksum: true, pageCount: true, auditedPageCount: true, fetchedAt: true } },
+          draft: { select: { id: true, status: true, title: true, slug: true, qualityReport: true, publishedUrl: true, createdAt: true } },
+          actions: { include: { evidence: { orderBy: { createdAt: 'asc' } }, measurements: { orderBy: { windowDays: 'asc' } } } }
+        }
+      }),
+      tx.integrationConnection.findFirst({ where: { organizationId: orgId, siteId, provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, select: { lastSyncedAt: true } })
+    ]);
+    const activeAction = run?.actions[0] || null;
+    return {
+      program: run?.program || program,
+      run,
+      action: activeAction,
+      stages: run?.stages || [],
+      blocker: run?.errorCode ? { code: run.errorCode, message: run.errorMessage } : null,
+      measurement: { gscConnected: Boolean(gsc), lastSyncedAt: gsc?.lastSyncedAt || null, trafficClaimAllowed: Boolean(gsc), targetUrl: activeAction?.targetUrl || run?.targetUrl || null }
+    };
+  });
+  sendData(response, status);
+}));
+
+apiRouter.get('/organizations/:organizationId/sites/:siteId/site-snapshots/latest', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId);
+  const snapshot = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
+    const found = await tx.siteSnapshot.findFirst({
+      where: { organizationId: orgId, siteId },
+      orderBy: { fetchedAt: 'desc' },
+      select: {
+        id: true, status: true, sourceVersion: true, market: true, health: true, corpusChecksum: true,
+        pageCount: true, auditedPageCount: true, fetchedAt: true, createdAt: true,
+        pages: { select: { id: true, url: true, resourceType: true, status: true, modifiedAt: true, title: true, wordCount: true, contentChecksum: true, technicalEvidence: true }, orderBy: { url: 'asc' } }
+      }
+    });
+    if (!found) throw new NotFoundError('站点尚未完成网站理解快照');
+    return found;
+  });
+  sendData(response, snapshot);
+}));
+
+apiRouter.get('/organizations/:organizationId/growth-runs/:runId/candidates', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), runId = idSchema.parse(request.params.runId);
+  const candidates = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
+    const run = await tx.growthRun.findFirst({ where: { id: runId, organizationId: orgId }, select: { id: true } });
+    if (!run) throw new NotFoundError('增长执行不存在');
+    return tx.growthDecision.findMany({
+      where: { organizationId: orgId, runId },
+      orderBy: [{ rank: 'asc' }, { createdAt: 'asc' }],
+      include: { opportunity: true, action: { select: { id: true, type: true, status: true, targetUrl: true } } }
+    });
+  });
+  sendData(response, candidates);
+}));
+
 apiRouter.get('/organizations/:organizationId/growth-runs/:runId', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), runId = idSchema.parse(request.params.runId);
   const run = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const found = await tx.growthRun.findFirst({ where: { id: runId, organizationId: orgId }, include: { program: true, stages: { orderBy: { createdAt: 'asc' } }, opportunity: true, draft: { include: { reviews: true, publishAttempts: true } }, actions: { include: { observations: true } } } });
+    const found = await tx.growthRun.findFirst({ where: { id: runId, organizationId: orgId }, include: { program: true, stages: { orderBy: { createdAt: 'asc' } }, opportunity: true, siteSnapshot: true, draft: { include: { reviews: true, publishAttempts: true } }, actions: { include: { evidence: true, pageVersions: true, measurements: { orderBy: { windowDays: 'asc' } } } } } });
     if (!found) throw new NotFoundError('增长执行不存在');
     const gsc = await tx.integrationConnection.findFirst({ where: { organizationId: orgId, siteId: found.siteId, provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, select: { lastSyncedAt: true } });
     return { ...found, measurement: { gscConnected: Boolean(gsc), lastSyncedAt: gsc?.lastSyncedAt || null, trafficClaimAllowed: Boolean(gsc) } };
@@ -522,7 +608,7 @@ apiRouter.get('/organizations/:organizationId/drafts', asyncRoute(async (request
 apiRouter.post('/organizations/:organizationId/drafts/:draftId/approve', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), draftId = idSchema.parse(request.params.draftId), key = idempotencyKey(request);
   const input = parseBody(z.object({ comment: z.string().trim().max(2_000).optional() }), request);
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { draftId, ...input }, execute: async () => {
       const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { growthRuns: { include: { actions: true }, take: 1 } } });
@@ -545,7 +631,7 @@ apiRouter.post('/organizations/:organizationId/drafts/:draftId/approve', asyncRo
 apiRouter.post('/organizations/:organizationId/drafts/:draftId/reject', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), draftId = idSchema.parse(request.params.draftId), key = idempotencyKey(request);
   const input = parseBody(z.object({ comment: z.string().trim().min(1).max(2_000) }), request);
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { draftId, ...input }, execute: async () => {
       const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { growthRuns: { include: { actions: true, program: true }, take: 1 } } });
@@ -570,7 +656,7 @@ apiRouter.post('/organizations/:organizationId/drafts/:draftId/reject', asyncRou
 apiRouter.post('/organizations/:organizationId/drafts/:draftId/publish', asyncRoute(async (request, response) => {
   await revalidateSensitiveSession(request);
   const profileId = userId(request), orgId = organizationId(request), draftId = idSchema.parse(request.params.draftId), key = idempotencyKey(request);
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { draftId }, execute: async () => {
       const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { site: true, reviews: true, growthRuns: { include: { actions: true }, take: 1 } } });
@@ -594,7 +680,7 @@ apiRouter.post('/organizations/:organizationId/drafts/:draftId/publish', asyncRo
 apiRouter.post('/organizations/:organizationId/drafts/:draftId/rollback', asyncRoute(async (request, response) => {
   await revalidateSensitiveSession(request);
   const profileId = userId(request), orgId = organizationId(request), draftId = idSchema.parse(request.params.draftId), key = idempotencyKey(request);
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { draftId }, execute: async () => {
       const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { growthRuns: { include: { actions: true }, take: 1 } } });
@@ -709,7 +795,7 @@ apiRouter.post('/organizations/:organizationId/payment-intents', asyncRoute(asyn
 apiRouter.post('/organizations/:organizationId/payment-intents/:paymentIntentId/submit-transaction', asyncRoute(async (request, response) => {
   await revalidateSensitiveSession(request);
   const profileId = userId(request), orgId = organizationId(request), paymentIntentId = idSchema.parse(request.params.paymentIntentId), key = idempotencyKey(request), input = parseBody(z.object({ txHash: z.string().regex(/^[a-fA-F0-9]{64}$/) }), request);
-  const outcome = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { paymentIntentId, ...input }, execute: async () => {
       const paymentIntent = await billingService.submitTransaction(tx, orgId, paymentIntentId, input.txHash);
@@ -755,26 +841,28 @@ apiRouter.put('/admin/publishing-confirmation-policy', asyncRoute(async (request
   const profileId = userId(request);
   const key = idempotencyKey(request);
   const input = parseBody(z.object({ requireManualConfirmation: z.boolean() }), request);
-  const policy = await withRequestScope({ profileId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId }, async (tx) => {
     await assertPlatformAdmin(tx, profileId);
-    const value = { requireManualConfirmation: input.requireManualConfirmation };
-    const setting = await tx.systemSetting.upsert({
-      where: { key: PUBLISH_CONFIRMATION_SETTING_KEY },
-      create: { key: PUBLISH_CONFIRMATION_SETTING_KEY, value },
-      update: { value }
-    });
-    await tx.auditEvent.create({
-      data: {
-        actorId: profileId,
-        action: 'PUBLISHING_CONFIRMATION_POLICY_UPDATED',
-        targetType: 'system_setting',
-        targetId: setting.key,
-        metadata: { ...value, idempotencyKey: key }
-      }
-    });
-    return parsePublishingConfirmationPolicy(setting.value);
+    return executeIdempotent({ tx, profileId, key, body: input, execute: async () => {
+      const value = { requireManualConfirmation: input.requireManualConfirmation };
+      const setting = await tx.systemSetting.upsert({
+        where: { key: PUBLISH_CONFIRMATION_SETTING_KEY },
+        create: { key: PUBLISH_CONFIRMATION_SETTING_KEY, value },
+        update: { value }
+      });
+      await tx.auditEvent.create({
+        data: {
+          actorId: profileId,
+          action: 'PUBLISHING_CONFIRMATION_POLICY_UPDATED',
+          targetType: 'system_setting',
+          targetId: setting.key,
+          metadata: value
+        }
+      });
+      return { statusCode: 200, data: parsePublishingConfirmationPolicy(setting.value) };
+    } });
   });
-  sendData(response, policy);
+  sendData(response, outcome.data, outcome.statusCode);
 }));
 
 apiRouter.get('/admin/organizations', asyncRoute(async (request, response) => {
@@ -791,31 +879,33 @@ apiRouter.get('/admin/pricing', asyncRoute(async (request, response) => {
 
 apiRouter.put('/admin/pricing/packages/:packageId', asyncRoute(async (request, response) => {
   await revalidateSensitiveSession(request);
-  idempotencyKey(request);
-  const profileId = userId(request), packageId = z.string().min(1).max(80).parse(request.params.packageId);
+  const profileId = userId(request), key = idempotencyKey(request), packageId = z.string().min(1).max(80).parse(request.params.packageId);
   const input = parseBody(z.object({ name: z.string().min(1).max(100), baseAmountMicros: z.string().regex(/^\d+$/), creditMicros: z.string().regex(/^\d+$/), active: z.boolean(), sortOrder: z.number().int() }), request);
-  const paymentPackage = await withRequestScope({ profileId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId }, async (tx) => {
     await assertPlatformAdmin(tx, profileId);
-    const updated = await tx.paymentPackage.upsert({ where: { id: packageId }, create: { id: packageId, name: input.name, baseAmountMicros: BigInt(input.baseAmountMicros), creditMicros: BigInt(input.creditMicros), active: input.active, sortOrder: input.sortOrder }, update: { name: input.name, baseAmountMicros: BigInt(input.baseAmountMicros), creditMicros: BigInt(input.creditMicros), active: input.active, sortOrder: input.sortOrder } });
-    await tx.auditEvent.create({ data: { actorId: profileId, action: 'PAYMENT_PACKAGE_UPDATED', targetType: 'payment_package', targetId: packageId, metadata: input } });
-    return updated;
+    return executeIdempotent({ tx, profileId, key, body: { packageId, ...input }, execute: async () => {
+      const updated = await tx.paymentPackage.upsert({ where: { id: packageId }, create: { id: packageId, name: input.name, baseAmountMicros: BigInt(input.baseAmountMicros), creditMicros: BigInt(input.creditMicros), active: input.active, sortOrder: input.sortOrder }, update: { name: input.name, baseAmountMicros: BigInt(input.baseAmountMicros), creditMicros: BigInt(input.creditMicros), active: input.active, sortOrder: input.sortOrder } });
+      await tx.auditEvent.create({ data: { actorId: profileId, action: 'PAYMENT_PACKAGE_UPDATED', targetType: 'payment_package', targetId: packageId, metadata: input } });
+      return { statusCode: 200, data: { paymentPackage: updated } };
+    } });
   });
-  sendData(response, { paymentPackage });
+  sendData(response, outcome.data, outcome.statusCode);
 }));
 
 apiRouter.put('/admin/pricing/actions/:action', asyncRoute(async (request, response) => {
   await revalidateSensitiveSession(request);
-  idempotencyKey(request);
-  const profileId = userId(request), action = z.string().regex(/^[A-Z][A-Z0-9_]{1,79}$/).parse(request.params.action);
+  const profileId = userId(request), key = idempotencyKey(request), action = z.string().regex(/^[A-Z][A-Z0-9_]{1,79}$/).parse(request.params.action);
   const input = parseBody(z.object({ name: z.string().min(1).max(100), description: z.string().min(1).max(500), creditMicros: z.string().regex(/^\d+$/), active: z.boolean() }), request);
-  const actionPrice = await withRequestScope({ profileId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId }, async (tx) => {
     await assertPlatformAdmin(tx, profileId);
-    if (!await tx.actionPrice.findUnique({ where: { action } })) throw new NotFoundError('计价项不存在');
-    const updated = await tx.actionPrice.update({ where: { action }, data: { name: input.name, description: input.description, creditMicros: BigInt(input.creditMicros), active: input.active } });
-    await tx.auditEvent.create({ data: { actorId: profileId, action: 'ACTION_PRICE_UPDATED', targetType: 'action_price', targetId: action, metadata: input } });
-    return updated;
+    return executeIdempotent({ tx, profileId, key, body: { action, ...input }, execute: async () => {
+      if (!await tx.actionPrice.findUnique({ where: { action } })) throw new NotFoundError('计价项不存在');
+      const updated = await tx.actionPrice.update({ where: { action }, data: { name: input.name, description: input.description, creditMicros: BigInt(input.creditMicros), active: input.active } });
+      await tx.auditEvent.create({ data: { actorId: profileId, action: 'ACTION_PRICE_UPDATED', targetType: 'action_price', targetId: action, metadata: input } });
+      return { statusCode: 200, data: { actionPrice: updated } };
+    } });
   });
-  sendData(response, { actionPrice });
+  sendData(response, outcome.data, outcome.statusCode);
 }));
 
 apiRouter.get('/admin/payments', asyncRoute(async (request, response) => {
@@ -834,17 +924,19 @@ apiRouter.post('/admin/organizations/:organizationId/adjustment', asyncRoute(asy
   await revalidateSensitiveSession(request);
   const profileId = userId(request), orgId = organizationId(request), key = idempotencyKey(request);
   const input = parseBody(z.object({ amountMicros: z.string().regex(/^-?\d+$/).refine((value) => value !== '0'), reason: z.string().trim().min(10).max(500) }), request);
-  const result = await withSerializableScope({ profileId }, async (tx) => {
+  const outcome = await withSerializableScope({ profileId }, async (tx) => {
     await assertPlatformAdmin(tx, profileId);
-    const amount = BigInt(input.amountMicros);
-    const organization = await tx.organization.findUnique({ where: { id: orgId } });
-    if (!organization || organization.creditBalanceMicros + amount < 0n) throw new ConflictError('调整会导致负余额或组织不存在');
-    const updated = await tx.organization.update({ where: { id: orgId }, data: { creditBalanceMicros: { increment: amount } } });
-    const entry = await tx.ledgerEntry.create({ data: { organizationId: orgId, type: 'ADJUSTMENT', amountMicros: amount, balanceAfterMicros: updated.creditBalanceMicros, reason: input.reason, idempotencyKey: `admin-adjustment:${key}`, metadata: { actorId: profileId } } });
-    await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'CREDIT_ADJUSTMENT', targetType: 'ledger_entry', targetId: entry.id, metadata: { amountMicros: input.amountMicros, reason: input.reason } } });
-    return { organization: updated, entry };
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {
+      const amount = BigInt(input.amountMicros);
+      const organization = await lockOrganizationBalance(tx, orgId);
+      if (!organization || organization.creditBalanceMicros + amount < 0n) throw new ConflictError('调整会导致负余额或组织不存在');
+      const updated = await tx.organization.update({ where: { id: orgId }, data: { creditBalanceMicros: { increment: amount } } });
+      const entry = await tx.ledgerEntry.create({ data: { organizationId: orgId, type: 'ADJUSTMENT', amountMicros: amount, balanceAfterMicros: updated.creditBalanceMicros, reason: input.reason, idempotencyKey: `admin-adjustment:${key}`, metadata: { actorId: profileId } } });
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'CREDIT_ADJUSTMENT', targetType: 'ledger_entry', targetId: entry.id, metadata: { amountMicros: input.amountMicros, reason: input.reason } } });
+      return { statusCode: 200, data: { organization: updated, entry } };
+    } });
   });
-  sendData(response, result);
+  sendData(response, outcome.data, outcome.statusCode);
 }));
 
 apiRouter.get('/admin/provider-status', asyncRoute(async (request, response) => {

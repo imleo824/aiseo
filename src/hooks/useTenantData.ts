@@ -10,7 +10,7 @@ import type {
   TenantAccount,
   PipelineStepStatus
 } from '../types/seo';
-import type { GrowthRun } from '../types/api';
+import type { GrowthRun, GrowthStatus } from '../types/api';
 import { ApiError } from '../lib/api';
 
 const EMPTY_SITES: WordPressSite[] = [];
@@ -50,6 +50,19 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
   const tasks = tasksQuery.data?.tasks || EMPTY_TASKS;
   const transactions = transactionsQuery.data?.transactions || EMPTY_TRANSACTIONS;
   const allTenants = tenantsQuery.data?.tenants || EMPTY_TENANTS;
+  const growthStatusQuery = useQuery({
+    queryKey: ['tenant', workspaceKey, 'growth-status', sites.map(({ id }) => id).join(',')],
+    queryFn: async () => Promise.all(sites.map(async (site) => ({ siteId: site.id, status: await api.getGrowthStatus(site.id) }))),
+    enabled: Boolean(account) && sites.length > 0,
+    refetchInterval: (query) => {
+      const rows = query.state.data as Array<{ siteId: string; status: GrowthStatus }> | undefined;
+      const active = rows?.some(({ status }) => status.run && ['QUEUED', 'RUNNING'].includes(status.run.status));
+      return active ? 3_000 : 60_000;
+    }
+  });
+  const growthStatuses = useMemo(() => Object.fromEntries(
+    (growthStatusQuery.data || []).map(({ siteId, status }) => [siteId, status])
+  ) as Record<string, GrowthStatus>, [growthStatusQuery.data]);
   const loading = accountQuery.isLoading || (Boolean(account) && [sitesQuery, draftsQuery, tasksQuery, transactionsQuery].some((query) => query.isLoading));
 
   const invalidateTenantResources = useCallback(async () => {
@@ -116,7 +129,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
       }
     };
     const result = await api.createGrowthProgram(targetSites[0].id, 'ONCE', source, onProgress);
-    if (result.draft) addLog(`[真实交付] 《${result.draft.title}》已写入数据库。`);
+    addLog(`[任务已入队] 运行 ${result.run.id} 已持久化，可以刷新页面或稍后回来继续查看。`);
     await invalidateTenantResources();
     return result.draft;
   };
@@ -163,7 +176,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
   };
 
   return {
-    sites, tasks, drafts, account, transactions, allTenants, loading,
+    sites, tasks, drafts, account, transactions, allTenants, growthStatuses, loading,
     actions: {
       loadTenantData: invalidateTenantResources,
       handleLogin,

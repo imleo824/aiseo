@@ -6,6 +6,7 @@ import {
   PipelineStepStates,
   PipelineStepStatus
 } from '../types/seo';
+import type { GrowthStatus } from '../types/api';
 import { PipelineVisualizer } from './dashboard/PipelineVisualizer';
 import { DraftPreviewModal } from './dashboard/DraftPreviewModal';
 import { CompetitorAnalysisSection } from './dashboard/CompetitorAnalysisSection';
@@ -28,6 +29,7 @@ import {
 interface MainDashboardProps {
   sites: WordPressSite[];
   drafts: ArticleDraft[];
+  growthStatuses?: Record<string, GrowthStatus>;
   onRollback?: (draftId: string) => Promise<void>;
   onStartGrowthProgram: (
     siteIds: string[],
@@ -45,6 +47,7 @@ const initialPipelineStepStates = (): PipelineStepStates => Object.fromEntries(
 export const MainDashboard: React.FC<MainDashboardProps> = ({
   sites = [],
   drafts = [],
+  growthStatuses = {},
   onRollback,
   onStartGrowthProgram,
   onOpenOnboarding
@@ -90,6 +93,9 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   const activeSite = useMemo(() => {
     return safeSites.find(s => s.id === selectedSiteId) || safeSites[0];
   }, [safeSites, selectedSiteId]);
+  const persistedGrowthStatus = selectedSiteId ? growthStatuses[selectedSiteId] : undefined;
+  const persistedRunActive = Boolean(persistedGrowthStatus?.run && ['QUEUED', 'RUNNING'].includes(persistedGrowthStatus.run.status));
+  const executionActive = isRunning || persistedRunActive;
 
   const setPipelineStep = useCallback((step: number, status: PipelineStepStatus) => {
     setPipelineStepStates((previous) => ({ ...previous, [step]: status }));
@@ -99,13 +105,53 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     });
   }, []);
 
+  React.useEffect(() => {
+    const run = persistedGrowthStatus?.run;
+    if (!run) return;
+    const stageNumbers = { UNDERSTAND: 1, DISCOVER: 2, DECIDE: 3, EXECUTE: 4, LEARN: 5 } as const;
+    const states = initialPipelineStepStates();
+    for (const stage of persistedGrowthStatus.stages) {
+      states[stageNumbers[stage.stage]] = stage.status === 'BLOCKED' || stage.status === 'FAILED'
+        ? 'FAILED'
+        : stage.status;
+    }
+    setPipelineStepStates(states);
+    const runningStage = persistedGrowthStatus.stages.find(({ status }) => status === 'RUNNING');
+    setActivePipelineStep(runningStage ? stageNumbers[runningStage.stage] : null);
+    setIsRunning(run.status === 'QUEUED' || run.status === 'RUNNING');
+    setExecutionLogs(persistedGrowthStatus.stages.flatMap((stage) => stage.summary ? [
+      `[${stage.startedAt ? new Date(stage.startedAt).toLocaleTimeString() : '--:--:--'}] [${stageNumbers[stage.stage]}/5 ${stage.stage}] ${stage.summary}`
+    ] : []));
+    if (run.draftId) {
+      const delivered = safeDrafts.find(({ id }) => id === run.draftId && persistedGrowthStatus.run?.status === 'DELIVERED');
+      if (delivered?.status === 'PUBLISHED') setLatestPublishedDraft(delivered);
+    }
+  }, [persistedGrowthStatus, safeDrafts]);
+
   // 最近生成的文章列表
   const recentArticles = useMemo(() => {
     return safeDrafts.slice(0, 5);
   }, [safeDrafts]);
+  const actionByDraftId = useMemo(() => new Map(
+    Object.values(growthStatuses).flatMap((status) => status.run?.draftId && status.action
+      ? [[status.run.draftId, status.action] as const]
+      : [])
+  ), [growthStatuses]);
+  const actionLabel = (type?: string): string => ({
+    CREATE_CONTENT: '新建内容',
+    UPDATE_TITLE: '优化标题',
+    ADD_CONTENT_SECTION: '增补内容',
+    CONTENT_REFRESH: '更新旧页面',
+    ADD_INTERNAL_LINKS: '添加内链',
+    DIAGNOSE_ONLY: '安全诊断'
+  }[type || ''] || '站点增长动作');
 
   // 傻瓜式一键执行（无论是常规词还是竞品词）
   const handleExecuteGenerateAndPublish = async (overrideKeyword?: string) => {
+    if (persistedRunActive) {
+      showToast('当前站点已有增长任务在执行，请先查看实时进度');
+      return;
+    }
     const targetSiteId = selectedSiteId || safeSites[0]?.id;
     if (!targetSiteId && safeSites.length === 0) {
       showToast('请先配置目标站点');
@@ -148,8 +194,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
       setExecutionLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
     };
 
+    let acceptedByServer = false;
     try {
       const publishedDraft = await onStartGrowthProgram(targetSiteIds, addLog, setPipelineStep, source);
+      acceptedByServer = true;
       if (publishedDraft?.status === 'PUBLISHED') {
         setLatestPublishedDraft(publishedDraft);
       }
@@ -159,7 +207,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
           ? '内容未通过质量门禁，未修改站点且未扣费'
           : publishedDraft
             ? '交付草稿已生成，请到“我的内容”审核发布'
-            : '本轮未产生内容动作，请查看真实执行日志');
+            : '增长程序已进入后台队列，可刷新页面或稍后回来继续查看');
     } catch (e: unknown) {
       addLog(`[执行异常] ${e instanceof Error ? e.message : String(e)}`);
       setPipelineStepStates((previous) => {
@@ -173,8 +221,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
       });
       showToast(e instanceof Error ? e.message : '执行失败，请查看任务日志');
     } finally {
-      setIsRunning(false);
-      setActivePipelineStep(null);
+      if (!acceptedByServer) {
+        setIsRunning(false);
+        setActivePipelineStep(null);
+      }
     }
   };
 
@@ -397,14 +447,14 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             <button
               type="button"
               onClick={() => handleExecuteGenerateAndPublish()}
-              disabled={isRunning || safeSites.length === 0 || activeSite?.connectorStatus !== 'CONNECTED'}
+              disabled={executionActive || safeSites.length === 0 || activeSite?.connectorStatus !== 'CONNECTED'}
               className={`w-full py-3.5 sm:py-4 rounded-xl font-extrabold text-sm sm:text-base transition-all flex items-center justify-center gap-2.5 shadow-sm cursor-pointer min-h-[48px] sm:min-h-[52px] active:scale-[0.99] ${
-                isRunning
+                executionActive
                   ? 'bg-slate-800 text-slate-300 cursor-wait'
                   : 'bg-slate-950 hover:bg-slate-900 text-white'
               }`}
             >
-              {isRunning ? (
+              {executionActive ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></div>
                   <span>正在生成并执行质量门禁，请稍候...</span>
@@ -448,6 +498,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             activePipelineStep={activePipelineStep}
             stepStates={pipelineStepStates}
             executionLogs={executionLogs}
+            stageDetails={persistedGrowthStatus?.stages}
           />
         </div>
 
@@ -461,7 +512,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               <span className="w-6 h-6 rounded-md bg-emerald-600 text-white flex items-center justify-center text-xs">
                 ✓
               </span>
-              <span>文章已通过质检并发布到您的网站</span>
+              <span>{actionLabel(persistedGrowthStatus?.action?.type)}已通过门禁并交付到您的网站</span>
             </div>
 
             <span className="text-xs font-bold px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 self-start sm:self-auto">
@@ -488,7 +539,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>在官网查看文章</span>
+                  <span>在官网查看结果</span>
                 </a>
               )}
 
@@ -510,7 +561,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               }}
               className="text-xs text-slate-500 hover:text-slate-800 font-medium underline"
             >
-              继续生成下一篇
+              继续执行下一次
             </button>
           </div>
         </div>
@@ -522,10 +573,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
           <div className="flex items-center justify-between">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-emerald-600" />
-              <span>最近生成的文章记录</span>
+              <span>最近增长交付记录</span>
             </h3>
             <span className="text-xs text-slate-400">
-              共 {safeDrafts.length} 篇
+              共 {safeDrafts.length} 项
             </span>
           </div>
 
@@ -533,11 +584,15 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             {recentArticles.map((draft) => {
               const draftSite = safeSites.find(s => s.id === draft.siteId);
               const isPub = draft.status === 'PUBLISHED';
+              const growthAction = actionByDraftId.get(draft.id);
 
               return (
                 <div key={draft.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm">
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2 py-0.5 rounded-md text-xs font-semibold border bg-slate-50 text-slate-700 border-slate-200">
+                        {actionLabel(growthAction?.type)}
+                      </span>
                       <span className={`px-2 py-0.5 rounded-md text-xs font-semibold border ${draft.qualityGate ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
                         {draft.qualityGate ? `${draft.qualityGate.overallScore} 分` : '未质检'}
                       </span>

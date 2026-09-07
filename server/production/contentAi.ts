@@ -4,14 +4,56 @@ import sanitizeHtml from 'sanitize-html';
 import { z } from 'zod';
 import { ExternalServiceError } from '../domain/errors';
 
-const modelOutput = z.object({ title: z.string().trim().min(10).max(180), slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(180), html: z.string().min(1_000) });
+const modelOutput = z.object({
+  title: z.string().trim().min(10).max(180),
+  slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(180),
+  html: z.string().min(200),
+  coverageTopics: z.array(z.string().trim().min(2).max(180)).max(30).default([]),
+  claimSources: z.array(z.object({
+    claim: z.string().trim().min(2).max(500),
+    sourceTitle: z.string().trim().min(2).max(200)
+  })).max(50).default([])
+});
 const keywordOutput = z.object({ keyword: z.string().trim().min(2).max(120), rationale: z.string().trim().min(10).max(500) });
 const titleOutput = z.object({ title: z.string().trim().min(10).max(70), rationale: z.string().trim().min(10).max(500) });
-const sectionOutput = z.object({ heading: z.string().trim().min(5).max(180), html: z.string().trim().min(300).max(20_000) });
+const sectionOutput = z.object({
+  heading: z.string().trim().min(5).max(180),
+  html: z.string().trim().min(100).max(20_000),
+  coverageTopics: z.array(z.string().trim().min(2).max(180)).max(20).default([]),
+  claimSources: z.array(z.object({
+    claim: z.string().trim().min(2).max(500),
+    sourceTitle: z.string().trim().min(2).max(200)
+  })).max(30).default([])
+});
+const refreshOutput = z.object({
+  html: z.string().trim().min(200).max(200_000),
+  coverageTopics: z.array(z.string().trim().min(2).max(180)).min(1).max(30),
+  claimSources: z.array(z.object({
+    claim: z.string().trim().min(2).max(500),
+    sourceTitle: z.string().trim().min(2).max(200)
+  })).max(50).default([]),
+  changeSummary: z.array(z.string().trim().min(2).max(300)).min(1).max(20)
+});
+const briefOutput = z.object({
+  audience: z.string().trim().min(2).max(300),
+  searchIntent: z.enum(['informational', 'commercial', 'transactional', 'navigational', 'mixed']),
+  pageGoal: z.string().trim().min(10).max(500),
+  requiredTopics: z.array(z.string().trim().min(2).max(180)).min(2).max(20),
+  userQuestions: z.array(z.string().trim().min(2).max(300)).min(1).max(20),
+  allowedSiteFacts: z.array(z.object({
+    fact: z.string().trim().min(2).max(500),
+    sourceTitle: z.string().trim().min(2).max(200)
+  })).max(40),
+  forbiddenClaims: z.array(z.string().trim().min(2).max(300)).max(20),
+  internalLinkTargets: z.array(z.object({
+    title: z.string().trim().min(1).max(200),
+    url: z.string().url()
+  })).max(8)
+});
+
+export type ContentBrief = z.infer<typeof briefOutput>;
 
 const cleanJson = (value: string): unknown => JSON.parse(value.trim().replace(/^```json\s*/i, '').replace(/\s*```$/, ''));
-const escapeHtml = (value: string): string => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-
 const askModel = async (prompt: string, temperature: number): Promise<string> => {
   if (process.env.OPENAI_API_KEY) {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -30,14 +72,12 @@ const askModel = async (prompt: string, temperature: number): Promise<string> =>
 
 const deterministicQualityGate = (html: string, title: string) => {
   const text = sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} }).replace(/\s+/g, ' ').trim();
-  const chineseCharacters = (text.match(/\p{Script=Han}/gu) || []).length;
-  const words = (text.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || []).length;
   const headings = (html.match(/<h[2-3]\b/gi) || []).length;
   const forbidden = /javascript:|data:text\/html|<script\b|on\w+\s*=/i.test(html);
   const checks = [
     { name: 'TITLE', passed: title.length >= 10 && title.length <= 180 },
-    { name: 'SUBSTANCE', passed: chineseCharacters >= 800 || words >= 450, detail: `han=${chineseCharacters}, words=${words}` },
-    { name: 'STRUCTURE', passed: headings >= 2, detail: `headings=${headings}` },
+    { name: 'NON_EMPTY', passed: text.length >= 100, detail: `characters=${text.length}` },
+    { name: 'STRUCTURE', passed: headings >= 1, detail: `headings=${headings}` },
     { name: 'ACTIVE_CONTENT', passed: !forbidden }
   ];
   return { passed: checks.every(({ passed }) => passed), score: Math.round(checks.filter(({ passed }) => passed).length / checks.length * 100), checks, generatedAt: new Date().toISOString(), version: 'quality-gate-1' };
@@ -60,14 +100,56 @@ export const contentAi = {
     try { return keywordOutput.parse(cleanJson(raw)); } catch { throw new ExternalServiceError('AI 主题解析结果不符合正式 JSON 契约'); }
   },
 
-  async generate(input: { keyword: string; language: string; seoSnapshot: unknown; knowledge: Array<{ title: string; content: string }>; internalLinks?: Array<{ title: string; url: string }> }) {
+  async createBrief(input: {
+    keyword: string;
+    language: string;
+    searchIntent: string | null;
+    seoSnapshot: unknown;
+    knowledge: Array<{ title: string; content: string }>;
+    internalLinks: Array<{ title: string; url: string }>;
+  }): Promise<ContentBrief> {
+    const prompt = JSON.stringify({
+      task: 'Create a source-grounded SEO execution brief. The brief must solve the observed search intent using customer-site facts. External reference or competitor material can identify gaps but cannot be presented as customer facts. If a claim is not supported, put it in forbiddenClaims. Do not use word count as a ranking rule.',
+      language: input.language,
+      keyword: input.keyword,
+      observedSearchIntent: input.searchIntent,
+      seoSnapshot: input.seoSnapshot,
+      sources: input.knowledge.map((source) => ({ title: source.title, content: source.content.slice(0, 20_000) })),
+      internalLinks: input.internalLinks.slice(0, 8),
+      output: {
+        audience: 'who the page must help',
+        searchIntent: 'informational|commercial|transactional|navigational|mixed',
+        pageGoal: 'single useful outcome',
+        requiredTopics: ['evidence-backed topics that must be covered'],
+        userQuestions: ['questions the page must answer'],
+        allowedSiteFacts: [{ fact: 'customer fact', sourceTitle: 'exact supplied source title' }],
+        forbiddenClaims: ['unsupported claims or promises'],
+        internalLinkTargets: [{ title: 'existing page', url: 'https URL' }]
+      }
+    });
+    try {
+      return briefOutput.parse(cleanJson(await askModel(prompt, 0)));
+    } catch (error) {
+      if (error instanceof ExternalServiceError) throw error;
+      throw new ExternalServiceError('AI 内容简报结果不符合正式 JSON 契约');
+    }
+  },
+
+  async generate(input: { keyword: string; language: string; seoSnapshot: unknown; knowledge: Array<{ title: string; content: string }>; brief: ContentBrief; internalLinks?: Array<{ title: string; url: string }> }) {
     const prompt = JSON.stringify({
       task: 'Create an original, publication-ready SEO article using only the supplied metrics and sources. Titles prefixed [TARGET_SITE] describe the customer; [REFERENCE] and [COMPETITOR] are inspiration or gap evidence only and must not be copied or presented as customer facts. Never invent traffic, ranking, quotes, studies, or product facts.',
       language: input.language,
       keyword: input.keyword,
+      brief: input.brief,
       seoSnapshot: input.seoSnapshot,
       knowledge: input.knowledge.map((source) => ({ title: source.title, content: source.content.slice(0, 20_000) })),
-      output: { title: 'string', slug: 'lowercase-ascii-kebab-case', html: 'semantic article HTML with H2/H3 sections' }
+      output: {
+        title: 'string',
+        slug: 'lowercase-ascii-kebab-case',
+        html: 'semantic article HTML that covers the brief; no automatic bibliography section',
+        coverageTopics: 'requiredTopics actually covered',
+        claimSources: [{ claim: 'factual claim used', sourceTitle: 'exact supplied source title' }]
+      }
     });
     const raw = await askModel(prompt, 0.2);
     let parsed: z.infer<typeof modelOutput>;
@@ -77,19 +159,12 @@ export const contentAi = {
       allowedAttributes: { a: ['href', 'title', 'rel'] },
       allowedSchemes: ['https']
     });
-    const internalLinks = (input.internalLinks || []).filter(({ title, url }) => {
-      try { return Boolean(title.trim()) && new URL(url).protocol === 'https:'; } catch { return false; }
-    }).slice(0, 3);
-    const internalLinkSection = internalLinks.length
-      ? `<section class="aiseo-internal-links"><h2>相关阅读</h2><ul>${internalLinks.map(({ title, url }) => `<li><a href="${escapeHtml(url)}" rel="noopener">${escapeHtml(title)}</a></li>`).join('')}</ul></section>`
-      : '';
-    const html = `${sanitized}${internalLinkSection}`;
     return {
       ...parsed,
-      html,
+      html: sanitized,
       qualityReport: {
-        ...deterministicQualityGate(html, parsed.title),
-        internalLinks: { inserted: internalLinks.length, items: internalLinks }
+        ...deterministicQualityGate(sanitized, parsed.title),
+        internalLinks: { inserted: 0, items: [] }
       }
     };
   },
@@ -110,7 +185,7 @@ export const contentAi = {
     }
   },
 
-  async generateSection(input: { keyword: string; language: string; currentTitle: string; currentHtml: string; seoSnapshot: unknown; knowledge: Array<{ title: string; content: string }> }) {
+  async generateSection(input: { keyword: string; language: string; currentTitle: string; currentHtml: string; seoSnapshot: unknown; knowledge: Array<{ title: string; content: string }>; brief: ContentBrief }) {
     const prompt = JSON.stringify({
       task: 'Write one original missing section to append to the existing page. Return only the new semantic HTML section. Do not repeat existing content, copy references, or invent facts, quotes, studies, metrics, products, or customer claims.',
       language: input.language,
@@ -118,8 +193,14 @@ export const contentAi = {
       currentTitle: input.currentTitle,
       currentPage: input.currentHtml.slice(0, 20_000),
       seoSnapshot: input.seoSnapshot,
+      brief: input.brief,
       knowledge: input.knowledge.map((source) => ({ title: source.title, content: source.content.slice(0, 12_000) })),
-      output: { heading: 'section heading', html: 'one <section> containing an H2 and evidence-grounded body, minimum 300 characters' }
+      output: {
+        heading: 'section heading',
+        html: 'one <section> containing an H2 and evidence-grounded body',
+        coverageTopics: 'brief topics actually covered by this section',
+        claimSources: [{ claim: 'factual claim used', sourceTitle: 'exact supplied source title' }]
+      }
     });
     let parsed: z.infer<typeof sectionOutput>;
     try { parsed = sectionOutput.parse(cleanJson(await askModel(prompt, 0.1))); } catch (error) {
@@ -131,7 +212,38 @@ export const contentAi = {
       allowedAttributes: { a: ['href', 'title', 'rel'] },
       allowedSchemes: ['https']
     });
-    if (html.length < 300 || !/<h2\b/i.test(html)) throw new ExternalServiceError('增补内容未通过结构门禁');
+    if (html.length < 100 || !/<h2\b/i.test(html)) throw new ExternalServiceError('增补内容未通过结构门禁');
+    return { ...parsed, html };
+  },
+
+  async refreshContent(input: { keyword: string; language: string; currentTitle: string; currentHtml: string; seoSnapshot: unknown; knowledge: Array<{ title: string; content: string }>; brief: ContentBrief }) {
+    const prompt = JSON.stringify({
+      task: 'Refresh the existing page as one coherent publication-ready page. Preserve supported customer facts and the page purpose, remove obsolete repetition, close the verified intent gaps, and improve structure. Do not merely append a section. Do not copy references or invent facts, quotes, studies, metrics, products, customer claims, traffic, or rankings.',
+      language: input.language,
+      keyword: input.keyword,
+      currentTitle: input.currentTitle,
+      currentPage: input.currentHtml.slice(0, 60_000),
+      seoSnapshot: input.seoSnapshot,
+      brief: input.brief,
+      knowledge: input.knowledge.map((source) => ({ title: source.title, content: source.content.slice(0, 20_000) })),
+      output: {
+        html: 'complete semantic page body with headings; no title or bibliography',
+        coverageTopics: 'brief topics actually covered',
+        claimSources: [{ claim: 'factual claim used', sourceTitle: 'exact supplied source title' }],
+        changeSummary: ['specific meaningful changes made']
+      }
+    });
+    let parsed: z.infer<typeof refreshOutput>;
+    try { parsed = refreshOutput.parse(cleanJson(await askModel(prompt, 0.1))); } catch (error) {
+      if (error instanceof ExternalServiceError) throw error;
+      throw new ExternalServiceError('AI 内容刷新结果不符合正式 JSON 契约');
+    }
+    const html = sanitizeHtml(parsed.html, {
+      allowedTags: ['article', 'section', 'p', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'strong', 'em', 'blockquote', 'a', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'code', 'pre'],
+      allowedAttributes: { a: ['href', 'title', 'rel'] },
+      allowedSchemes: ['https']
+    });
+    if (html.length < 200 || !/<h[2-3]\b/i.test(html)) throw new ExternalServiceError('内容刷新未通过结构门禁');
     return { ...parsed, html };
   }
 };

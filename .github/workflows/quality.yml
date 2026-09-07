@@ -51,6 +51,16 @@ jobs:
       SMTP_USER: test
       SMTP_PASSWORD: test
       SMTP_FROM_EMAIL: test@example.com
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -63,10 +73,49 @@ jobs:
       - run: npx --yes supabase@2.81.3 test db --local
       - run: npm ci
       - run: npm run db:drift
+      - run: npm run build
+      - name: Start real Web and Worker processes against Supabase and Redis
+        env:
+          APP_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          REDIS_URL: redis://127.0.0.1:6379
+          SENTRY_DSN: https://public@example.com/1
+          APP_BASE_URL: http://127.0.0.1:4180
+        run: |
+          docker exec supabase_db_aiseo psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER ROLE app_backend LOGIN PASSWORD 'ci_backend_password'; ALTER ROLE app_worker LOGIN PASSWORD 'ci_worker_password';"
+          SUPABASE_PUBLISHABLE_KEY=$(npx --yes supabase@2.81.3 status -o json | jq -r '.ANON_KEY')
+          test -n "$SUPABASE_PUBLISHABLE_KEY"
+          NODE_ENV=test SERVICE_KIND=worker DATABASE_WORKER_URL='postgresql://app_worker:ci_worker_password@127.0.0.1:54322/postgres?schema=public&sslmode=disable&connection_limit=2&pool_timeout=10&application_name=aiseo-ci-worker' node dist/entrypoint.cjs > worker.log 2>&1 &
+          WORKER_PID=$!
+          NODE_ENV=test SERVICE_KIND=web PORT=4180 DATABASE_APP_URL='postgresql://app_backend:ci_backend_password@127.0.0.1:54322/postgres?schema=public&sslmode=disable&connection_limit=2&pool_timeout=10&application_name=aiseo-ci-web' SUPABASE_URL='http://127.0.0.1:54321' SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" node dist/entrypoint.cjs > web.log 2>&1 &
+          WEB_PID=$!
+          trap 'kill "$WEB_PID" "$WORKER_PID" 2>/dev/null || true; cat web.log; cat worker.log' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4180/api/health/ready > ready.json; then
+              jq -e '.data.status == "READY"' ready.json
+              exit 0
+            fi
+            sleep 2
+          done
+          cat ready.json 2>/dev/null || true
+          exit 1
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
 
   container:
     runs-on: ubuntu-latest
-    needs: [verify, database]
+    needs: [verify, database, e2e]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3

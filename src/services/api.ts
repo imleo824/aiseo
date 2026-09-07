@@ -10,7 +10,7 @@ import {
 } from "../types/seo";
 import { api as productionApi } from '../lib/api';
 import { supabase } from '../lib/supabase';
-import type { Draft, GrowthProgram, GrowthRun, JobRun, Ledger, Me, Site as ProductionSite } from '../types/api';
+import type { Draft, GrowthCandidate, GrowthProgram, GrowthRun, GrowthStatus, JobRun, Ledger, Me, Site as ProductionSite, SiteSnapshotSummary } from '../types/api';
 
 type ProductionTask = {
   id: string; siteId: string; inputType: 'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE'; inputValue: string;
@@ -320,8 +320,10 @@ export class ApiService {
 
   public async syncGsc(siteId: string) {
     const { organizationId } = await this.resolveWorkspace();
-    const end = new Date();
-    const start = new Date(end.getTime() - 28 * 24 * 60 * 60_000);
+    // Search Console final data normally trails real time. Exclude the most
+    // recent three days so a manual sync cannot present partial rows as a drop.
+    const end = new Date(Date.now() - 3 * 24 * 60 * 60_000);
+    const start = new Date(end.getTime() - 27 * 24 * 60 * 60_000);
     const date = (value: Date) => value.toISOString().slice(0, 10);
     return (await productionApi.post<{ job: { id: string } }>(`/organizations/${organizationId}/sites/${siteId}/gsc/sync`, { startDate: date(start), endDate: date(end) })).data;
   }
@@ -341,6 +343,21 @@ export class ApiService {
     return (await productionApi.get<GrowthRun>(`/organizations/${organizationId}/growth-runs/${runId}`)).data;
   }
 
+  public async getGrowthStatus(siteId: string): Promise<GrowthStatus> {
+    const { organizationId } = await this.resolveWorkspace();
+    return (await productionApi.get<GrowthStatus>(`/organizations/${organizationId}/sites/${siteId}/growth-status`)).data;
+  }
+
+  public async getLatestSiteSnapshot(siteId: string): Promise<SiteSnapshotSummary> {
+    const { organizationId } = await this.resolveWorkspace();
+    return (await productionApi.get<SiteSnapshotSummary>(`/organizations/${organizationId}/sites/${siteId}/site-snapshots/latest`)).data;
+  }
+
+  public async getGrowthCandidates(runId: string): Promise<GrowthCandidate[]> {
+    const { organizationId } = await this.resolveWorkspace();
+    return (await productionApi.get<GrowthCandidate[]>(`/organizations/${organizationId}/growth-runs/${runId}/candidates`)).data;
+  }
+
   public async createGrowthProgram(
     siteId: string,
     mode: 'ONCE' | 'CONTINUOUS',
@@ -349,23 +366,8 @@ export class ApiService {
   ) {
     const { organizationId } = await this.resolveWorkspace();
     const created = (await productionApi.post<{ program: GrowthProgram; run: GrowthRun; job: JobRun }>(`/organizations/${organizationId}/sites/${siteId}/growth-programs`, { mode, input })).data;
-    let run = created.run;
-    onProgress?.(run);
-    const deadline = Date.now() + 10 * 60_000;
-    while (Date.now() < deadline) {
-      run = await this.getGrowthRun(run.id);
-      onProgress?.(run);
-      if (['NEEDS_REVIEW', 'DELIVERED', 'BLOCKED', 'FAILED', 'CANCELLED'].includes(run.status)) break;
-      await new Promise((resolve) => window.setTimeout(resolve, 3_000));
-    }
-    if (run.status === 'FAILED' || (run.status === 'BLOCKED' && run.errorCode !== 'NO_QUALIFIED_OPPORTUNITY')) {
-      throw new Error(run.errorMessage || '增长执行被安全门禁阻止');
-    }
-    if (!['NEEDS_REVIEW', 'DELIVERED', 'BLOCKED'].includes(run.status)) {
-      throw new Error('增长执行仍在后台运行，请稍后查看真实进度');
-    }
-    const draft = run.draft || (run.draftId ? (await productionApi.get<Draft[]>(`/organizations/${organizationId}/drafts`)).data.find((item) => item.id === run.draftId) : undefined);
-    return { program: created.program, run, draft: draft ? toLegacyDraft(draft) : undefined };
+    onProgress?.(created.run);
+    return { program: created.program, run: created.run, draft: created.run.draft ? toLegacyDraft(created.run.draft) : undefined };
   }
 
   public async changeGrowthProgram(programId: string, status: 'ACTIVE' | 'PAUSED') {
