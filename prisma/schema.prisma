@@ -420,27 +420,27 @@ model KnowledgeSource {
 }
 
 model DataSnapshot {
-  id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId       String         @map("organization_id") @db.Uuid
-  siteId               String?        @map("site_id") @db.Uuid
+  id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String              @map("organization_id") @db.Uuid
+  siteId               String?             @map("site_id") @db.Uuid
   source               DataSource
   status               DataStatus
-  formulaVersion       String?        @map("formula_version")
-  providerTaskId       String?        @map("provider_task_id")
-  fetchedAt            DateTime       @default(now()) @map("fetched_at")
-  availableFrom        DateTime?      @map("available_from")
-  periodStart          DateTime?      @map("period_start") @db.Date
-  periodEnd            DateTime?      @map("period_end") @db.Date
-  comparisonSnapshotId String?        @map("comparison_snapshot_id") @db.Uuid
+  formulaVersion       String?             @map("formula_version")
+  providerTaskId       String?             @map("provider_task_id")
+  fetchedAt            DateTime            @default(now()) @map("fetched_at")
+  availableFrom        DateTime?           @map("available_from")
+  periodStart          DateTime?           @map("period_start") @db.Date
+  periodEnd            DateTime?           @map("period_end") @db.Date
+  comparisonSnapshotId String?             @map("comparison_snapshot_id") @db.Uuid
   payload              Json
-  createdAt            DateTime       @default(now()) @map("created_at")
-  organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site                 Site?          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  createdAt            DateTime            @default(now()) @map("created_at")
+  organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site                 Site?               @relation(fields: [siteId], references: [id], onDelete: Cascade)
   keywordScans         KeywordScan[]
   opportunities        Opportunity[]
-  drafts               ContentDraft[] @relation("DraftSeoSnapshot")
-  comparisonSnapshot   DataSnapshot?  @relation("SnapshotComparison", fields: [comparisonSnapshotId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  comparisonFor        DataSnapshot[] @relation("SnapshotComparison")
+  drafts               ContentDraft[]      @relation("DraftSeoSnapshot")
+  comparisonSnapshot   DataSnapshot?       @relation("SnapshotComparison", fields: [comparisonSnapshotId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  comparisonFor        DataSnapshot[]      @relation("SnapshotComparison")
   measurementSamples   MeasurementSample[]
 
   @@index([organizationId, source, fetchedAt])
@@ -695,53 +695,54 @@ model GrowthAction {
 }
 
 model SiteSnapshot {
-  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId     String             @map("organization_id") @db.Uuid
-  siteId             String             @map("site_id") @db.Uuid
-  runId              String             @map("run_id") @db.Uuid
-  status             DataStatus         @default(LIVE)
-  sourceVersion      String             @map("source_version")
-  market             Json
-  health             Json
-  corpusChecksum     String             @map("corpus_checksum")
-  pageCount          Int                @map("page_count")
-  auditedPageCount   Int                @default(0) @map("audited_page_count")
-  fetchedAt          DateTime           @default(now()) @map("fetched_at") @db.Timestamptz(6)
-  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  site               Site               @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  run                GrowthRun          @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  pages              SitePageSnapshot[]
-  opportunities      Opportunity[]      @relation("OpportunitySiteSnapshot")
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String             @map("organization_id") @db.Uuid
+  siteId           String             @map("site_id") @db.Uuid
+  runId            String             @map("run_id") @db.Uuid
+  status           DataStatus         @default(LIVE)
+  sourceVersion    String             @map("source_version")
+  market           Json
+  health           Json
+  corpusChecksum   String             @map("corpus_checksum")
+  pageCount        Int                @map("page_count")
+  auditedPageCount Int                @default(0) @map("audited_page_count")
+  fetchedAt        DateTime           @default(now()) @map("fetched_at") @db.Timestamptz(6)
+  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site             Site               @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  run              GrowthRun          @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  pages            SitePageSnapshot[]
+  opportunities    Opportunity[]      @relation("OpportunitySiteSnapshot")
 
   @@unique([runId], map: "site_snapshots_run_key")
   @@index([organizationId, siteId, fetchedAt(sort: Desc)], map: "site_snapshots_org_site_fetched_idx")
+  @@index([siteId], map: "site_snapshots_site_id_idx")
   @@map("site_snapshots")
 }
 
 model SitePageSnapshot {
-  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId     String       @map("organization_id") @db.Uuid
-  siteId             String       @map("site_id") @db.Uuid
-  snapshotId         String       @map("snapshot_id") @db.Uuid
-  wordpressId        String?      @map("wordpress_id")
-  resourceType       String       @map("resource_type")
-  url                String
-  slug               String
-  status             String
-  modifiedAt         DateTime?    @map("modified_at") @db.Timestamptz(6)
-  title              String
-  excerpt            String?
-  content            String
-  contentChecksum    String       @map("content_checksum")
-  wordCount          Int          @map("word_count")
-  internalLinks      Json         @default("[]") @map("internal_links")
-  seoMetadata        Json         @default("{}") @map("seo_metadata")
-  technicalEvidence  Json         @default("{}") @map("technical_evidence")
-  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  site               Site         @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  snapshot           SiteSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String       @map("organization_id") @db.Uuid
+  siteId            String       @map("site_id") @db.Uuid
+  snapshotId        String       @map("snapshot_id") @db.Uuid
+  wordpressId       String?      @map("wordpress_id")
+  resourceType      String       @map("resource_type")
+  url               String
+  slug              String
+  status            String
+  modifiedAt        DateTime?    @map("modified_at") @db.Timestamptz(6)
+  title             String
+  excerpt           String?
+  content           String
+  contentChecksum   String       @map("content_checksum")
+  wordCount         Int          @map("word_count")
+  internalLinks     Json         @default("[]") @map("internal_links")
+  seoMetadata       Json         @default("{}") @map("seo_metadata")
+  technicalEvidence Json         @default("{}") @map("technical_evidence")
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site              Site         @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  snapshot          SiteSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([snapshotId, url], map: "site_page_snapshots_snapshot_url_key")
   @@index([organizationId, siteId, createdAt(sort: Desc)], map: "site_page_snapshots_org_site_created_idx")
@@ -763,73 +764,77 @@ model ActionEvidence {
   action         GrowthAction @relation(fields: [actionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([organizationId, actionId, createdAt], map: "action_evidence_org_action_created_idx")
+  @@index([actionId], map: "action_evidence_action_id_idx")
   @@index([siteId, type], map: "action_evidence_site_type_idx")
   @@map("action_evidence")
 }
 
 model PageVersion {
-  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId  String          @map("organization_id") @db.Uuid
-  siteId          String          @map("site_id") @db.Uuid
-  actionId        String          @map("action_id") @db.Uuid
-  kind            PageVersionKind
-  remotePostId    String          @map("remote_post_id")
-  resourceType    String          @map("resource_type")
-  url             String
-  title           String
-  content         String
-  contentChecksum String          @map("content_checksum")
-  remoteModifiedAt DateTime?      @map("remote_modified_at") @db.Timestamptz(6)
-  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  site            Site            @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  action          GrowthAction    @relation(fields: [actionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String          @map("organization_id") @db.Uuid
+  siteId           String          @map("site_id") @db.Uuid
+  actionId         String          @map("action_id") @db.Uuid
+  kind             PageVersionKind
+  remotePostId     String          @map("remote_post_id")
+  resourceType     String          @map("resource_type")
+  url              String
+  title            String
+  content          String
+  contentChecksum  String          @map("content_checksum")
+  remoteModifiedAt DateTime?       @map("remote_modified_at") @db.Timestamptz(6)
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site             Site            @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  action           GrowthAction    @relation(fields: [actionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([actionId, kind], map: "page_versions_action_kind_key")
   @@index([organizationId, siteId, createdAt(sort: Desc)], map: "page_versions_org_site_created_idx")
+  @@index([siteId], map: "page_versions_site_id_idx")
   @@map("page_versions")
 }
 
 model MeasurementSample {
-  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId      String            @map("organization_id") @db.Uuid
-  siteId              String            @map("site_id") @db.Uuid
-  actionId            String            @map("action_id") @db.Uuid
-  source              MeasurementSource
-  windowDays          Int               @map("window_days")
-  sourceSnapshotId    String?           @map("source_snapshot_id") @db.Uuid
-  baseline            Json
-  measurement         Json
-  observedClickDeltaMicros BigInt?      @map("observed_click_delta_micros")
-  confidenceMicros    BigInt            @default(0) @map("confidence_micros")
-  outcome             GrowthOutcome
-  observedAt          DateTime          @default(now()) @map("observed_at") @db.Timestamptz(6)
-  organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  site                Site              @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  action              GrowthAction      @relation(fields: [actionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  sourceSnapshot      DataSnapshot?     @relation(fields: [sourceSnapshotId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  id                       String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId           String            @map("organization_id") @db.Uuid
+  siteId                   String            @map("site_id") @db.Uuid
+  actionId                 String            @map("action_id") @db.Uuid
+  source                   MeasurementSource
+  windowDays               Int               @map("window_days")
+  sourceSnapshotId         String?           @map("source_snapshot_id") @db.Uuid
+  baseline                 Json
+  measurement              Json
+  observedClickDeltaMicros BigInt?           @map("observed_click_delta_micros")
+  confidenceMicros         BigInt            @default(0) @map("confidence_micros")
+  outcome                  GrowthOutcome
+  observedAt               DateTime          @default(now()) @map("observed_at") @db.Timestamptz(6)
+  organization             Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site                     Site              @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  action                   GrowthAction      @relation(fields: [actionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sourceSnapshot           DataSnapshot?     @relation(fields: [sourceSnapshotId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@unique([actionId, source, windowDays], map: "measurement_samples_action_source_window_key")
   @@index([organizationId, siteId, observedAt(sort: Desc)], map: "measurement_samples_org_site_observed_idx")
+  @@index([siteId], map: "measurement_samples_site_id_idx")
   @@index([sourceSnapshotId], map: "measurement_samples_source_snapshot_idx")
   @@map("measurement_samples")
 }
 
 model SiteMutationLease {
-  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String       @map("organization_id") @db.Uuid
-  siteId         String       @unique @map("site_id") @db.Uuid
-  runId          String       @unique @map("run_id") @db.Uuid
-  actionId       String?      @unique @map("action_id") @db.Uuid
-  leaseToken     String       @unique @map("lease_token") @db.Uuid
-  acquiredAt     DateTime     @default(now()) @map("acquired_at") @db.Timestamptz(6)
-  expiresAt      DateTime     @map("expires_at") @db.Timestamptz(6)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  site           Site         @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  run            GrowthRun    @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  siteId         String        @unique @map("site_id") @db.Uuid
+  runId          String        @unique @map("run_id") @db.Uuid
+  actionId       String?       @unique @map("action_id") @db.Uuid
+  leaseToken     String        @unique @map("lease_token") @db.Uuid
+  acquiredAt     DateTime      @default(now()) @map("acquired_at") @db.Timestamptz(6)
+  expiresAt      DateTime      @map("expires_at") @db.Timestamptz(6)
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site           Site          @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  run            GrowthRun     @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   action         GrowthAction? @relation(fields: [actionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([expiresAt], map: "site_mutation_leases_expires_idx")
+  @@index([organizationId], map: "site_mutation_leases_organization_id_idx")
   @@map("site_mutation_leases")
 }
 

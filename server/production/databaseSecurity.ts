@@ -1,12 +1,13 @@
 import type { PrismaClient } from '@prisma/client';
 
-export const EXPECTED_MIGRATION_VERSION = '20260905060835';
+export const EXPECTED_MIGRATION_VERSION = '20260907144003';
 
 export type DatabaseSecurityStatus = {
   role: string;
   bypassRls: boolean;
   ownedBusinessTables: number;
   migrationVersion?: string;
+  requiredMigrationPresent: boolean;
 };
 
 export const inspectDatabaseSecurity = async (database: PrismaClient): Promise<DatabaseSecurityStatus> => {
@@ -22,9 +23,11 @@ export const inspectDatabaseSecurity = async (database: PrismaClient): Promise<D
       WHERE namespace.nspname = 'public' AND relation.relkind = 'r'
         AND pg_get_userbyid(relation.relowner) = current_user
     `,
-    database.$queryRaw<Array<{ version: string }>>`
-      SELECT version FROM supabase_migrations.schema_migrations
-      ORDER BY version DESC LIMIT 1
+    database.$queryRaw<Array<{ version: string | null; required_present: boolean }>>`
+      SELECT
+        max(version)::text AS version,
+        coalesce(bool_or(version = ${EXPECTED_MIGRATION_VERSION}), false) AS required_present
+      FROM supabase_migrations.schema_migrations
     `
   ]);
   if (!roles[0]) throw new Error('Database runtime role was not found in pg_roles');
@@ -32,7 +35,8 @@ export const inspectDatabaseSecurity = async (database: PrismaClient): Promise<D
     role: roles[0].role,
     bypassRls: roles[0].bypass_rls,
     ownedBusinessTables: Number(owners[0]?.owned_tables || 0n),
-    migrationVersion: migrations[0]?.version
+    migrationVersion: migrations[0]?.version || undefined,
+    requiredMigrationPresent: migrations[0]?.required_present === true
   };
 };
 
@@ -41,7 +45,7 @@ export const assertDatabaseSecurity = async (database: PrismaClient, expectedRol
   if (status.role !== expectedRole) throw new Error(`Database resolved current_user=${status.role}; expected ${expectedRole}`);
   if (status.bypassRls) throw new Error(`${expectedRole} unexpectedly has BYPASSRLS`);
   if (status.ownedBusinessTables > 0) throw new Error(`${expectedRole} must not own business tables`);
-  if (status.migrationVersion !== EXPECTED_MIGRATION_VERSION) {
-    throw new Error(`Database migration ${status.migrationVersion || 'missing'} does not match ${EXPECTED_MIGRATION_VERSION}`);
+  if (!status.requiredMigrationPresent) {
+    throw new Error(`Required database migration ${EXPECTED_MIGRATION_VERSION} is not applied (latest=${status.migrationVersion || 'missing'})`);
   }
 };

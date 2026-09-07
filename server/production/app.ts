@@ -80,7 +80,12 @@ export const createApp = () => {
       const status = await inspectDatabaseSecurity(prisma);
       const secure = status.role === 'app_backend' && !status.bypassRls && status.ownedBusinessTables === 0;
       checks.database = { ok: secure, detail: secure ? status.role : `role=${status.role}, bypassRls=${status.bypassRls}, ownedTables=${status.ownedBusinessTables}` };
-      checks.migration = { ok: status.migrationVersion === EXPECTED_MIGRATION_VERSION, detail: status.migrationVersion };
+      checks.migration = {
+        ok: status.requiredMigrationPresent,
+        detail: status.requiredMigrationPresent
+          ? `required=${EXPECTED_MIGRATION_VERSION}, latest=${status.migrationVersion || 'missing'}`
+          : `required ${EXPECTED_MIGRATION_VERSION} is missing; latest=${status.migrationVersion || 'missing'}`
+      };
     } catch (error) {
       checks.database = { ok: false, detail: error instanceof Error ? error.message : String(error) };
       checks.migration = { ok: false, detail: 'database security inspection failed' };
