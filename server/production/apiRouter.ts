@@ -60,6 +60,17 @@ const assertExecutionProviders = async (tx: TransactionClient): Promise<void> =>
 
 const idempotencyKey = (request: Request): string => requireIdempotencyKey(request.header('idempotency-key'));
 
+const consumeOauthState = async (
+  tx: TransactionClient,
+  nonce: string,
+  requestHash: 'gsc-oauth-state' | 'wordpress-oauth-state'
+): Promise<void> => {
+  const [result] = await tx.$queryRaw<Array<{ consumed: boolean }>>`
+    SELECT private.consume_oauth_state(${nonce}, ${requestHash}) AS consumed
+  `;
+  if (!result?.consumed) throw new ConflictError('OAuth state 已使用、不存在或已过期');
+};
+
 export const apiRouter = Router();
 
 type GscState = { organizationId: string; profileId: string; siteId: string; propertyId: string; nonce: string; expiresAt: number };
@@ -100,8 +111,7 @@ apiRouter.get('/integrations/gsc/callback', asyncRoute(async (request, response)
   if (!code) throw new ValidationError('Google 未返回授权码');
   await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
     await assertRole(tx, state.profileId, state.organizationId, OrganizationRole.EDITOR);
-    const pending = await tx.idempotencyKey.findFirst({ where: { organizationId: state.organizationId, profileId: state.profileId, key: state.nonce, requestHash: 'gsc-oauth-state', expiresAt: { gt: new Date() } } });
-    if (!pending) throw new ConflictError('GSC OAuth state 已使用或不存在');
+    await consumeOauthState(tx, state.nonce, 'gsc-oauth-state');
   });
   const credentials = await gscProvider.exchangeCode(code);
   await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
@@ -115,7 +125,6 @@ apiRouter.get('/integrations/gsc/callback', asyncRoute(async (request, response)
       idempotencyKey: `gsc-initial:${connection.id}:${date(end)}`,
       payload: { connectionId: connection.id, siteId: state.siteId, startDate: date(start), endDate: date(end) }
     });
-    await tx.idempotencyKey.deleteMany({ where: { organizationId: state.organizationId, profileId: state.profileId, key: state.nonce } });
     await tx.auditEvent.create({ data: { organizationId: state.organizationId, actorId: state.profileId, action: 'GSC_AUTHORIZED', targetType: 'site', targetId: state.siteId, metadata: { propertyId: state.propertyId, initialSyncQueued: true } } });
   });
   response.redirect('/?gsc=syncing');
@@ -129,8 +138,7 @@ apiRouter.get('/integrations/wordpress/callback', asyncRoute(async (request, res
   if (!siteUrl || !username || !applicationPassword) throw new ValidationError('WordPress 未返回完整授权凭证');
   const site = await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
     await assertRole(tx, state.profileId, state.organizationId, OrganizationRole.EDITOR);
-    const pending = await tx.idempotencyKey.findFirst({ where: { organizationId: state.organizationId, profileId: state.profileId, key: state.nonce, requestHash: 'wordpress-oauth-state', expiresAt: { gt: new Date() } } });
-    if (!pending) throw new ConflictError('WordPress OAuth state 已使用或不存在');
+    await consumeOauthState(tx, state.nonce, 'wordpress-oauth-state');
     const found = await tx.site.findFirst({ where: { id: state.siteId, organizationId: state.organizationId } });
     if (!found) throw new NotFoundError('站点不存在');
     const authorizedOrigin = new URL(siteUrl).origin;
@@ -142,7 +150,6 @@ apiRouter.get('/integrations/wordpress/callback', asyncRoute(async (request, res
   const verified = await wordPressService.testConnection(site.domain, encrypted);
   await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
     await tx.site.update({ where: { id: state.siteId }, data: { wordpressCredentials: encrypted, wordpressCredentialKeyVersion: currentEncryptionKeyVersion(), wordpressStatus: SiteConnectionStatus.CONNECTED, wordpressUser: verified.user, wordpressVerifiedAt: new Date() } });
-    await tx.idempotencyKey.deleteMany({ where: { organizationId: state.organizationId, profileId: state.profileId, key: state.nonce } });
     await tx.auditEvent.create({ data: { organizationId: state.organizationId, actorId: state.profileId, action: 'WORDPRESS_AUTHORIZED', targetType: 'site', targetId: state.siteId, metadata: { user: verified.user, siteName: verified.siteName, authorization: 'APPLICATION_PASSWORD_FLOW' } } });
   });
   response.redirect(`/?wordpress=connected&siteId=${encodeURIComponent(state.siteId)}`);

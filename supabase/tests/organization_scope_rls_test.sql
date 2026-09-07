@@ -7,7 +7,7 @@ set local search_path = public, extensions;
 -- can continue to execute while SET ROLE is exercising the real RLS boundary.
 grant usage on schema extensions to app_backend, app_worker;
 grant execute on all functions in schema extensions to app_backend, app_worker;
-select plan(60);
+select plan(62);
 
 select is(
   (select count(*) from pg_class
@@ -49,6 +49,8 @@ select ok(has_schema_privilege('service_role', 'public', 'usage'), 'service role
 select ok(not has_table_privilege('service_role', 'public.sites', 'select,insert,update,delete'), 'Auth service role has no business-table privileges');
 select ok(has_function_privilege('app_backend', 'private.is_active_auth_session(uuid)', 'execute'), 'Web may validate a sensitive Auth session');
 select ok(not has_function_privilege('anon', 'private.is_active_auth_session(uuid)', 'execute'), 'anon cannot inspect Auth sessions');
+select ok(has_function_privilege('app_backend', 'private.consume_oauth_state(text,text)', 'execute'), 'Web can atomically consume its scoped OAuth state');
+select ok(not has_table_privilege('app_backend', 'public.idempotency_keys', 'delete'), 'Web cannot delete arbitrary idempotency records');
 select ok(not has_table_privilege('app_backend', 'public.job_runs', 'update'), 'Web cannot forge job execution status');
 select ok(not has_table_privilege('app_backend', 'public.payment_intents', 'delete'), 'Web cannot delete payment records');
 select ok(not has_table_privilege('app_worker', 'public.profiles', 'update'), 'Worker cannot mutate profile authorization state');

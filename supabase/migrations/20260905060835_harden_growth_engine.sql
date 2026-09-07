@@ -123,6 +123,37 @@ CREATE UNIQUE INDEX growth_programs_one_active_continuous_per_site
   ON public.growth_programs(site_id)
   WHERE mode = 'CONTINUOUS' AND status = 'ACTIVE';
 
+-- OAuth callback state is deliberately stored in the common idempotency table,
+-- but the Web role has no blanket DELETE privilege on that table. This narrow
+-- function atomically consumes only the current request scope's matching,
+-- unexpired state and prevents concurrent callback replay.
+CREATE OR REPLACE FUNCTION private.consume_oauth_state(
+  expected_key text,
+  expected_request_hash text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  deleted_rows integer;
+BEGIN
+  DELETE FROM public.idempotency_keys
+  WHERE organization_id = private.current_organization_id()
+    AND profile_id = private.current_profile_id()
+    AND key = expected_key
+    AND request_hash = expected_request_hash
+    AND expires_at > now();
+  GET DIAGNOSTICS deleted_rows = ROW_COUNT;
+  RETURN deleted_rows = 1;
+END;
+$$;
+ALTER FUNCTION private.consume_oauth_state(text, text) OWNER TO postgres;
+REVOKE ALL ON FUNCTION private.consume_oauth_state(text, text)
+  FROM PUBLIC, anon, authenticated, service_role, app_worker;
+GRANT EXECUTE ON FUNCTION private.consume_oauth_state(text, text) TO app_backend;
+
 CREATE TABLE public.site_snapshots (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,

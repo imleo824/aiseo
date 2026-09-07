@@ -103,7 +103,7 @@ export const createApp = () => {
   });
   app.use('/api/v1', createRateLimiter(60_000, 300));
   app.use('/api/v1', apiRouter);
-  app.use('/api/v1', (request, response) => response.status(404).json({ error: { code: 'API_NOT_FOUND', message: `Endpoint ${request.method} ${request.originalUrl} not found`, traceId: request.traceId } }));
+  app.use('/api/v1', (request, response) => response.status(404).json({ error: { code: 'API_NOT_FOUND', message: `Endpoint ${request.method} ${request.path} not found`, traceId: request.traceId } }));
   if (process.env.SENTRY_DSN) Sentry.setupExpressErrorHandler(app);
   app.use(errorHandler);
   return app;
