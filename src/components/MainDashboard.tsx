@@ -315,6 +315,15 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 </div>
               </div>
             )}
+            {activeSite?.connectorStatus === 'CONNECTED' && (
+              <p className="text-[11px] font-medium text-slate-500">
+                {activeSite.wordpressCompatibilityMode === 'FULL_AUTO' ? 'WordPress：可自动执行'
+                  : activeSite.wordpressCompatibilityMode === 'SAFE_AUTO' ? 'WordPress：系统将自动选择安全动作'
+                    : activeSite.wordpressCompatibilityMode === 'ANALYSIS_ONLY' ? 'WordPress：仅支持分析，不会写入或扣费'
+                      : activeSite.wordpressCompatibilityMode === 'BLOCKED' ? 'WordPress：连接或权限不可用'
+                        : 'WordPress：开始前将自动检测兼容能力'}
+              </p>
+            )}
           </div>
 
           {/* 第二步：设定发文主题 */}

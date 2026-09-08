@@ -7,7 +7,7 @@ set local search_path = public, extensions;
 -- can continue to execute while SET ROLE is exercising the real RLS boundary.
 grant usage on schema extensions to app_backend, app_worker;
 grant execute on all functions in schema extensions to app_backend, app_worker;
-select plan(62);
+select plan(70);
 
 select is(
   (select count(*) from pg_class
@@ -31,9 +31,10 @@ select is(
      'public.site_snapshots'::regclass, 'public.site_page_snapshots'::regclass,
      'public.action_evidence'::regclass, 'public.page_versions'::regclass,
      'public.measurement_samples'::regclass, 'public.site_mutation_leases'::regclass,
-     'public.policy_versions'::regclass
+     'public.policy_versions'::regclass,
+     'public.wordpress_compatibility_profiles'::regclass
    ]) and relrowsecurity),
-  38::bigint,
+  39::bigint,
   'every business table has RLS enabled'
 );
 
@@ -56,6 +57,17 @@ select ok(not has_table_privilege('app_backend', 'public.payment_intents', 'dele
 select ok(not has_table_privilege('app_worker', 'public.profiles', 'update'), 'Worker cannot mutate profile authorization state');
 select ok(not has_table_privilege('app_worker', 'public.payment_intents', 'insert'), 'Worker cannot manufacture payment intents');
 select ok(not has_table_privilege('anon', 'public.growth_programs', 'select,insert,update,delete'), 'anon cannot access growth programs');
+select ok(not has_table_privilege('anon', 'public.wordpress_compatibility_profiles', 'select,insert,update,delete'), 'anon cannot access WordPress compatibility evidence');
+select ok(
+  has_table_privilege('app_backend', 'public.wordpress_compatibility_profiles', 'select,insert')
+  and not has_table_privilege('app_backend', 'public.wordpress_compatibility_profiles', 'update,delete'),
+  'Web can append but cannot rewrite WordPress compatibility evidence'
+);
+select ok(
+  has_table_privilege('app_worker', 'public.wordpress_compatibility_profiles', 'select,insert')
+  and not has_table_privilege('app_worker', 'public.wordpress_compatibility_profiles', 'update,delete'),
+  'Worker can append but cannot rewrite WordPress compatibility evidence'
+);
 select ok(
   has_table_privilege('app_backend', 'public.growth_programs', 'select')
   and has_table_privilege('app_backend', 'public.growth_programs', 'insert')
@@ -148,6 +160,19 @@ values ('00000000-0000-0000-0000-0000000000a5', (select organization_id from rls
 insert into public.growth_run_stages (organization_id, site_id, run_id, stage)
 values ((select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000a3', '00000000-0000-0000-0000-0000000000a5', 'UNDERSTAND');
 select ok((select count(*) from public.growth_runs) = 1 and (select count(*) from public.growth_run_stages) = 1, 'owner can create a run with durable stages');
+insert into public.wordpress_compatibility_profiles (
+  id, organization_id, site_id, rest_fingerprint, authentication_mode,
+  route_schemas, content_types, editor_signals, integration_signals,
+  action_capabilities, mode, policy_version, expires_at
+) values (
+  '00000000-0000-0000-0000-0000000000a7',
+  (select organization_id from rls_context where label = 'a'),
+  '00000000-0000-0000-0000-0000000000a3', repeat('a', 64),
+  'APPLICATION_PASSWORD', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+  '{"CREATE_CONTENT":{"supported":true}}'::jsonb, 'SAFE_AUTO',
+  'wordpress-compatibility-1', now() + interval '24 hours'
+);
+select is((select count(*) from public.wordpress_compatibility_profiles), 1::bigint, 'owner can append a scoped WordPress compatibility profile');
 reset role;
 
 insert into public.site_snapshots (
@@ -170,6 +195,16 @@ select throws_like(
   $$delete from public.site_snapshots where id = '00000000-0000-0000-0000-0000000000a6'$$,
   '%append-only%',
   'site snapshots cannot be erased by ordinary database operations'
+);
+select throws_like(
+  $$update public.wordpress_compatibility_profiles set mode = 'FULL_AUTO' where id = '00000000-0000-0000-0000-0000000000a7'$$,
+  '%append-only%',
+  'WordPress compatibility profiles cannot be rewritten'
+);
+select throws_like(
+  $$delete from public.wordpress_compatibility_profiles where id = '00000000-0000-0000-0000-0000000000a7'$$,
+  '%append-only%',
+  'WordPress compatibility profiles cannot be erased by ordinary operations'
 );
 
 insert into public.sites (id, organization_id, domain, name, updated_at)
@@ -211,6 +246,7 @@ select is(
 select is((select count(*) from public.growth_programs), 0::bigint, 'cross-organization growth-program SELECT is denied');
 select is((select count(*) from public.growth_runs), 0::bigint, 'cross-organization growth-run SELECT is denied');
 select is((select count(*) from public.site_snapshots), 0::bigint, 'cross-organization site-snapshot SELECT is denied');
+select is((select count(*) from public.wordpress_compatibility_profiles), 0::bigint, 'cross-organization WordPress compatibility SELECT is denied');
 select throws_like(
   format('insert into public.sites (organization_id, domain, name, updated_at) values (%L, %L, %L, now())', (select organization_id from rls_context where label = 'a'), 'cross.example.test', 'Cross org'),
   '%row-level security%',
@@ -231,6 +267,7 @@ set local role app_backend;
 select is((select count(*) from public.sites), 1::bigint, 'viewer can SELECT organization rows');
 select is((select count(*) from public.growth_runs), 1::bigint, 'viewer can SELECT organization growth runs');
 select is((select count(*) from public.site_snapshots), 1::bigint, 'viewer can SELECT immutable evidence for their organization');
+select is((select count(*) from public.wordpress_compatibility_profiles), 1::bigint, 'viewer can SELECT WordPress compatibility evidence for their organization');
 select throws_like(
   format('insert into public.sites (organization_id, domain, name, updated_at) values (%L, %L, %L, now())', (select organization_id from rls_context where label = 'a'), 'viewer-write.example.test', 'Viewer write'),
   '%row-level security%',

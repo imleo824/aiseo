@@ -26,6 +26,33 @@ enum SiteConnectionStatus {
   FAILED
 }
 
+enum WordPressCompatibilityMode {
+  RECHECK_REQUIRED
+  FULL_AUTO
+  SAFE_AUTO
+  ANALYSIS_ONLY
+  BLOCKED
+}
+
+enum WordPressEditorKind {
+  CLASSIC
+  GUTENBERG
+  ELEMENTOR
+  DIVI
+  HEADLESS
+  UNKNOWN
+}
+
+enum WordPressRemoteMutationState {
+  PREPARED
+  COMMITTED
+  VERIFIED
+  VISIBILITY_PENDING
+  CONFLICTED
+  FAILED
+  ROLLED_BACK
+}
+
 enum IntegrationProvider {
   GSC
 }
@@ -282,42 +309,43 @@ model Profile {
 }
 
 model Organization {
-  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name                 String
-  creditBalanceMicros  BigInt                  @default(0) @map("credit_balance_micros")
-  disabledAt           DateTime?               @map("disabled_at")
-  createdAt            DateTime                @default(now()) @map("created_at")
-  updatedAt            DateTime                @updatedAt @map("updated_at")
-  members              OrganizationMember[]
-  sites                Site[]
-  integrations         IntegrationConnection[]
-  knowledgeSources     KnowledgeSource[]
-  dataSnapshots        DataSnapshot[]
-  keywordScans         KeywordScan[]
-  opportunities        Opportunity[]
-  growthPrograms       GrowthProgram[]
-  growthRuns           GrowthRun[]
-  growthRunStages      GrowthRunStage[]
-  jobs                 JobRun[]
-  drafts               ContentDraft[]
-  publishAttempts      PublishAttempt[]
-  payments             PaymentIntent[]
-  ledgerEntries        LedgerEntry[]
-  creditHolds          CreditHold[]
-  usageRecords         UsageRecord[]
-  auditEvents          AuditEvent[]
-  idempotencyKeys      IdempotencyKey[]
-  termsAcceptances     TermsAcceptance[]
-  notifications        Notification[]
-  indexingObservations IndexingObservation[]
-  growthDecisions      GrowthDecision[]
-  growthActions        GrowthAction[]
-  siteSnapshots        SiteSnapshot[]
-  sitePageSnapshots    SitePageSnapshot[]
-  actionEvidence       ActionEvidence[]
-  pageVersions         PageVersion[]
-  measurementSamples   MeasurementSample[]
-  siteMutationLeases   SiteMutationLease[]
+  id                             String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                           String
+  creditBalanceMicros            BigInt                          @default(0) @map("credit_balance_micros")
+  disabledAt                     DateTime?                       @map("disabled_at")
+  createdAt                      DateTime                        @default(now()) @map("created_at")
+  updatedAt                      DateTime                        @updatedAt @map("updated_at")
+  members                        OrganizationMember[]
+  sites                          Site[]
+  integrations                   IntegrationConnection[]
+  knowledgeSources               KnowledgeSource[]
+  dataSnapshots                  DataSnapshot[]
+  keywordScans                   KeywordScan[]
+  opportunities                  Opportunity[]
+  growthPrograms                 GrowthProgram[]
+  growthRuns                     GrowthRun[]
+  growthRunStages                GrowthRunStage[]
+  jobs                           JobRun[]
+  drafts                         ContentDraft[]
+  publishAttempts                PublishAttempt[]
+  payments                       PaymentIntent[]
+  ledgerEntries                  LedgerEntry[]
+  creditHolds                    CreditHold[]
+  usageRecords                   UsageRecord[]
+  auditEvents                    AuditEvent[]
+  idempotencyKeys                IdempotencyKey[]
+  termsAcceptances               TermsAcceptance[]
+  notifications                  Notification[]
+  indexingObservations           IndexingObservation[]
+  growthDecisions                GrowthDecision[]
+  growthActions                  GrowthAction[]
+  siteSnapshots                  SiteSnapshot[]
+  sitePageSnapshots              SitePageSnapshot[]
+  actionEvidence                 ActionEvidence[]
+  pageVersions                   PageVersion[]
+  measurementSamples             MeasurementSample[]
+  siteMutationLeases             SiteMutationLease[]
+  wordpressCompatibilityProfiles WordPressCompatibilityProfile[]
 
   @@map("organizations")
 }
@@ -336,37 +364,42 @@ model OrganizationMember {
 }
 
 model Site {
-  id                            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId                String                  @map("organization_id") @db.Uuid
-  domain                        String
-  name                          String
-  language                      String                  @default("zh-CN")
-  wordpressCredentials          Bytes?                  @map("wordpress_credentials")
-  wordpressCredentialKeyVersion Int?                    @map("wordpress_credential_key_version")
-  wordpressStatus               SiteConnectionStatus    @default(NOT_CONFIGURED) @map("wordpress_status")
-  wordpressUser                 String?                 @map("wordpress_user")
-  wordpressVerifiedAt           DateTime?               @map("wordpress_verified_at")
-  createdAt                     DateTime                @default(now()) @map("created_at")
-  updatedAt                     DateTime                @updatedAt @map("updated_at")
-  organization                  Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  integrations                  IntegrationConnection[]
-  knowledgeSources              KnowledgeSource[]
-  dataSnapshots                 DataSnapshot[]
-  keywordScans                  KeywordScan[]
-  opportunities                 Opportunity[]
-  growthPrograms                GrowthProgram[]
-  growthRuns                    GrowthRun[]
-  growthRunStages               GrowthRunStage[]
-  drafts                        ContentDraft[]
-  indexingObservations          IndexingObservation[]
-  growthDecisions               GrowthDecision[]
-  growthActions                 GrowthAction[]
-  siteSnapshots                 SiteSnapshot[]
-  sitePageSnapshots             SitePageSnapshot[]
-  actionEvidence                ActionEvidence[]
-  pageVersions                  PageVersion[]
-  measurementSamples            MeasurementSample[]
-  mutationLease                 SiteMutationLease?
+  id                                    String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId                        String                          @map("organization_id") @db.Uuid
+  domain                                String
+  name                                  String
+  language                              String                          @default("zh-CN")
+  wordpressCredentials                  Bytes?                          @map("wordpress_credentials")
+  wordpressCredentialKeyVersion         Int?                            @map("wordpress_credential_key_version")
+  wordpressStatus                       SiteConnectionStatus            @default(NOT_CONFIGURED) @map("wordpress_status")
+  wordpressUser                         String?                         @map("wordpress_user")
+  wordpressVerifiedAt                   DateTime?                       @map("wordpress_verified_at")
+  wordpressCompatibilityMode            WordPressCompatibilityMode      @default(RECHECK_REQUIRED) @map("wordpress_compatibility_mode")
+  wordpressCompatibilityCheckedAt       DateTime?                       @map("wordpress_compatibility_checked_at") @db.Timestamptz(6)
+  latestWordpressCompatibilityProfileId String?                         @unique(map: "sites_latest_wordpress_compatibility_profile_key") @map("latest_wordpress_compatibility_profile_id") @db.Uuid
+  createdAt                             DateTime                        @default(now()) @map("created_at")
+  updatedAt                             DateTime                        @updatedAt @map("updated_at")
+  organization                          Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  integrations                          IntegrationConnection[]
+  knowledgeSources                      KnowledgeSource[]
+  dataSnapshots                         DataSnapshot[]
+  keywordScans                          KeywordScan[]
+  opportunities                         Opportunity[]
+  growthPrograms                        GrowthProgram[]
+  growthRuns                            GrowthRun[]
+  growthRunStages                       GrowthRunStage[]
+  drafts                                ContentDraft[]
+  indexingObservations                  IndexingObservation[]
+  growthDecisions                       GrowthDecision[]
+  growthActions                         GrowthAction[]
+  siteSnapshots                         SiteSnapshot[]
+  sitePageSnapshots                     SitePageSnapshot[]
+  actionEvidence                        ActionEvidence[]
+  pageVersions                          PageVersion[]
+  measurementSamples                    MeasurementSample[]
+  mutationLease                         SiteMutationLease?
+  wordpressCompatibilityProfiles        WordPressCompatibilityProfile[] @relation("SiteWordPressCompatibilityProfiles")
+  latestWordpressCompatibilityProfile   WordPressCompatibilityProfile?  @relation("LatestWordPressCompatibilityProfile", fields: [latestWordpressCompatibilityProfileId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "sites_latest_wordpress_compatibility_profile_fkey")
 
   @@unique([organizationId, domain])
   @@index([organizationId, createdAt])
@@ -653,44 +686,49 @@ model GrowthDecision {
 }
 
 model GrowthAction {
-  id                  String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId      String                 @map("organization_id") @db.Uuid
-  siteId              String                 @map("site_id") @db.Uuid
-  runId               String                 @map("run_id") @db.Uuid
-  decisionId          String                 @unique @map("decision_id") @db.Uuid
-  opportunityId       String                 @map("opportunity_id") @db.Uuid
-  type                GrowthActionType
-  status              GrowthActionStatus     @default(PLANNED)
-  riskLevel           GrowthRiskLevel        @map("risk_level")
-  autonomyDecision    GrowthAutonomyDecision @map("autonomy_decision")
-  targetUrl           String?                @map("target_url")
-  reversible          Boolean                @default(false)
-  plan                Json
-  beforeSnapshot      Json?                  @map("before_snapshot")
-  afterSnapshot       Json?                  @map("after_snapshot")
-  expectedValueMicros BigInt?                @map("expected_value_micros")
-  observationStartsAt DateTime?              @map("observation_starts_at") @db.Timestamptz(6)
-  observeUntil        DateTime?              @map("observe_until") @db.Timestamptz(6)
-  cooldownUntil       DateTime?              @map("cooldown_until") @db.Timestamptz(6)
-  executedAt          DateTime?              @map("executed_at") @db.Timestamptz(6)
-  verifiedAt          DateTime?              @map("verified_at") @db.Timestamptz(6)
-  rolledBackAt        DateTime?              @map("rolled_back_at") @db.Timestamptz(6)
-  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  site                Site                   @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  run                 GrowthRun              @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  decision            GrowthDecision         @relation(fields: [decisionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  opportunity         Opportunity            @relation(fields: [opportunityId], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  evidence            ActionEvidence[]
-  pageVersions        PageVersion[]
-  measurements        MeasurementSample[]
-  mutationLease       SiteMutationLease?
+  id                              String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId                  String                         @map("organization_id") @db.Uuid
+  siteId                          String                         @map("site_id") @db.Uuid
+  runId                           String                         @map("run_id") @db.Uuid
+  decisionId                      String                         @unique @map("decision_id") @db.Uuid
+  opportunityId                   String                         @map("opportunity_id") @db.Uuid
+  type                            GrowthActionType
+  status                          GrowthActionStatus             @default(PLANNED)
+  riskLevel                       GrowthRiskLevel                @map("risk_level")
+  autonomyDecision                GrowthAutonomyDecision         @map("autonomy_decision")
+  targetUrl                       String?                        @map("target_url")
+  reversible                      Boolean                        @default(false)
+  plan                            Json
+  wordpressCompatibilityProfileId String?                        @map("wordpress_compatibility_profile_id") @db.Uuid
+  remoteMutationState             WordPressRemoteMutationState?  @map("remote_mutation_state")
+  fallbackReason                  String?                        @map("fallback_reason")
+  beforeSnapshot                  Json?                          @map("before_snapshot")
+  afterSnapshot                   Json?                          @map("after_snapshot")
+  expectedValueMicros             BigInt?                        @map("expected_value_micros")
+  observationStartsAt             DateTime?                      @map("observation_starts_at") @db.Timestamptz(6)
+  observeUntil                    DateTime?                      @map("observe_until") @db.Timestamptz(6)
+  cooldownUntil                   DateTime?                      @map("cooldown_until") @db.Timestamptz(6)
+  executedAt                      DateTime?                      @map("executed_at") @db.Timestamptz(6)
+  verifiedAt                      DateTime?                      @map("verified_at") @db.Timestamptz(6)
+  rolledBackAt                    DateTime?                      @map("rolled_back_at") @db.Timestamptz(6)
+  createdAt                       DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                       DateTime                       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization                    Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site                            Site                           @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  run                             GrowthRun                      @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  decision                        GrowthDecision                 @relation(fields: [decisionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  opportunity                     Opportunity                    @relation(fields: [opportunityId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  evidence                        ActionEvidence[]
+  pageVersions                    PageVersion[]
+  measurements                    MeasurementSample[]
+  mutationLease                   SiteMutationLease?
+  wordpressCompatibilityProfile   WordPressCompatibilityProfile? @relation(fields: [wordpressCompatibilityProfileId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([organizationId, siteId, status, observeUntil], map: "growth_actions_org_site_status_observe_idx")
   @@index([siteId, targetUrl, cooldownUntil], map: "growth_actions_site_url_cooldown_idx")
   @@index([runId])
   @@index([opportunityId])
+  @@index([wordpressCompatibilityProfileId], map: "growth_actions_wordpress_compatibility_idx")
   @@map("growth_actions")
 }
 
@@ -721,28 +759,31 @@ model SiteSnapshot {
 }
 
 model SitePageSnapshot {
-  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId    String       @map("organization_id") @db.Uuid
-  siteId            String       @map("site_id") @db.Uuid
-  snapshotId        String       @map("snapshot_id") @db.Uuid
-  wordpressId       String?      @map("wordpress_id")
-  resourceType      String       @map("resource_type")
-  url               String
-  slug              String
-  status            String
-  modifiedAt        DateTime?    @map("modified_at") @db.Timestamptz(6)
-  title             String
-  excerpt           String?
-  content           String
-  contentChecksum   String       @map("content_checksum")
-  wordCount         Int          @map("word_count")
-  internalLinks     Json         @default("[]") @map("internal_links")
-  seoMetadata       Json         @default("{}") @map("seo_metadata")
-  technicalEvidence Json         @default("{}") @map("technical_evidence")
-  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  site              Site         @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  snapshot          SiteSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String              @map("organization_id") @db.Uuid
+  siteId             String              @map("site_id") @db.Uuid
+  snapshotId         String              @map("snapshot_id") @db.Uuid
+  wordpressId        String?             @map("wordpress_id")
+  resourceType       String              @map("resource_type")
+  url                String
+  slug               String
+  status             String
+  modifiedAt         DateTime?           @map("modified_at") @db.Timestamptz(6)
+  title              String
+  excerpt            String?
+  content            String
+  contentChecksum    String              @map("content_checksum")
+  wordCount          Int                 @map("word_count")
+  internalLinks      Json                @default("[]") @map("internal_links")
+  seoMetadata        Json                @default("{}") @map("seo_metadata")
+  technicalEvidence  Json                @default("{}") @map("technical_evidence")
+  editorKind         WordPressEditorKind @default(UNKNOWN) @map("editor_kind")
+  structureChecksum  String              @map("structure_checksum")
+  actionCapabilities Json                @default("{}") @map("action_capabilities")
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site               Site                @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  snapshot           SiteSnapshot        @relation(fields: [snapshotId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([snapshotId, url], map: "site_page_snapshots_snapshot_url_key")
   @@index([organizationId, siteId, createdAt(sort: Desc)], map: "site_page_snapshots_org_site_created_idx")
@@ -770,27 +811,60 @@ model ActionEvidence {
 }
 
 model PageVersion {
-  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId   String          @map("organization_id") @db.Uuid
-  siteId           String          @map("site_id") @db.Uuid
-  actionId         String          @map("action_id") @db.Uuid
-  kind             PageVersionKind
-  remotePostId     String          @map("remote_post_id")
-  resourceType     String          @map("resource_type")
-  url              String
-  title            String
-  content          String
-  contentChecksum  String          @map("content_checksum")
-  remoteModifiedAt DateTime?       @map("remote_modified_at") @db.Timestamptz(6)
-  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  site             Site            @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  action           GrowthAction    @relation(fields: [actionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId        String          @map("organization_id") @db.Uuid
+  siteId                String          @map("site_id") @db.Uuid
+  actionId              String          @map("action_id") @db.Uuid
+  kind                  PageVersionKind
+  remotePostId          String          @map("remote_post_id")
+  resourceType          String          @map("resource_type")
+  url                   String
+  title                 String
+  content               String
+  contentChecksum       String          @map("content_checksum")
+  remoteModifiedAt      DateTime?       @map("remote_modified_at") @db.Timestamptz(6)
+  payload               Json            @default("{}")
+  changedFields         Json            @default("[]") @map("changed_fields")
+  structureChecksum     String?         @map("structure_checksum")
+  restSchemaFingerprint String?         @map("rest_schema_fingerprint")
+  remoteRevisionId      String?         @map("remote_revision_id")
+  publicVerification    Json            @default("{}") @map("public_verification")
+  createdAt             DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization          Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site                  Site            @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  action                GrowthAction    @relation(fields: [actionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([actionId, kind], map: "page_versions_action_kind_key")
   @@index([organizationId, siteId, createdAt(sort: Desc)], map: "page_versions_org_site_created_idx")
   @@index([siteId], map: "page_versions_site_id_idx")
   @@map("page_versions")
+}
+
+model WordPressCompatibilityProfile {
+  id                  String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String                     @map("organization_id") @db.Uuid
+  siteId              String                     @map("site_id") @db.Uuid
+  restFingerprint     String                     @map("rest_fingerprint")
+  coreVersionEvidence Json                       @default("{}") @map("core_version_evidence")
+  authenticationMode  String                     @map("authentication_mode")
+  routeSchemas        Json                       @map("route_schemas")
+  contentTypes        Json                       @map("content_types")
+  editorSignals       Json                       @map("editor_signals")
+  integrationSignals  Json                       @map("integration_signals")
+  actionCapabilities  Json                       @map("action_capabilities")
+  mode                WordPressCompatibilityMode
+  blockReasons        Json                       @default("[]") @map("block_reasons")
+  policyVersion       String                     @map("policy_version")
+  checkedAt           DateTime                   @default(now()) @map("checked_at") @db.Timestamptz(6)
+  expiresAt           DateTime                   @map("expires_at") @db.Timestamptz(6)
+  organization        Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site                Site                       @relation("SiteWordPressCompatibilityProfiles", fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  latestForSite       Site?                      @relation("LatestWordPressCompatibilityProfile")
+  actions             GrowthAction[]
+
+  @@index([organizationId, siteId, checkedAt(sort: Desc)], map: "wordpress_compatibility_profiles_org_site_checked_idx")
+  @@index([siteId, expiresAt], map: "wordpress_compatibility_profiles_site_expiry_idx")
+  @@map("wordpress_compatibility_profiles")
 }
 
 model MeasurementSample {

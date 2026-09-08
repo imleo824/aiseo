@@ -6,6 +6,7 @@ export type GrowthActionSelection = {
   riskLevel: 'A' | 'B';
   reason: string;
   mutatesWordPress: boolean;
+  fallbackReason?: string;
 };
 
 export const OPPORTUNITY_SCORE_VERSION = 'opportunity-score-4';
@@ -147,6 +148,7 @@ export const selectGrowthAction = (input: {
   relevantInternalLinkCount: number;
   contentCoverage?: number;
   now?: Date;
+  supportsAction?: (action: GrowthActionType) => { supported: boolean; reason: string };
 }): GrowthActionSelection => {
   if (input.robotsBlocksAll) return {
     type: GrowthActionType.DIAGNOSE_ONLY,
@@ -154,12 +156,22 @@ export const selectGrowthAction = (input: {
     reason: 'robots.txt 阻止全站抓取，内容修改无法解决该服务器级问题',
     mutatesWordPress: false
   };
-  if (!input.target || !input.targetUrl) return {
+  if (!input.target || !input.targetUrl) {
+    const selected: GrowthActionSelection = {
     type: GrowthActionType.CREATE_CONTENT,
     riskLevel: 'B',
     reason: '站内没有同主题页面，创建新页面可避免关键词蚕食',
     mutatesWordPress: true
-  };
+    };
+    const supported = input.supportsAction?.(selected.type);
+    return !supported || supported.supported ? selected : {
+      type: GrowthActionType.DIAGNOSE_ONLY,
+      riskLevel: 'A',
+      reason: `最佳动作 CREATE_CONTENT 与当前 WordPress 能力不兼容：${supported.reason}`,
+      fallbackReason: supported.reason,
+      mutatesWordPress: false
+    };
+  }
 
   const normalizedTarget = comparableUrl(input.targetUrl);
   const matchingRows = (input.gscRows || []).filter((row) => comparableUrl(row.keys[1]) === normalizedTarget);
@@ -168,37 +180,53 @@ export const selectGrowthAction = (input: {
   const weightedPosition = impressions
     ? matchingRows.reduce((sum, row) => sum + row.position * row.impressions, 0) / impressions
     : null;
-  if (impressions >= 100 && weightedPosition && clicks / impressions < expectedCtrForPosition(weightedPosition) * 0.65) return {
-    type: GrowthActionType.UPDATE_TITLE,
-    riskLevel: 'B',
-    reason: '该页面已有高曝光但点击率低，最小有效动作是优化标题',
-    mutatesWordPress: true
-  };
-  if ((input.contentCoverage ?? Math.min(1, input.target.contentLength / 4_000)) < 0.55) return {
-    type: GrowthActionType.ADD_CONTENT_SECTION,
-    riskLevel: 'B',
-    reason: '已有页面覆盖不足，优先增补缺失内容而不是新建重复页面',
-    mutatesWordPress: true
-  };
+  const candidates: GrowthActionSelection[] = [];
+  if (impressions >= 100 && weightedPosition && clicks / impressions < expectedCtrForPosition(weightedPosition) * 0.65) candidates.push({
+      type: GrowthActionType.UPDATE_TITLE,
+      riskLevel: 'B',
+      reason: '该页面已有高曝光但点击率低，最小有效动作是优化标题',
+      mutatesWordPress: true
+    });
+  if ((input.contentCoverage ?? Math.min(1, input.target.contentLength / 4_000)) < 0.55) candidates.push({
+      type: GrowthActionType.ADD_CONTENT_SECTION,
+      riskLevel: 'B',
+      reason: '已有页面覆盖不足，优先增补缺失内容而不是新建重复页面',
+      mutatesWordPress: true
+    });
   const modifiedAt = input.target.modifiedAt ? new Date(input.target.modifiedAt) : null;
   const now = input.now || new Date();
-  if (modifiedAt && Number.isFinite(modifiedAt.getTime()) && now.getTime() - modifiedAt.getTime() >= 180 * 86_400_000) return {
-    type: GrowthActionType.CONTENT_REFRESH,
-    riskLevel: 'B',
-    reason: '已有页面超过 180 天未更新，执行基于当前 SERP 的内容刷新',
-    mutatesWordPress: true
+  if (modifiedAt && Number.isFinite(modifiedAt.getTime()) && now.getTime() - modifiedAt.getTime() >= 180 * 86_400_000) candidates.push({
+      type: GrowthActionType.CONTENT_REFRESH,
+      riskLevel: 'B',
+      reason: '已有页面超过 180 天未更新，执行基于当前 SERP 的内容刷新',
+      mutatesWordPress: true
+    });
+  if (input.relevantInternalLinkCount > 0) candidates.push({
+      type: GrowthActionType.ADD_INTERNAL_LINKS,
+      riskLevel: 'A',
+      reason: '现有内容仍新且覆盖充分，最小有效动作是补充相关内部链接',
+      mutatesWordPress: true
+    });
+  candidates.push({
+      type: GrowthActionType.CONTENT_REFRESH,
+      riskLevel: 'B',
+      reason: '已有页面需要按当前搜索意图刷新，且没有更小的可验证动作',
+      mutatesWordPress: true
+    });
+  const firstChoice = candidates[0];
+  const selected = candidates.find((candidate) => input.supportsAction?.(candidate.type).supported !== false);
+  if (selected) return selected === firstChoice ? selected : {
+    ...selected,
+    fallbackReason: `${firstChoice.type} 不兼容：${input.supportsAction?.(firstChoice.type).reason || '能力不可用'}`,
+    reason: `${selected.reason}；已跳过不兼容动作 ${firstChoice.type}`
   };
-  if (input.relevantInternalLinkCount > 0) return {
-    type: GrowthActionType.ADD_INTERNAL_LINKS,
-    riskLevel: 'A',
-    reason: '现有内容仍新且覆盖充分，最小有效动作是补充相关内部链接',
-    mutatesWordPress: true
-  };
+  const reasons = [...new Set(candidates.map((candidate) => `${candidate.type}: ${input.supportsAction?.(candidate.type).reason || '能力不可用'}`))];
   return {
-    type: GrowthActionType.CONTENT_REFRESH,
-    riskLevel: 'B',
-    reason: '已有页面需要按当前搜索意图刷新，且没有更小的可验证动作',
-    mutatesWordPress: true
+    type: GrowthActionType.DIAGNOSE_ONLY,
+    riskLevel: 'A',
+    reason: `当前页面没有可证明安全的兼容动作：${reasons.join('；')}`,
+    fallbackReason: reasons.join('；'),
+    mutatesWordPress: false
   };
 };
 

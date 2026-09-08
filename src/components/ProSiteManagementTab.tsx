@@ -58,6 +58,16 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [connectionTesting, setConnectionTesting] = useState(false);
 
+  const compatibilityLabel = (site: WordPressSite) => {
+    switch (site.wordpressCompatibilityMode) {
+      case 'FULL_AUTO': return { text: '可自动执行', className: 'text-emerald-700 bg-emerald-50' };
+      case 'SAFE_AUTO': return { text: '系统将自动选择安全动作', className: 'text-blue-700 bg-blue-50' };
+      case 'ANALYSIS_ONLY': return { text: '仅支持分析', className: 'text-amber-700 bg-amber-50' };
+      case 'BLOCKED': return { text: '连接或权限不可用', className: 'text-rose-700 bg-rose-50' };
+      default: return { text: '需要兼容检测', className: 'text-slate-700 bg-slate-100' };
+    }
+  };
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
@@ -111,7 +121,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
   const handleTestWordPress = async () => {
     if (!editingSiteId || !onTestSiteConnection) return;
     setConnectionTesting(true);
-    try { await onTestSiteConnection(editingSiteId); showToast('WordPress HTTPS、REST API、身份与发布权限验证通过'); }
+    try { await onTestSiteConnection(editingSiteId); showToast('WordPress 连接与兼容能力检测完成'); }
     catch (error) { showToast(error instanceof Error ? error.message : 'WordPress 连接验证失败'); }
     finally { setConnectionTesting(false); }
   };
@@ -231,6 +241,11 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                         ) : (
                           <span className="text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-md font-medium">
                             未配置 WordPress 发布凭证
+                          </span>
+                        )}
+                        {site.connectorStatus === 'CONNECTED' && (
+                          <span className={`${compatibilityLabel(site).className} px-2.5 py-0.5 rounded-md font-medium`}>
+                            {compatibilityLabel(site).text}
                           </span>
                         )}
                       </div>
@@ -387,10 +402,10 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                       <Layers className="w-3.5 h-3.5 text-blue-600" />
                       <span>凭证由 WordPress 官方授权流程管理，不在本页显示或编辑</span>
                     </span>
-                    <button type="button" onClick={() => void handleTestWordPress()} disabled={connectionTesting || !onTestSiteConnection} className="px-2.5 py-1 bg-white border border-slate-200 text-slate-700 text-[11px] rounded-lg font-medium flex items-center gap-1 disabled:opacity-50"><RefreshCw className={`w-3 h-3 ${connectionTesting ? 'animate-spin' : ''}`} />{connectionTesting ? '验证中' : '测试连接'}</button>
+                    <button type="button" onClick={() => void handleTestWordPress()} disabled={connectionTesting || !onTestSiteConnection} className="px-2.5 py-1 bg-white border border-slate-200 text-slate-700 text-[11px] rounded-lg font-medium flex items-center gap-1 disabled:opacity-50"><RefreshCw className={`w-3 h-3 ${connectionTesting ? 'animate-spin' : ''}`} />{connectionTesting ? '检测中' : '重新检测兼容性'}</button>
                   </div>
 
-                  <p className="text-[11px] leading-5 text-slate-600">如需更换账号或凭证，请使用站点列表中的“重新授权 WordPress”。授权回调会自动加密保存新凭证并验证发布权限。</p>
+                  <p className="text-[11px] leading-5 text-slate-600">系统按当前 WordPress、编辑器和 SEO 插件的真实 REST 能力选择安全动作；不会安装、升级或配置客户插件。</p>
                 </div>
               </div>
 

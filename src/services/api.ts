@@ -30,7 +30,9 @@ const toLegacySite = (site: ProductionSite): WordPressSite => ({
   pagesCount: 0,
   connectorStatus: site.wordpressStatus === 'CONNECTED' ? 'CONNECTED' : site.wordpressStatus === 'VERIFYING' ? 'CHECKING' : site.wordpressStatus === 'FAILED' ? 'ERROR' : 'DISCONNECTED',
   wpUsername: site.wordpressUser,
-  pluginInstalled: site.wordpressStatus === 'CONNECTED',
+  pluginInstalled: false,
+  wordpressCompatibilityMode: site.wordpressCompatibilityMode,
+  wordpressCompatibilityCheckedAt: site.wordpressCompatibilityCheckedAt,
   whitelistedCategories: [],
   gscConnected: site.integrations.some((item) => item.provider === 'GSC' && item.status === 'CONNECTED'),
   gscPropertyId: site.integrations.find((item) => item.provider === 'GSC')?.propertyId,
@@ -311,6 +313,11 @@ export class ApiService {
   public async authorizeWordPress(siteId: string) {
     const { organizationId } = await this.resolveWorkspace();
     return (await productionApi.post<{ authorizationUrl: string; expiresInSeconds: number }>(`/organizations/${organizationId}/sites/${siteId}/wordpress/authorize`, {})).data;
+  }
+
+  public async recheckWordPressCompatibility(siteId: string) {
+    const { organizationId } = await this.resolveWorkspace();
+    return (await productionApi.post(`/organizations/${organizationId}/sites/${siteId}/wordpress/recheck`, {})).data;
   }
 
   public async authorizeGsc(siteId: string, propertyId: string) {

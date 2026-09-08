@@ -378,6 +378,8 @@ export interface WordPressSite {
   wpUsername?: string;
   wpAppPassword?: string;
   pluginInstalled: boolean;
+  wordpressCompatibilityMode?: 'RECHECK_REQUIRED' | 'FULL_AUTO' | 'SAFE_AUTO' | 'ANALYSIS_ONLY' | 'BLOCKED';
+  wordpressCompatibilityCheckedAt?: string;
   whitelistedCategories: string[];
   healthDiagnostics?: SiteHealthDiagnostics;
   gscConnected: boolean;

@@ -18,7 +18,8 @@ import {
   PaymentStatus,
   Prisma,
   PublishAttemptStatus,
-  SiteConnectionStatus
+  SiteConnectionStatus,
+  WordPressRemoteMutationState
 } from '@prisma/client';
 import { Job, Worker } from 'bullmq';
 import * as Sentry from '@sentry/node';
@@ -36,7 +37,8 @@ import { capturePublicSource, type CapturedSource } from './sourceFetcher';
 import { assessSourceOriginality, deterministicActionQualityGate, insertContextualInternalLinks, selectRelevantInternalLinks } from './seoPipeline';
 import { resolveSeoMarket } from './seoMarket';
 import type { SeoMarket } from './seoMarket';
-import { wordPressService, type WordPressEditableSnapshot, type WordPressSiteContext } from './wordpress';
+import { assertSafeWordPressMutation, wordPressService, wordpressCompatibilityAllows, type WordPressEditableSnapshot, type WordPressSiteContext } from './wordpress';
+import { persistWordPressCompatibility, scanWordPressCompatibility } from './wordpressCompatibility';
 import { applyObservedActionMultiplier, contentCoverageScore, findCannibalizationMatch, scoreKeywordCandidate } from './growthDiscovery';
 import { actionMeasurementWindow, aggregateTargetGsc, evaluateGrowthOutcome } from './growthMeasurement';
 import { persistSiteSnapshot } from './siteSnapshotService';
@@ -246,7 +248,10 @@ const restorePersistedUnderstanding = async (run: {
     contentChecksum: page.contentChecksum,
     wordCount: page.wordCount,
     internalLinks: storedLinks(page.internalLinks),
-    seoMetadata: recordValue(page.seoMetadata)
+    seoMetadata: recordValue(page.seoMetadata),
+    editorKind: page.editorKind,
+    structureChecksum: page.structureChecksum,
+    actionCapabilities: recordValue(page.actionCapabilities) as unknown as import('./wordpress').WordPressActionCapabilities
   }));
   const targetContext: WordPressSiteContext = {
     normalizedUrl: targetSource.normalizedUrl,
@@ -303,6 +308,23 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
   if (run.draftId) return run.id;
   if (run.site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !run.site.wordpressCredentials || !run.site.wordpressVerifiedAt) {
     throw new ValidationError('WordPress 连接未通过验证，无法执行真实站点分析');
+  }
+  const compatibilityScan = await scanWordPressCompatibility({ domain: run.site.domain, encryptedCredentials: run.site.wordpressCredentials });
+  const compatibilityProfile = await workerPrisma.$transaction((tx) => persistWordPressCompatibility(tx, {
+    organizationId: run!.organizationId,
+    siteId: run!.siteId,
+    scan: compatibilityScan
+  }), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  if (compatibilityScan.mode === 'BLOCKED') {
+    const reason = compatibilityScan.blockReasons.join('；') || 'WordPress 兼容检查未通过';
+    await workerPrisma.$transaction(async (tx) => {
+      await billingService.releaseCreditHold(tx, jobRunId);
+      await tx.growthRunStage.updateMany({ where: { runId: run!.id }, data: { status: GrowthRunStageStatus.BLOCKED, summary: reason, errorCode: 'WORDPRESS_COMPATIBILITY_BLOCKED', errorMessage: reason, finishedAt: new Date() } });
+      await tx.growthRun.update({ where: { id: run!.id }, data: { status: GrowthRunStatus.BLOCKED, errorCode: 'WORDPRESS_COMPATIBILITY_BLOCKED', errorMessage: reason, finishedAt: new Date() } });
+      await tx.growthProgram.update({ where: { id: run!.programId }, data: { lastError: reason } });
+      await tx.auditEvent.create({ data: { organizationId: run!.organizationId, action: 'WORDPRESS_COMPATIBILITY_BLOCKED', targetType: 'site', targetId: run!.siteId, metadata: { compatibilityProfileId: compatibilityProfile.id, reasons: compatibilityScan.blockReasons } } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return run.id;
   }
 
   const latestGscSnapshot = await workerPrisma.dataSnapshot.findFirst({
@@ -478,9 +500,17 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
     : undefined;
   const cannibalized = gscTargetPage || selectedCandidate?.target?.page || fallbackPage;
   const relevantInternalLinks = selectRelevantInternalLinks(keyword, cannibalized?.title || keyword, targetContext.internalLinks.filter(({ url }) => url !== cannibalized?.url));
-  const targetSnapshot = cannibalized
-    ? await wordPressService.inspectTarget({ domain: run.site.domain, encrypted: run.site.wordpressCredentials, targetUrl: cannibalized.url, resourceType: cannibalized.resourceType === 'posts' || cannibalized.resourceType === 'pages' ? cannibalized.resourceType : undefined })
+  const mutableCoreTarget = cannibalized && (cannibalized.resourceType === 'posts' || cannibalized.resourceType === 'pages')
+    ? { ...cannibalized, resourceType: cannibalized.resourceType as 'posts' | 'pages' }
     : undefined;
+  const targetSnapshot = mutableCoreTarget
+    ? await wordPressService.inspectTarget({ domain: run.site.domain, encrypted: run.site.wordpressCredentials, targetUrl: mutableCoreTarget.url, resourceType: mutableCoreTarget.resourceType })
+    : undefined;
+  const compatibilityTarget = targetSnapshot || (cannibalized ? {
+    resourceType: cannibalized.resourceType,
+    editorKind: cannibalized.editorKind,
+    content: cannibalized.content
+  } : undefined);
   if (!opportunity) {
     if (!selectedCandidate) throw new Error('增长机会选择结果丢失');
     const metrics = selectedCandidate.metrics;
@@ -613,11 +643,16 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
         : latestGscSnapshot;
     const selection = selectGrowthAction({
       robotsBlocksAll: health.robots.blocksAll,
-      target: targetSnapshot ? { contentLength: targetSnapshot.contentLength, modifiedAt: targetSnapshot.modifiedAt } : undefined,
+      target: targetSnapshot
+        ? { contentLength: targetSnapshot.contentLength, modifiedAt: targetSnapshot.modifiedAt }
+        : cannibalized
+          ? { contentLength: Buffer.byteLength(cannibalized.content, 'utf8'), modifiedAt: cannibalized.modifiedAt }
+          : undefined,
       targetUrl: cannibalized?.url,
       gscRows: readGscRows(gscSnapshot?.payload),
       relevantInternalLinkCount: relevantInternalLinks.length,
-      contentCoverage: cannibalized ? contentCoverageScore(keyword, cannibalized) : undefined
+      contentCoverage: cannibalized ? contentCoverageScore(keyword, cannibalized) : undefined,
+      supportsAction: (candidate) => wordpressCompatibilityAllows(compatibilityScan, candidate, compatibilityTarget)
     });
     const actionType = selection.type;
     if (cannibalized) {
@@ -686,6 +721,9 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
         reversible: true,
         expectedValueMicros: learnedExpectedValue,
         plan: { action: actionType, keyword, targetUrl: cannibalized?.url || null, source: 'DETERMINISTIC_POLICY_V4', selectedBecause: selection.reason, mutatesWordPress: selection.mutatesWordPress, observationWindowsDays: [14, 28, 56], opportunityScoreVersion: opportunity!.formulaVersion },
+        wordpressCompatibilityProfileId: compatibilityProfile.id,
+        remoteMutationState: actionType === GrowthActionType.DIAGNOSE_ONLY ? undefined : WordPressRemoteMutationState.PREPARED,
+        fallbackReason: selection.fallbackReason,
         cooldownUntil: cannibalized ? new Date(Date.now() + 56 * day) : undefined
       } });
       await tx.actionEvidence.createMany({ data: [
@@ -699,7 +737,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
         summary: `已选择最小有效动作：${actionType}。${selection.reason}`,
         processedCount: candidateOpportunities.length,
         totalCount: candidateOpportunities.length,
-        evidence: [{ type: 'ACTION_DECISION', actionId: created.id, action: actionType, autonomy: created.autonomyDecision, reversible: true, candidateCount: candidateOpportunities.length, learnedExpectedValueMicros: learnedExpectedValue.toString() }]
+        evidence: [{ type: 'ACTION_DECISION', actionId: created.id, action: actionType, autonomy: created.autonomyDecision, reversible: true, candidateCount: candidateOpportunities.length, learnedExpectedValueMicros: learnedExpectedValue.toString(), compatibilityProfileId: compatibilityProfile.id, fallbackReason: selection.fallbackReason || null }]
       });
       return created;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -754,7 +792,10 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
     };
   } else if (action.type === GrowthActionType.ADD_CONTENT_SECTION) {
     const section = await contentAi.generateSection({ keyword, language: run.site.language, currentTitle: beforeSnapshot!.title, currentHtml: beforeSnapshot!.content, seoSnapshot: opportunity.snapshot.payload, knowledge: knowledgeInput, brief });
-    const html = `${beforeSnapshot!.content}${section.html}`;
+    const addition = beforeSnapshot!.editorKind === 'GUTENBERG'
+      ? `\n<!-- wp:html -->\n${section.html}\n<!-- /wp:html -->`
+      : section.html;
+    const html = `${beforeSnapshot!.content}${addition}`;
     const originality = externalSource ? assessSourceOriginality(section.html, externalSource.content) : undefined;
     generated = {
       title: beforeSnapshot!.title,
@@ -799,6 +840,14 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       qualityReport: { ...deterministicActionQualityGate({ actionType: 'CREATE_CONTENT', title: article.title, html: linked.html, originality, siteDuplication, requiredTopics: brief.requiredTopics, declaredCoveredTopics: article.coverageTopics, claimSources: article.claimSources, allowedSourceTitles, forbiddenClaims: brief.forbiddenClaims }), internalLinks: { inserted: linked.inserted.length, items: linked.inserted }, brief, claimSources: article.claimSources }
     };
   }
+  const plannedChangedFields = beforeSnapshot
+    ? assertSafeWordPressMutation({
+      actionType: action.type,
+      before: beforeSnapshot,
+      afterTitle: generated.title,
+      afterContent: generated.html
+    })
+    : ['title', 'slug', 'content', 'status'];
   await workerPrisma.$transaction(async (tx) => {
     // Read the global policy again immediately before creating the delivery so a
     // platform administrator can safely turn review on while a run is active.
@@ -830,7 +879,12 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
         title: beforeSnapshot.title,
         content: beforeSnapshot.content,
         contentChecksum: beforeSnapshot.contentChecksum,
-        remoteModifiedAt: wordPressDate(beforeSnapshot.modifiedAt)
+        remoteModifiedAt: wordPressDate(beforeSnapshot.modifiedAt),
+        payload: beforeSnapshot as unknown as Prisma.InputJsonValue,
+        changedFields: plannedChangedFields,
+        structureChecksum: beforeSnapshot.structureChecksum,
+        restSchemaFingerprint: compatibilityScan.restFingerprint,
+        publicVerification: {}
       } });
     }
     await tx.actionEvidence.createMany({ data: [
@@ -880,6 +934,7 @@ const processWordPressPublish = async (jobRunId: string): Promise<string> => {
   const automaticRequested = payload.automated === true;
   const manualConfirmationRequired = await requiresManualConfirmation();
   if (!action || !draft || !action.site.wordpressCredentials) throw new Error('草稿或 WordPress 发布门禁不可用');
+  if (action.type === GrowthActionType.DIAGNOSE_ONLY) throw new Error('只读诊断动作不得进入 WordPress 发布队列');
   if (draft.status === DraftStatus.PUBLISHED && draft.remotePostId && draft.publishedUrl) return draft.id;
   if (draft.status !== DraftStatus.PUBLISHING) throw new Error('草稿不处于可发布状态');
   if (!approved && automaticRequested && manualConfirmationRequired) {
@@ -895,24 +950,57 @@ const processWordPressPublish = async (jobRunId: string): Promise<string> => {
   }
   const automatic = automaticRequested && !manualConfirmationRequired;
   if (!approved && !automatic) throw new Error('草稿尚未通过人工审批');
+  const compatibilityScan = await scanWordPressCompatibility({ domain: action.site.domain, encryptedCredentials: action.site.wordpressCredentials });
+  const compatibilityProfile = await workerPrisma.$transaction((tx) => persistWordPressCompatibility(tx, {
+    organizationId: job.organizationId,
+    siteId: action.siteId,
+    scan: compatibilityScan
+  }), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  const originalSnapshot = action.beforeSnapshot as unknown as WordPressEditableSnapshot | null;
+  const actionCompatibility = wordpressCompatibilityAllows(compatibilityScan, action.type, originalSnapshot || undefined);
+  if (!actionCompatibility.supported || compatibilityScan.mode === 'BLOCKED') {
+    throw new ValidationError(`WordPress 写入前兼容能力已变化：${actionCompatibility.reason}`);
+  }
   const leaseToken = await acquireSiteMutationLease({ organizationId: job.organizationId, siteId: action.siteId, runId: action.runId, actionId: action.id });
+  let remoteCommitted = false;
   try {
-    let published: { postId: string; url: string; snapshot?: WordPressEditableSnapshot };
+    let published;
     if (action.type === GrowthActionType.CREATE_CONTENT) {
       published = await wordPressService.publish({ domain: action.site.domain, encrypted: action.site.wordpressCredentials, title: draft.title, slug: draft.slug, html: draft.html, deliveryId: draft.id });
-      published.snapshot = await wordPressService.inspectTarget({ domain: action.site.domain, encrypted: action.site.wordpressCredentials, targetUrl: published.url, resourceType: 'posts' });
     } else {
-      const snapshot = action.beforeSnapshot as unknown as WordPressEditableSnapshot | null;
+      const snapshot = originalSnapshot;
       if (!snapshot?.postId || !snapshot.resourceType || !snapshot.content) throw new Error('更新动作缺少可恢复的 WordPress 原始版本');
-      published = await wordPressService.update({ domain: action.site.domain, encrypted: action.site.wordpressCredentials, snapshot, title: draft.title, html: draft.html, deliveryId: draft.id });
+      published = await wordPressService.update({
+        domain: action.site.domain,
+        encrypted: action.site.wordpressCredentials,
+        snapshot,
+        title: draft.title,
+        html: draft.html,
+        deliveryId: draft.id,
+        actionType: action.type as Exclude<import('./wordpress').WordPressGrowthAction, 'CREATE_CONTENT' | 'DIAGNOSE_ONLY'>,
+        capability: compatibilityScan.actionCapabilities[action.type]
+      });
     }
-    if (!published.snapshot) throw new Error('WordPress 写入完成后未能读取真实页面版本');
+    remoteCommitted = true;
+    const committedAt = new Date();
+    await workerPrisma.growthAction.update({
+      where: { id: action.id },
+      data: {
+        targetUrl: published.url,
+        executedAt: committedAt,
+        afterSnapshot: published.snapshot as unknown as Prisma.InputJsonValue,
+        wordpressCompatibilityProfileId: compatibilityProfile.id,
+        remoteMutationState: WordPressRemoteMutationState.COMMITTED
+      }
+    });
+    const publiclyVerified = published.verification.reachable && published.verification.mutationMatches === true;
+    const remoteMutationState = publiclyVerified ? WordPressRemoteMutationState.VERIFIED : WordPressRemoteMutationState.VISIBILITY_PENDING;
     await workerPrisma.$transaction(async (tx) => {
     const now = new Date();
     const gscConnection = await tx.integrationConnection.findFirst({ where: { organizationId: job.organizationId, siteId: action.siteId, provider: 'GSC', status: SiteConnectionStatus.CONNECTED } });
     await tx.contentDraft.update({ where: { id: draft.id }, data: { status: DraftStatus.PUBLISHED, remotePostId: published.postId, publishedUrl: published.url } });
     await tx.publishAttempt.updateMany({ where: { jobRunId }, data: { status: PublishAttemptStatus.SUCCEEDED, remotePostId: published.postId, remoteUrl: published.url, finishedAt: now } });
-    await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.OBSERVING, targetUrl: published.url, executedAt: now, verifiedAt: now, afterSnapshot: published.snapshot as unknown as Prisma.InputJsonValue, observationStartsAt: now, observeUntil: new Date(now.getTime() + 56 * day) } });
+    await tx.growthAction.update({ where: { id: action.id }, data: { status: publiclyVerified ? GrowthActionStatus.OBSERVING : GrowthActionStatus.VERIFYING, targetUrl: published.url, executedAt: now, verifiedAt: publiclyVerified ? now : null, afterSnapshot: published.snapshot as unknown as Prisma.InputJsonValue, observationStartsAt: now, observeUntil: new Date(now.getTime() + 56 * day), wordpressCompatibilityProfileId: compatibilityProfile.id, remoteMutationState } });
     await tx.pageVersion.create({ data: {
       organizationId: job.organizationId,
       siteId: action.siteId,
@@ -924,10 +1012,16 @@ const processWordPressPublish = async (jobRunId: string): Promise<string> => {
       title: published.snapshot.title,
       content: published.snapshot.content,
       contentChecksum: published.snapshot.contentChecksum,
-      remoteModifiedAt: wordPressDate(published.snapshot.modifiedAt)
+      remoteModifiedAt: wordPressDate(published.snapshot.modifiedAt),
+      payload: published.snapshot as unknown as Prisma.InputJsonValue,
+      changedFields: published.changedFields,
+      structureChecksum: published.snapshot.structureChecksum,
+      restSchemaFingerprint: compatibilityScan.restFingerprint,
+      remoteRevisionId: published.remoteRevisionId,
+      publicVerification: published.verification as unknown as Prisma.InputJsonValue
     } });
     await tx.growthRun.update({ where: { id: action.runId }, data: { status: GrowthRunStatus.DELIVERED, currentStage: GrowthRunStageCode.LEARN, targetUrl: published.url, deliveredAt: now, finishedAt: now, delivery: { draftId: draft.id, actionId: action.id, publishedUrl: published.url, remotePostId: published.postId, deliveredAt: now.toISOString() } } });
-    await tx.growthRunStage.update({ where: { runId_stage: { runId: action.runId, stage: GrowthRunStageCode.LEARN } }, data: { status: GrowthRunStageStatus.RUNNING, startedAt: now, summary: gscConnection ? '已交付；等待 14/28/56 天真实 GSC 观察窗口。' : '已交付；未连接 GSC，仅验证页面可访问性与 Sitemap 发现线索。', evidence: [{ type: 'WORDPRESS_DELIVERY', url: published.url, deliveredAt: now.toISOString() }] } });
+    await tx.growthRunStage.update({ where: { runId_stage: { runId: action.runId, stage: GrowthRunStageCode.LEARN } }, data: { status: GrowthRunStageStatus.RUNNING, startedAt: now, summary: publiclyVerified ? (gscConnection ? '已交付；等待 14/28/56 天真实 GSC 观察窗口。' : '已交付；未连接 GSC，仅验证页面可访问性与 Sitemap 发现线索。') : 'WordPress 已提交并通过 REST 回读，公开页面仍受缓存影响，正在延迟验证。', evidence: [{ type: 'WORDPRESS_DELIVERY', url: published.url, deliveredAt: now.toISOString(), compatibilityProfileId: compatibilityProfile.id, remoteMutationState, publicVerification: published.verification }] } });
     await tx.growthProgram.update({ where: { id: action.run.programId }, data: { status: action.run.program.mode === GrowthProgramMode.ONCE ? GrowthProgramStatus.COMPLETED : GrowthProgramStatus.ACTIVE, deliveredRunCount: { increment: 1 }, lastRunAt: now, lastError: null } });
     await jobService.create(tx, { organizationId: job.organizationId, type: JobType.INDEXING_MONITOR, idempotencyKey: `growth-indexing:${action.id}:1`, payload: { draftId: draft.id, growthRunId: action.runId, actionId: action.id, observationNumber: 1 }, availableAt: new Date(now.getTime() + 60 * 60_000) });
     if (gscConnection) {
@@ -935,9 +1029,18 @@ const processWordPressPublish = async (jobRunId: string): Promise<string> => {
         await jobService.create(tx, { organizationId: job.organizationId, type: JobType.GROWTH_MEASURE, idempotencyKey: `growth-measure:${action.id}:${windowDays}`, payload: { growthRunId: action.runId, actionId: action.id, windowDays }, availableAt: actionMeasurementWindow(now, windowDays).readyAt });
       }
     }
-    await tx.auditEvent.create({ data: { organizationId: job.organizationId, action: 'GROWTH_ACTION_PUBLISHED', targetType: 'growth_action', targetId: action.id, metadata: { ...published, type: action.type, gscObservationScheduled: Boolean(gscConnection) } } });
+    await tx.auditEvent.create({ data: { organizationId: job.organizationId, action: 'GROWTH_ACTION_PUBLISHED', targetType: 'growth_action', targetId: action.id, metadata: { postId: published.postId, url: published.url, changedFields: published.changedFields, publicVerification: published.verification, remoteMutationState, compatibilityProfileId: compatibilityProfile.id, type: action.type, gscObservationScheduled: Boolean(gscConnection) } } });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     return draft.id;
+  } catch (error) {
+    await workerPrisma.growthAction.updateMany({ where: { id: action.id }, data: {
+      remoteMutationState: remoteCommitted
+        ? WordPressRemoteMutationState.COMMITTED
+        : error instanceof ConflictError
+          ? WordPressRemoteMutationState.CONFLICTED
+          : WordPressRemoteMutationState.FAILED
+    } });
+    throw error;
   } finally {
     await releaseSiteMutationLease(action.siteId, leaseToken);
   }
@@ -947,30 +1050,68 @@ const processIndexingMonitor = async (jobRunId: string): Promise<string> => {
   const job = await workerPrisma.jobRun.findUniqueOrThrow({ where: { id: jobRunId } });
   const payload = job.payload as { draftId?: string; growthRunId?: string; actionId?: string; observationNumber?: number };
   if (!payload.draftId || !payload.growthRunId || !payload.actionId) throw new Error('交付观察参数不完整');
-  const draft = await workerPrisma.contentDraft.findFirst({ where: { id: payload.draftId, organizationId: job.organizationId }, include: { site: true } });
+  const [draft, action] = await Promise.all([
+    workerPrisma.contentDraft.findFirst({ where: { id: payload.draftId, organizationId: job.organizationId }, include: { site: true } }),
+    workerPrisma.growthAction.findFirst({ where: { id: payload.actionId, organizationId: job.organizationId } })
+  ]);
   if (!draft?.publishedUrl) throw new Error('交付观察缺少已发布 URL');
-  const page = await fetch(draft.publishedUrl, { redirect: 'manual', signal: AbortSignal.timeout(12_000), headers: { accept: 'text/html' } });
-  if (!page.ok) throw new Error(`已发布页面不可访问 (${page.status})`);
-  const origin = await resolvePublicHttpsOrigin(draft.site.domain);
+  if (!action) throw new Error('交付观察缺少增长动作');
+  let publicVerification: import('./wordpress').WordPressPublicVerification;
+  try {
+    publicVerification = await wordPressService.verifyPublic({
+      domain: draft.site.domain,
+      url: draft.publishedUrl,
+      actionType: action.type,
+      ...(action.type === GrowthActionType.UPDATE_TITLE || action.type === GrowthActionType.CREATE_CONTENT ? { expectedTitle: draft.title } : {}),
+      ...(action.type !== GrowthActionType.UPDATE_TITLE ? {
+        deliveryId: draft.id,
+        beforeContent: (action.beforeSnapshot as { content?: string } | null)?.content,
+        afterContent: draft.html
+      } : {})
+    });
+  } catch {
+    publicVerification = {
+      checkedAt: new Date().toISOString(),
+      reachable: false,
+      status: 0,
+      mutationMatches: false
+    };
+  }
+  const publiclyVerified = publicVerification.reachable && publicVerification.mutationMatches === true;
   let sitemapStatus: DataStatus = DataStatus.UNAVAILABLE;
   let sitemapPresent = false;
   let sitemapUrl: string | undefined;
-  for (const path of ['/wp-sitemap.xml', '/sitemap.xml']) {
-    const response = await fetch(`${origin}${path}`, { redirect: 'manual', signal: AbortSignal.timeout(12_000), headers: { accept: 'application/xml,text/xml' } });
-    if (response.ok) {
-      sitemapUrl = `${origin}${path}`;
-      sitemapPresent = (await response.text()).includes(draft.publishedUrl);
-      sitemapStatus = DataStatus.LIVE;
-      break;
+  try {
+    const origin = await resolvePublicHttpsOrigin(draft.site.domain);
+    for (const path of ['/wp-sitemap.xml', '/sitemap.xml']) {
+      try {
+        const response = await fetch(`${origin}${path}`, { redirect: 'manual', signal: AbortSignal.timeout(12_000), headers: { accept: 'application/xml,text/xml' } });
+        if (response.ok) {
+          sitemapUrl = `${origin}${path}`;
+          sitemapPresent = (await response.text()).includes(draft.publishedUrl);
+          sitemapStatus = DataStatus.LIVE;
+          break;
+        }
+      } catch {
+        // Temporary network failures remain UNAVAILABLE and are retried by the next observation.
+      }
     }
+  } catch {
+    // DNS or SSRF policy failures are recorded as unavailable rather than causing a duplicate write retry.
   }
   const observationNumber = Math.max(1, Number(payload.observationNumber) || 1);
   return workerPrisma.$transaction(async (tx) => {
-    const observation = await tx.indexingObservation.create({ data: { organizationId: job.organizationId, siteId: draft.siteId, draftId: draft.id, url: draft.publishedUrl!, source: 'SITEMAP', indexed: null, status: sitemapStatus, observedAt: new Date(), payload: { pageStatus: page.status, sitemapUrl: sitemapUrl || null, sitemapPresent, observationNumber, note: 'Sitemap presence is a discovery signal, never proof of Google indexing' } } });
+    const observation = await tx.indexingObservation.create({ data: { organizationId: job.organizationId, siteId: draft.siteId, draftId: draft.id, url: draft.publishedUrl!, source: 'SITEMAP', indexed: null, status: sitemapStatus, observedAt: new Date(), payload: { pageStatus: publicVerification.status, sitemapUrl: sitemapUrl || null, sitemapPresent, observationNumber, publicVerification, note: 'Sitemap presence is a discovery signal, never proof of Google indexing' } } });
     const gsc = await tx.integrationConnection.findFirst({ where: { organizationId: job.organizationId, siteId: draft.siteId, provider: 'GSC', status: SiteConnectionStatus.CONNECTED } });
     const finalLeadingObservation = observationNumber >= 7;
-    await tx.growthRun.update({ where: { id: payload.growthRunId! }, data: { observation: { lastIndexingObservationId: observation.id, pageAccessible: true, sitemapPresent, observationNumber, gscConnected: Boolean(gsc), trafficVerified: false } } });
-    if (!gsc && finalLeadingObservation) {
+    await tx.growthRun.update({ where: { id: payload.growthRunId! }, data: { observation: { lastIndexingObservationId: observation.id, pageAccessible: publicVerification.reachable, sitemapPresent, observationNumber, gscConnected: Boolean(gsc), trafficVerified: false, publicMutationVerified: publiclyVerified } } });
+    if (publiclyVerified && action.remoteMutationState === WordPressRemoteMutationState.VISIBILITY_PENDING) {
+      await tx.growthAction.update({ where: { id: payload.actionId! }, data: { status: GrowthActionStatus.OBSERVING, remoteMutationState: WordPressRemoteMutationState.VERIFIED, verifiedAt: new Date() } });
+    }
+    if (!publiclyVerified && finalLeadingObservation) {
+      await tx.growthAction.update({ where: { id: payload.actionId! }, data: { status: GrowthActionStatus.FAILED, remoteMutationState: WordPressRemoteMutationState.FAILED } });
+      await tx.growthRunStage.update({ where: { runId_stage: { runId: payload.growthRunId!, stage: GrowthRunStageCode.LEARN } }, data: { status: GrowthRunStageStatus.FAILED, summary: 'WordPress REST 写入已提交，但公开页面在延迟验证窗口内始终未反映预期结果。', errorCode: 'WORDPRESS_PUBLIC_VERIFICATION_FAILED', finishedAt: new Date(), evidence: [{ type: 'WORDPRESS_PUBLIC_VERIFICATION', publicVerification }] } });
+    } else if (!gsc && finalLeadingObservation) {
       await tx.growthRunStage.update({ where: { runId_stage: { runId: payload.growthRunId!, stage: GrowthRunStageCode.LEARN } }, data: { status: GrowthRunStageStatus.COMPLETED, summary: '已验证页面持续可访问及 Sitemap 发现线索；未连接 GSC，不宣称流量增长或已收录。', processedCount: observationNumber, totalCount: observationNumber, finishedAt: new Date(), evidence: [{ type: 'LEADING_INDICATORS', pageAccessible: true, sitemapPresent, trafficVerified: false }] } });
       await tx.growthAction.update({ where: { id: payload.actionId! }, data: { status: GrowthActionStatus.SUCCEEDED, verifiedAt: new Date() } });
       const sample = await tx.measurementSample.findUnique({ where: { actionId_source_windowDays: { actionId: payload.actionId!, source: MeasurementSource.LEADING_INDICATORS, windowDays: 7 } } });
@@ -1061,36 +1202,59 @@ const processWordPressRollback = async (jobRunId: string): Promise<string> => {
   const payload = job.payload as { draftId?: string; actionId?: string };
   if (!payload.draftId) throw new Error('回滚任务缺少 draftId');
   const draft = await workerPrisma.contentDraft.findFirst({ where: { id: payload.draftId, organizationId: job.organizationId }, include: { site: true } });
-  const action = payload.actionId ? await workerPrisma.growthAction.findFirst({ where: { id: payload.actionId, organizationId: job.organizationId }, include: { pageVersions: true } }) : null;
+  const action = payload.actionId ? await workerPrisma.growthAction.findFirst({ where: { id: payload.actionId, organizationId: job.organizationId }, include: { pageVersions: true, wordpressCompatibilityProfile: true } }) : null;
   if (!draft?.site.wordpressCredentials || !draft.remotePostId) throw new Error('没有可回滚的 WordPress 交付');
   if (draft.status === DraftStatus.ROLLED_BACK) return draft.id;
   if (!action) throw new Error('回滚任务缺少增长动作');
   const leaseToken = await acquireSiteMutationLease({ organizationId: job.organizationId, siteId: action.siteId, runId: action.runId, actionId: action.id });
+  let rollbackSourceVersion: typeof action.pageVersions[number] | undefined;
   try {
     let restored: WordPressEditableSnapshot | undefined;
     if (action.type !== GrowthActionType.CREATE_CONTENT) {
       const snapshot = action.beforeSnapshot as unknown as WordPressEditableSnapshot | null;
       const afterVersion = action.pageVersions.find(({ kind }) => kind === PageVersionKind.AFTER);
+      const beforeVersion = action.pageVersions.find(({ kind }) => kind === PageVersionKind.BEFORE);
+      rollbackSourceVersion = beforeVersion;
       const expectedCurrent = action.afterSnapshot as unknown as WordPressEditableSnapshot | null;
-      if (!snapshot?.postId || !snapshot.content || !afterVersion || !expectedCurrent?.contentChecksum) throw new Error('更新动作缺少原始或交付后 WordPress 版本');
+      if (!snapshot?.postId || !snapshot.content || !afterVersion || !beforeVersion || !expectedCurrent?.contentChecksum) throw new Error('更新动作缺少原始或交付后 WordPress 版本');
+      const capability = ((action.wordpressCompatibilityProfile?.actionCapabilities || {}) as Record<string, import('./wordpress').WordPressActionCapability>)[action.type];
       const current = await wordPressService.inspectTarget({ domain: draft.site.domain, encrypted: draft.site.wordpressCredentials, targetUrl: snapshot.url, resourceType: snapshot.resourceType });
-      if (current.contentChecksum === snapshot.contentChecksum && current.title === snapshot.title) {
+      const alreadyRestored = current.contentChecksum === snapshot.contentChecksum
+        && current.title === snapshot.title
+        && (capability?.strategy !== 'AIOSEO_REST' || JSON.stringify(current.seoMetadata.aioseoMetaData || null) === JSON.stringify(snapshot.seoMetadata.aioseoMetaData || null));
+      if (alreadyRestored) {
         restored = current;
       } else {
         restored = await wordPressService.restore({
           domain: draft.site.domain,
           encrypted: draft.site.wordpressCredentials,
           snapshot,
-          expectedCurrent
+          expectedCurrent,
+          changedFields: Array.isArray(beforeVersion.changedFields) ? beforeVersion.changedFields.map(String) : [],
+          capability
         });
       }
     } else {
+      const expectedCurrent = action.afterSnapshot as unknown as WordPressEditableSnapshot | null;
+      if (!expectedCurrent?.url || !expectedCurrent.contentChecksum) throw new Error('新建内容缺少可验证的交付后 WordPress 版本');
+      const current = await wordPressService.inspectTarget({
+        domain: draft.site.domain,
+        encrypted: draft.site.wordpressCredentials,
+        targetUrl: expectedCurrent.url,
+        resourceType: 'posts'
+      });
+      if (current.postId !== draft.remotePostId
+        || current.modifiedAt !== expectedCurrent.modifiedAt
+        || current.contentChecksum !== expectedCurrent.contentChecksum
+        || current.title !== expectedCurrent.title) {
+        throw new ConflictError('WordPress 内容在交付后已被客户修改，自动回滚已停止以保护客户最新内容');
+      }
       await wordPressService.rollback({ domain: draft.site.domain, encrypted: draft.site.wordpressCredentials, postId: draft.remotePostId });
     }
     await workerPrisma.$transaction(async (tx) => {
       await tx.contentDraft.update({ where: { id: draft.id }, data: { status: DraftStatus.ROLLED_BACK } });
       await tx.publishAttempt.updateMany({ where: { draftId: draft.id, status: PublishAttemptStatus.SUCCEEDED }, data: { status: PublishAttemptStatus.ROLLED_BACK } });
-      await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.ROLLED_BACK, rolledBackAt: new Date() } });
+      await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.ROLLED_BACK, rolledBackAt: new Date(), remoteMutationState: WordPressRemoteMutationState.ROLLED_BACK } });
       if (restored && !action.pageVersions.some(({ kind }) => kind === PageVersionKind.ROLLBACK)) {
         await tx.pageVersion.create({ data: {
           organizationId: job.organizationId,
@@ -1103,12 +1267,22 @@ const processWordPressRollback = async (jobRunId: string): Promise<string> => {
           title: restored.title,
           content: restored.content,
           contentChecksum: restored.contentChecksum,
-          remoteModifiedAt: wordPressDate(restored.modifiedAt)
+          remoteModifiedAt: wordPressDate(restored.modifiedAt),
+          payload: restored as unknown as Prisma.InputJsonValue,
+          changedFields: Array.isArray(rollbackSourceVersion?.changedFields) ? rollbackSourceVersion.changedFields : [],
+          structureChecksum: restored.structureChecksum,
+          restSchemaFingerprint: rollbackSourceVersion?.restSchemaFingerprint,
+          publicVerification: {}
         } });
       }
       await tx.auditEvent.create({ data: { organizationId: job.organizationId, action: 'GROWTH_ACTION_ROLLED_BACK', targetType: 'content_draft', targetId: draft.id, metadata: { actionId: action.id, restoredPreviousVersion: action.type !== GrowthActionType.CREATE_CONTENT } } });
     });
     return draft.id;
+  } catch (error) {
+    await workerPrisma.growthAction.updateMany({ where: { id: action.id }, data: {
+      remoteMutationState: error instanceof ConflictError ? WordPressRemoteMutationState.CONFLICTED : WordPressRemoteMutationState.FAILED
+    } });
+    throw error;
   } finally {
     await releaseSiteMutationLease(action.siteId, leaseToken);
   }

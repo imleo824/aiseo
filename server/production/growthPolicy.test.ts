@@ -23,4 +23,29 @@ describe('unified growth policy', () => {
     expect(continuousCadenceDays(3)).toBe(7);
     expect(continuousCadenceDays(3, true)).toBe(3.5);
   });
+
+  it('chooses the next policy action when the preferred WordPress mutation is incompatible', () => {
+    const selected = selectGrowthAction({
+      robotsBlocksAll: false,
+      targetUrl: 'https://example.com/page',
+      target: { contentLength: 2_000 },
+      relevantInternalLinkCount: 2,
+      gscRows: [{ keys: ['crm', 'https://example.com/page'], clicks: 1, impressions: 200, ctr: 0.005, position: 9 }],
+      supportsAction: (action) => ({ supported: action !== GrowthActionType.UPDATE_TITLE, reason: 'SEO plugin is read-only' })
+    });
+    expect(selected.type).toBe(GrowthActionType.ADD_CONTENT_SECTION);
+    expect(selected.fallbackReason).toContain('UPDATE_TITLE');
+  });
+
+  it('returns a no-charge diagnosis when no compatible mutation exists', () => {
+    const selected = selectGrowthAction({
+      robotsBlocksAll: false,
+      targetUrl: 'https://example.com/page',
+      target: { contentLength: 2_000 },
+      relevantInternalLinkCount: 0,
+      supportsAction: () => ({ supported: false, reason: 'builder-controlled page' })
+    });
+    expect(selected).toMatchObject({ type: GrowthActionType.DIAGNOSE_ONLY, mutatesWordPress: false });
+    expect(selected.reason).toContain('没有可证明安全');
+  });
 });

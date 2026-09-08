@@ -179,7 +179,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             </div>
 
             <p className="text-[11px] leading-5 text-slate-600">
-              点击下方按钮后会跳转到您的 WordPress 站点。请在站点内批准授权，系统随后自动验证读取、创建、更新和发布权限；凭证不会显示在浏览器中。
+              点击下方按钮后会跳转到您的 WordPress 站点。批准后系统会自动识别版本、编辑器、插件公开能力及安全动作范围；凭证不会显示在浏览器中。
             </p>
           </div>
 

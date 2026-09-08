@@ -6,7 +6,8 @@ const page = (overrides: Partial<WordPressSitePage> = {}): WordPressSitePage => 
   wordpressId: '1', resourceType: 'posts', url: 'https://example.com/wordpress-seo', slug: 'wordpress-seo',
   status: 'publish', title: 'WordPress SEO Guide', excerpt: 'Practical WordPress SEO guidance',
   content: '<h2>WordPress SEO</h2><p>Technical search optimization and content guidance.</p>',
-  contentChecksum: 'a'.repeat(64), wordCount: 12, internalLinks: [], seoMetadata: {}, ...overrides
+  contentChecksum: 'a'.repeat(64), wordCount: 12, internalLinks: [], seoMetadata: {}, editorKind: 'CLASSIC',
+  structureChecksum: 'b'.repeat(64), actionCapabilities: {} as WordPressSitePage['actionCapabilities'], ...overrides
 });
 
 describe('site-wide growth discovery', () => {

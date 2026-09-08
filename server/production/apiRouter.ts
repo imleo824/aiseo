@@ -16,6 +16,7 @@ import { wordPressService } from './wordpress';
 import { gscComparisonWindow } from './gscData';
 import { growthProgramService } from './growthProgramService';
 import { parsePublishingConfirmationPolicy, PUBLISH_CONFIRMATION_SETTING_KEY } from './publishingPolicy';
+import { compatibilityProfileResponse, persistWordPressCompatibility, scanWordPressCompatibility } from './wordpressCompatibility';
 
 const roleRank: Record<OrganizationRole, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2, OWNER: 3 };
 const idSchema = z.string().uuid();
@@ -148,9 +149,11 @@ apiRouter.get('/integrations/wordpress/callback', asyncRoute(async (request, res
   });
   const encrypted = wordPressService.encrypt({ username, applicationPassword });
   const verified = await wordPressService.testConnection(site.domain, encrypted);
+  const compatibility = await scanWordPressCompatibility({ domain: site.domain, encryptedCredentials: encrypted });
   await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
     await tx.site.update({ where: { id: state.siteId }, data: { wordpressCredentials: encrypted, wordpressCredentialKeyVersion: currentEncryptionKeyVersion(), wordpressStatus: SiteConnectionStatus.CONNECTED, wordpressUser: verified.user, wordpressVerifiedAt: new Date() } });
-    await tx.auditEvent.create({ data: { organizationId: state.organizationId, actorId: state.profileId, action: 'WORDPRESS_AUTHORIZED', targetType: 'site', targetId: state.siteId, metadata: { user: verified.user, siteName: verified.siteName, authorization: 'APPLICATION_PASSWORD_FLOW' } } });
+    const profile = await persistWordPressCompatibility(tx, { organizationId: state.organizationId, siteId: state.siteId, scan: compatibility });
+    await tx.auditEvent.create({ data: { organizationId: state.organizationId, actorId: state.profileId, action: 'WORDPRESS_AUTHORIZED', targetType: 'site', targetId: state.siteId, metadata: { user: verified.user, siteName: verified.siteName, authorization: 'APPLICATION_PASSWORD_FLOW', compatibilityProfileId: profile.id, compatibilityMode: profile.mode } } });
   });
   response.redirect(`/?wordpress=connected&siteId=${encodeURIComponent(state.siteId)}`);
 }));
@@ -185,8 +188,9 @@ apiRouter.get('/me/export', asyncRoute(async (request, response) => {
   const data = await withRequestScope({ profileId }, async (tx) => {
     const memberships = await tx.organizationMember.findMany({ where: { profileId }, include: { organization: true } });
     const ids = memberships.map(({ organizationId: id }) => id);
-    const [sites, knowledgeSources, snapshots, siteSnapshots, opportunities, growthPrograms, growthRuns, growthActions, measurementSamples, drafts, ledger, payments, auditEvents] = await Promise.all([
-      tx.site.findMany({ where: { organizationId: { in: ids } }, select: { id: true, organizationId: true, name: true, domain: true, language: true, wordpressStatus: true, createdAt: true } }),
+    const [sites, wordpressCompatibilityProfiles, knowledgeSources, snapshots, siteSnapshots, opportunities, growthPrograms, growthRuns, growthActions, measurementSamples, drafts, ledger, payments, auditEvents] = await Promise.all([
+      tx.site.findMany({ where: { organizationId: { in: ids } }, select: { id: true, organizationId: true, name: true, domain: true, language: true, wordpressStatus: true, wordpressCompatibilityMode: true, wordpressCompatibilityCheckedAt: true, createdAt: true } }),
+      tx.wordPressCompatibilityProfile.findMany({ where: { organizationId: { in: ids } } }),
       tx.knowledgeSource.findMany({ where: { organizationId: { in: ids } } }),
       tx.dataSnapshot.findMany({ where: { organizationId: { in: ids } } }),
       tx.siteSnapshot.findMany({ where: { organizationId: { in: ids } }, include: { pages: true } }),
@@ -200,7 +204,7 @@ apiRouter.get('/me/export', asyncRoute(async (request, response) => {
       tx.paymentIntent.findMany({ where: { organizationId: { in: ids } } }),
       tx.auditEvent.findMany({ where: { organizationId: { in: ids } }, take: 10_000 })
     ]);
-    return { exportedAt: new Date().toISOString(), profile: request.authUser, organizations: memberships, sites, knowledgeSources, snapshots, siteSnapshots, opportunities, growthPrograms, growthRuns, growthActions, measurementSamples, drafts, ledger, payments, auditEvents };
+    return { exportedAt: new Date().toISOString(), profile: request.authUser, organizations: memberships, sites, wordpressCompatibilityProfiles, knowledgeSources, snapshots, siteSnapshots, opportunities, growthPrograms, growthRuns, growthActions, measurementSamples, drafts, ledger, payments, auditEvents };
   });
   response.setHeader('Content-Disposition', `attachment; filename="aiseo-export-${new Date().toISOString().slice(0, 10)}.json"`);
   sendData(response, data);
@@ -265,7 +269,7 @@ apiRouter.get('/organizations/:organizationId/sites', asyncRoute(async (request,
   const profileId = userId(request), orgId = organizationId(request);
   const sites = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    return tx.site.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' }, select: { id: true, name: true, domain: true, language: true, wordpressStatus: true, wordpressUser: true, wordpressVerifiedAt: true, createdAt: true, integrations: { select: { id: true, provider: true, propertyId: true, status: true, lastSyncedAt: true, lastErrorCode: true, lastErrorMessage: true } } } });
+    return tx.site.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' }, select: { id: true, name: true, domain: true, language: true, wordpressStatus: true, wordpressUser: true, wordpressVerifiedAt: true, wordpressCompatibilityMode: true, wordpressCompatibilityCheckedAt: true, createdAt: true, integrations: { select: { id: true, provider: true, propertyId: true, status: true, lastSyncedAt: true, lastErrorCode: true, lastErrorMessage: true } } } });
   });
   sendData(response, sites);
 }));
@@ -300,7 +304,7 @@ apiRouter.put('/organizations/:organizationId/sites/:siteId', asyncRoute(async (
       const existing = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } });
       if (!existing) throw new NotFoundError('站点不存在');
       const domainChanged = Boolean(domain && domain !== existing.domain);
-      const site = await tx.site.update({ where: { id: siteId }, data: { name: input.name, domain, language: input.language, ...(domainChanged ? { wordpressStatus: SiteConnectionStatus.VERIFYING, wordpressVerifiedAt: null } : {}) } });
+      const site = await tx.site.update({ where: { id: siteId }, data: { name: input.name, domain, language: input.language, ...(domainChanged ? { wordpressStatus: SiteConnectionStatus.VERIFYING, wordpressVerifiedAt: null, wordpressCompatibilityMode: 'RECHECK_REQUIRED', wordpressCompatibilityCheckedAt: null, latestWordpressCompatibilityProfileId: null } : {}) } });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_UPDATED', targetType: 'site', targetId: siteId, metadata: { fields: Object.keys(input), domainChanged } } });
       return { statusCode: 200, data: { site } };
     } });
@@ -314,9 +318,14 @@ apiRouter.delete('/organizations/:organizationId/sites/:siteId', asyncRoute(asyn
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.OWNER);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { siteId }, execute: async () => {
-      const site = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId }, include: { _count: { select: { drafts: true } } } });
+      const site = await tx.site.findFirst({
+        where: { id: siteId, organizationId: orgId },
+        include: { _count: { select: { drafts: true, wordpressCompatibilityProfiles: true } } }
+      });
       if (!site) throw new NotFoundError('站点不存在');
-      if (site._count.drafts > 0) throw new ConflictError('该站点已有内容与审计记录，不能直接删除；请通过账号数据删除流程处理');
+      if (site._count.drafts > 0 || site._count.wordpressCompatibilityProfiles > 0) {
+        throw new ConflictError('该站点已有内容或兼容审计记录，不能直接删除；请通过账号数据删除流程处理');
+      }
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_DELETED', targetType: 'site', targetId: siteId, metadata: { domain: site.domain, name: site.name } } });
       await tx.site.delete({ where: { id: siteId } });
       return { statusCode: 200, data: { deletedId: siteId } };
@@ -367,19 +376,67 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/test-connection', a
   });
   try {
     const result = await wordPressService.testConnection(site.domain, site.wordpressCredentials!);
+    const compatibility = await scanWordPressCompatibility({ domain: site.domain, encryptedCredentials: site.wordpressCredentials! });
     const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
       await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
       return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { siteId }, execute: async () => {
         await tx.site.update({ where: { id: siteId }, data: { wordpressStatus: SiteConnectionStatus.CONNECTED, wordpressUser: result.user, wordpressVerifiedAt: new Date() } });
-        await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'WORDPRESS_CONNECTION_VERIFIED', targetType: 'site', targetId: siteId, metadata: { user: result.user } } });
-        return { statusCode: 200, data: { connected: true, ...result } };
+        const profile = await persistWordPressCompatibility(tx, { organizationId: orgId, siteId, scan: compatibility });
+        await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'WORDPRESS_CONNECTION_VERIFIED', targetType: 'site', targetId: siteId, metadata: { user: result.user, compatibilityProfileId: profile.id, compatibilityMode: profile.mode } } });
+        return { statusCode: 200, data: { connected: true, user: result.user, siteName: result.siteName, compatibility: compatibilityProfileResponse(profile) } };
       } });
     });
     sendData(response, outcome.data, outcome.statusCode);
   } catch (error) {
-    await withRequestScope({ profileId, organizationId: orgId }, (tx) => tx.site.update({ where: { id: siteId }, data: { wordpressStatus: SiteConnectionStatus.FAILED, wordpressVerifiedAt: null } }).then(() => undefined));
+    const compatibility = await scanWordPressCompatibility({ domain: site.domain, encryptedCredentials: site.wordpressCredentials! });
+    await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+      await tx.site.update({ where: { id: siteId }, data: { wordpressStatus: SiteConnectionStatus.FAILED, wordpressVerifiedAt: null } });
+      await persistWordPressCompatibility(tx, { organizationId: orgId, siteId, scan: compatibility });
+    });
     throw error;
   }
+}));
+
+apiRouter.get('/organizations/:organizationId/sites/:siteId/wordpress/compatibility', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId);
+  const profile = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
+    const site = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId }, include: { latestWordpressCompatibilityProfile: true } });
+    if (!site) throw new NotFoundError('站点不存在');
+    if (!site.latestWordpressCompatibilityProfile) return { mode: site.wordpressCompatibilityMode, checkedAt: site.wordpressCompatibilityCheckedAt, profile: null };
+    return { mode: site.wordpressCompatibilityMode, checkedAt: site.wordpressCompatibilityCheckedAt, profile: compatibilityProfileResponse(site.latestWordpressCompatibilityProfile) };
+  });
+  sendData(response, profile);
+}));
+
+apiRouter.get('/organizations/:organizationId/sites/:siteId/wordpress/action-capabilities', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId);
+  const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
+    const site = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId }, include: { latestWordpressCompatibilityProfile: { select: { id: true, mode: true, actionCapabilities: true, blockReasons: true, checkedAt: true, expiresAt: true } } } });
+    if (!site) throw new NotFoundError('站点不存在');
+    return site.latestWordpressCompatibilityProfile || { mode: site.wordpressCompatibilityMode, actionCapabilities: {}, blockReasons: ['需要重新检测 WordPress 兼容能力'], checkedAt: null, expiresAt: null };
+  });
+  sendData(response, result);
+}));
+
+apiRouter.post('/organizations/:organizationId/sites/:siteId/wordpress/recheck', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request);
+  const site = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
+    const found = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } });
+    if (!found?.wordpressCredentials) throw new ValidationError('站点尚未完成 WordPress 官方授权');
+    return found;
+  });
+  const compatibility = await scanWordPressCompatibility({ domain: site.domain, encryptedCredentials: site.wordpressCredentials! });
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => executeIdempotent({
+    tx, organizationId: orgId, profileId, key, body: { siteId }, execute: async () => {
+      const profile = await persistWordPressCompatibility(tx, { organizationId: orgId, siteId, scan: compatibility });
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'WORDPRESS_COMPATIBILITY_RECHECKED', targetType: 'site', targetId: siteId, metadata: { compatibilityProfileId: profile.id, compatibilityMode: profile.mode } } });
+      return { statusCode: 200, data: compatibilityProfileResponse(profile) };
+    }
+  }));
+  sendData(response, outcome.data, outcome.statusCode);
 }));
 
 
@@ -503,7 +560,12 @@ apiRouter.get('/organizations/:organizationId/sites/:siteId/growth-status', asyn
   const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId);
   const status = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const site = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId }, select: { id: true } });
+    const site = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId }, select: {
+      id: true,
+      wordpressCompatibilityMode: true,
+      wordpressCompatibilityCheckedAt: true,
+      latestWordpressCompatibilityProfile: { select: { id: true, actionCapabilities: true, blockReasons: true, checkedAt: true, expiresAt: true } }
+    } });
     if (!site) throw new NotFoundError('站点不存在');
     const [program, run, gsc] = await Promise.all([
       tx.growthProgram.findFirst({ where: { organizationId: orgId, siteId }, orderBy: { updatedAt: 'desc' } }),
@@ -528,7 +590,17 @@ apiRouter.get('/organizations/:organizationId/sites/:siteId/growth-status', asyn
       action: activeAction,
       stages: run?.stages || [],
       blocker: run?.errorCode ? { code: run.errorCode, message: run.errorMessage } : null,
-      measurement: { gscConnected: Boolean(gsc), lastSyncedAt: gsc?.lastSyncedAt || null, trafficClaimAllowed: Boolean(gsc), targetUrl: activeAction?.targetUrl || run?.targetUrl || null }
+      measurement: { gscConnected: Boolean(gsc), lastSyncedAt: gsc?.lastSyncedAt || null, trafficClaimAllowed: Boolean(gsc), targetUrl: activeAction?.targetUrl || run?.targetUrl || null },
+      wordpressCompatibility: {
+        mode: site.wordpressCompatibilityMode,
+        profileId: site.latestWordpressCompatibilityProfile?.id || null,
+        supportedActions: Object.entries((site.latestWordpressCompatibilityProfile?.actionCapabilities || {}) as Record<string, { supported?: boolean }>).filter(([, value]) => value.supported).map(([key]) => key),
+        blockedActions: Object.entries((site.latestWordpressCompatibilityProfile?.actionCapabilities || {}) as Record<string, { supported?: boolean }>).filter(([, value]) => !value.supported).map(([key]) => key),
+        fallbackReason: activeAction?.fallbackReason || null,
+        blockReasons: site.latestWordpressCompatibilityProfile?.blockReasons || [],
+        lastCheckedAt: site.wordpressCompatibilityCheckedAt,
+        expiresAt: site.latestWordpressCompatibilityProfile?.expiresAt || null
+      }
     };
   });
   sendData(response, status);
