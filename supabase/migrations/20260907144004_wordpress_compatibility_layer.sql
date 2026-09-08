@@ -129,11 +129,18 @@ DECLARE
   referenced_profile_id uuid;
   referenced_site_id uuid;
 BEGIN
-  referenced_profile_id := CASE
-    WHEN TG_TABLE_NAME = 'sites' THEN NEW.latest_wordpress_compatibility_profile_id
-    ELSE NEW.wordpress_compatibility_profile_id
-  END;
-  referenced_site_id := CASE WHEN TG_TABLE_NAME = 'sites' THEN NEW.id ELSE NEW.site_id END;
+  -- NEW is a table-specific record. A CASE expression still resolves every
+  -- referenced field when PL/pgSQL prepares the statement, so referring to a
+  -- growth_actions-only column while this trigger runs for sites raises
+  -- "record NEW has no field". Keep the table-specific record access in
+  -- separate branches instead.
+  IF TG_TABLE_NAME = 'sites' THEN
+    referenced_profile_id := NEW.latest_wordpress_compatibility_profile_id;
+    referenced_site_id := NEW.id;
+  ELSE
+    referenced_profile_id := NEW.wordpress_compatibility_profile_id;
+    referenced_site_id := NEW.site_id;
+  END IF;
   IF referenced_profile_id IS NOT NULL AND NOT EXISTS (
     SELECT 1
     FROM public.wordpress_compatibility_profiles profile
