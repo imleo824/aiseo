@@ -6,7 +6,7 @@ import {
   PipelineStepStates,
   PipelineStepStatus
 } from '../types/seo';
-import type { GrowthStatus } from '../types/api';
+import type { GrowthInput, GrowthStatus } from '../types/api';
 import { PipelineVisualizer } from './dashboard/PipelineVisualizer';
 import { DraftPreviewModal } from './dashboard/DraftPreviewModal';
 import { CompetitorAnalysisSection } from './dashboard/CompetitorAnalysisSection';
@@ -35,7 +35,7 @@ interface MainDashboardProps {
     siteIds: string[],
     addLog: (msg: string) => void,
     setPipelineStep: (step: number, status: PipelineStepStatus) => void,
-    source?: { type: 'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE'; value: string }
+    inputs?: GrowthInput[]
   ) => Promise<ArticleDraft | undefined>;
   onOpenOnboarding?: () => void;
 }
@@ -43,6 +43,16 @@ interface MainDashboardProps {
 const initialPipelineStepStates = (): PipelineStepStates => Object.fromEntries(
   AUTOMATION_PIPELINE_STAGES.map(({ number }) => [number, 'PENDING'])
 ) as PipelineStepStates;
+
+const splitKeywordSignals = (value: string): string[] => value
+  .split(/[\n,，;；]+/)
+  .map((item) => item.trim())
+  .filter(Boolean);
+
+const splitUrlSignals = (value: string): string[] => value
+  .split(/[\s,，;；]+/)
+  .map((item) => item.trim())
+  .filter(Boolean);
 
 export const MainDashboard: React.FC<MainDashboardProps> = ({
   sites = [],
@@ -158,29 +168,19 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
       return;
     }
 
-    let source: { type: 'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE'; value: string } | undefined;
+    let inputs: GrowthInput[];
 
     if (overrideKeyword?.trim()) {
-      source = { type: 'KEYWORD', value: overrideKeyword.trim() };
+      inputs = [{ type: 'KEYWORD', value: overrideKeyword.trim() }];
     } else {
-      if (mode === 'KEYWORD') {
-        if (!keywordInput.trim()) {
-          showToast('请输入一个核心关键词或主题');
-          return;
-        }
-        source = { type: 'KEYWORD', value: keywordInput.trim() };
-      } else if (mode === 'REWRITE') {
-        if (!rewriteInput.trim()) {
-          showToast('请输入一篇参考文章的完整 HTTPS 地址');
-          return;
-        }
-        source = { type: 'REFERENCE_URL', value: rewriteInput.trim() };
-      } else if (mode === 'COMPETITOR') {
-        if (!competitorInput.trim()) {
-          showToast('请输入竞品网站 URL');
-          return;
-        }
-        source = { type: 'COMPETITOR_SITE', value: competitorInput.trim() };
+      inputs = [
+        ...splitKeywordSignals(keywordInput).map((value): GrowthInput => ({ type: 'KEYWORD', value })),
+        ...splitUrlSignals(rewriteInput).map((value): GrowthInput => ({ type: 'REFERENCE_URL', value })),
+        ...splitUrlSignals(competitorInput).map((value): GrowthInput => ({ type: 'COMPETITOR_SITE', value }))
+      ];
+      if (!inputs.length) {
+        showToast('请至少输入一个关键词、参考文章或竞品站点');
+        return;
       }
     }
     const targetSiteIds = targetSiteId ? [targetSiteId] : safeSites.map(s => s.id);
@@ -196,7 +196,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
     let acceptedByServer = false;
     try {
-      const publishedDraft = await onStartGrowthProgram(targetSiteIds, addLog, setPipelineStep, source);
+      const publishedDraft = await onStartGrowthProgram(targetSiteIds, addLog, setPipelineStep, inputs);
       acceptedByServer = true;
       if (publishedDraft?.status === 'PUBLISHED') {
         setLatestPublishedDraft(publishedDraft);
@@ -378,6 +378,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               </button>
             </div>
 
+            <p className="text-[11px] text-slate-500 px-1">
+              三类线索可以组合使用；每项支持输入多个值，换行分隔。至少填写一种即可开始。
+            </p>
+
             {/* 模式 1：自定义关键词 */}
             {mode === 'KEYWORD' && (
               <div className="space-y-2.5 animate-in fade-in duration-150 bg-slate-50/70 p-3.5 sm:p-4 rounded-xl border border-slate-200/60">
@@ -388,18 +392,18 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                   </span>
                 </div>
                 <div className="relative">
-                  <input
-                    type="text"
+                  <textarea
                     value={keywordInput}
                     onChange={(e) => setKeywordInput(e.target.value)}
-                    placeholder="例如：2026年企业级高可用架构实操指南..."
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs"
+                    placeholder={'例如：\n企业级高可用架构\n云原生容灾方案'}
+                    rows={3}
+                    className="w-full resize-none px-3.5 py-2.5 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs"
                   />
                   {keywordInput && (
                     <button
                       type="button"
                       onClick={() => setKeywordInput('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md"
+                      className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md"
                     >
                       清空
                     </button>
@@ -418,18 +422,18 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                   </span>
                 </div>
                 <div className="relative">
-                  <input
-                    type="url"
+                  <textarea
                     value={rewriteInput}
                     onChange={(e) => setRewriteInput(e.target.value)}
-                    placeholder="https://example.com/blog/...（系统不会近似改写或复制）"
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs"
+                    placeholder={'每行一个完整地址，例如：\nhttps://example.com/article-a\nhttps://example.com/article-b'}
+                    rows={3}
+                    className="w-full resize-none px-3.5 py-2.5 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs"
                   />
                   {rewriteInput && (
                     <button
                       type="button"
                       onClick={() => setRewriteInput('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md"
+                      className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md"
                     >
                       清空
                     </button>
@@ -472,7 +476,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 <>
                   <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
                   <span className="truncate">
-                    {activeSite?.connectorStatus !== 'CONNECTED' ? '请先授权连接 WordPress' : mode === 'KEYWORD' ? (keywordInput ? `针对「${keywordInput.slice(0, 16)}${keywordInput.length > 16 ? '...' : ''}」开始执行` : '输入关键词后开始执行') : mode === 'REWRITE' ? '以参考文章发现信息缺口并执行' : (competitorInput ? `针对竞品「${competitorInput.slice(0, 16)}」开始执行` : '输入竞品站点后开始执行')}
+                    {activeSite?.connectorStatus !== 'CONNECTED' ? '请先授权连接 WordPress' : '组合全部增长线索并开始执行'}
                   </span>
                   <ArrowRight className="w-4 h-4 shrink-0" />
                 </>

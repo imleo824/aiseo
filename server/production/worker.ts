@@ -6,6 +6,7 @@ import {
   GrowthActionStatus,
   GrowthActionType,
   GrowthAutonomyDecision,
+  GrowthInputType,
   GrowthProgramMode,
   GrowthProgramStatus,
   GrowthRunStageCode,
@@ -31,7 +32,7 @@ import { extractGscOpportunitySeeds, gscComparisonWindow, readGscRows } from './
 import { continuousCadenceDays, selectGrowthAction } from './growthPolicy';
 import { growthProgramService } from './growthProgramService';
 import { jobService } from './jobService';
-import { dataForSeoProvider, gscProvider, tronGridProvider } from './providers';
+import { dataForSeoProvider, gscProvider, tronGridProvider, type KeywordDiscoveryCandidate } from './providers';
 import { closeQueue, getProductionQueue, getQueueConnection, PRODUCTION_QUEUE, productionJobOptions } from './queue';
 import { capturePublicSource, type CapturedSource } from './sourceFetcher';
 import { assessSourceOriginality, deterministicActionQualityGate, insertContextualInternalLinks, selectRelevantInternalLinks } from './seoPipeline';
@@ -39,7 +40,7 @@ import { resolveSeoMarket } from './seoMarket';
 import type { SeoMarket } from './seoMarket';
 import { assertSafeWordPressMutation, wordPressService, wordpressCompatibilityAllows, type WordPressEditableSnapshot, type WordPressSiteContext } from './wordpress';
 import { persistWordPressCompatibility, scanWordPressCompatibility } from './wordpressCompatibility';
-import { applyObservedActionMultiplier, contentCoverageScore, findCannibalizationMatch, scoreKeywordCandidate } from './growthDiscovery';
+import { applyObservedActionMultiplier, businessRelevanceScore, contentCoverageScore, findCannibalizationMatch, scoreKeywordCandidate } from './growthDiscovery';
 import { actionMeasurementWindow, aggregateTargetGsc, evaluateGrowthOutcome } from './growthMeasurement';
 import { persistSiteSnapshot } from './siteSnapshotService';
 import { disconnectWorkerDatabase, workerPrisma } from './workerPrisma';
@@ -51,6 +52,11 @@ import { parsePublishingConfirmationPolicy, PUBLISH_CONFIRMATION_SETTING_KEY } f
 
 type QueuePayload = { jobRunId?: string; system?: boolean };
 type Evidence = Array<Record<string, unknown>>;
+type ExternalGrowthSource = {
+  type: Extract<GrowthInputType, 'REFERENCE_URL' | 'COMPETITOR_SITE'>;
+  inputId?: string;
+  source: CapturedSource;
+};
 
 const workerId = `${process.env.RAILWAY_REPLICA_ID || process.env.HOSTNAME || 'local'}:${process.pid}:${randomUUID().slice(0, 8)}`;
 const startedAt = new Date();
@@ -277,19 +283,30 @@ const restorePersistedUnderstanding = async (run: {
       mediaAvailable: savedInventory.mediaAvailable === true
     }
   };
-  const externalKnowledge = sources.find(({ id }) => id !== targetSource.id);
-  const externalSource: CapturedSource | undefined = externalKnowledge?.normalizedUrl ? {
-    normalizedUrl: externalKnowledge.normalizedUrl,
-    title: externalKnowledge.title.replace(/^\[(?:REFERENCE|COMPETITOR)]\s*/, ''),
-    content: externalKnowledge.content,
-    checksum: externalKnowledge.checksum,
-    fetchedAt: (externalKnowledge.fetchedAt || externalKnowledge.createdAt).toISOString()
-  } : undefined;
+  const externalSources: ExternalGrowthSource[] = sources.flatMap((knowledge) => {
+    if (knowledge.id === targetSource.id || !knowledge.normalizedUrl) return [];
+    const type = knowledge.title.startsWith('[REFERENCE]')
+      ? GrowthInputType.REFERENCE_URL
+      : knowledge.title.startsWith('[COMPETITOR]')
+        ? GrowthInputType.COMPETITOR_SITE
+        : null;
+    if (!type) return [];
+    return [{
+      type,
+      source: {
+        normalizedUrl: knowledge.normalizedUrl,
+        title: knowledge.title.replace(/^\[(?:REFERENCE|COMPETITOR)]\s*/, ''),
+        content: knowledge.content,
+        checksum: knowledge.checksum,
+        fetchedAt: (knowledge.fetchedAt || knowledge.createdAt).toISOString()
+      }
+    }];
+  });
   return {
     health,
     targetContext,
     market: snapshot.market as unknown as SeoMarket,
-    externalSource,
+    externalSources,
     sourceIds: run.knowledgeSourceIds,
     siteSnapshotId: snapshot.id
   };
@@ -301,7 +318,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
   if (!growthRunId) throw new Error('增长任务缺少 growthRunId');
   let run = await workerPrisma.growthRun.findFirst({
     where: { id: growthRunId, organizationId: job.organizationId },
-    include: { program: true, site: true, actions: true }
+    include: { program: { include: { inputs: { orderBy: { position: 'asc' } } } }, site: true, actions: true }
   });
   if (!run) throw new Error('增长执行不存在');
   if (run.status === GrowthRunStatus.DELIVERED || run.status === GrowthRunStatus.CANCELLED) return run.id;
@@ -364,19 +381,39 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       defaultLocationCode: env.defaultSeoLocationCode,
       gscCountries: [...gscCountries].map(([country, impressions]) => ({ country, impressions }))
     });
-    const [pageAudits, externalSource] = await Promise.all([
+    const externalInputs = run.program.inputs.filter((input) => input.type !== GrowthInputType.KEYWORD);
+    const [pageAudits, externalResults] = await Promise.all([
       dataForSeoProvider.auditPages(targetContext.pages.map(({ url }) => url)),
-      run.program.inputType === 'KEYWORD' ? Promise.resolve(undefined) : capturePublicSource(run.program.inputValue)
+      Promise.allSettled(externalInputs.map(async (input): Promise<ExternalGrowthSource> => ({
+          type: input.type as ExternalGrowthSource['type'],
+          inputId: input.id,
+          source: await capturePublicSource(input.normalizedValue)
+        })))
     ]);
+    const externalSources = externalResults.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
+    const externalFailures = externalResults.flatMap((result, index) => result.status === 'rejected' ? [{
+      inputType: externalInputs[index].type,
+      inputId: externalInputs[index].id,
+      url: externalInputs[index].normalizedValue,
+      reason: (result.reason instanceof Error ? result.reason.message : String(result.reason)).slice(0, 500)
+    }] : []);
+    const hasKeywordInput = run.program.inputs.some((input) => input.type === GrowthInputType.KEYWORD);
+    const hasCompetitorInput = run.program.inputs.some((input) => input.type === GrowthInputType.COMPETITOR_SITE);
+    if (!hasKeywordInput && !hasCompetitorInput && !externalSources.length) {
+      throw new ValidationError('所有参考文章均不可访问，无法形成真实增长线索');
+    }
     understanding = await workerPrisma.$transaction(async (tx) => {
       const ids = [await persistSource(tx, { organizationId: run!.organizationId, siteId: run!.siteId, prefix: '[TARGET_SITE]', source: targetContext })];
-      if (externalSource) {
-        ids.push(await persistSource(tx, {
+      const externalEvidence = [] as Evidence;
+      for (const external of externalSources) {
+        const sourceId = await persistSource(tx, {
           organizationId: run!.organizationId,
           siteId: run!.siteId,
-          prefix: run!.program.inputType === 'REFERENCE_URL' ? '[REFERENCE]' : '[COMPETITOR]',
-          source: externalSource
-        }));
+          prefix: external.type === GrowthInputType.REFERENCE_URL ? '[REFERENCE]' : '[COMPETITOR]',
+          source: external.source
+        });
+        if (!ids.includes(sourceId)) ids.push(sourceId);
+        externalEvidence.push({ type: external.type, inputId: external.inputId, sourceId, checksum: external.source.checksum });
       }
       const siteSnapshot = await persistSiteSnapshot(tx, {
         organizationId: run!.organizationId,
@@ -394,40 +431,63 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
         summary: `已验证 WordPress、HTTPS 与站点结构，读取 ${targetContext.pages.length} 个公开页面并完成 ${pageAudits.length} 个页面的技术审计。`,
         processedCount: targetContext.pages.length,
         totalCount: targetContext.pages.length,
-        evidence: [{ type: 'SITE_HEALTH', ...health }, { type: 'SITE_SNAPSHOT', siteSnapshotId: siteSnapshot.id, pageCount: targetContext.pages.length, auditedPageCount: pageAudits.length, market }, { type: 'SITE_CORPUS', sourceId: ids[0], checksum: targetContext.checksum }, ...(externalSource ? [{ type: run!.program.inputType, sourceId: ids[1], checksum: externalSource.checksum }] : [])]
+        evidence: [
+          { type: 'SITE_HEALTH', ...health },
+          { type: 'SITE_SNAPSHOT', siteSnapshotId: siteSnapshot.id, pageCount: targetContext.pages.length, auditedPageCount: pageAudits.length, market },
+          { type: 'SITE_CORPUS', sourceId: ids[0], checksum: targetContext.checksum },
+          ...externalEvidence,
+          ...externalFailures.map((failure) => ({ type: 'INPUT_UNAVAILABLE', ...failure }))
+        ]
       });
-      return { health, targetContext, market, externalSource, sourceIds: ids, siteSnapshotId: siteSnapshot.id };
+      return { health, targetContext, market, externalSources, sourceIds: ids, siteSnapshotId: siteSnapshot.id };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
-  const { health, targetContext, market, externalSource, sourceIds, siteSnapshotId } = understanding;
+  const { health, targetContext, market, externalSources, sourceIds, siteSnapshotId } = understanding;
 
   await startStage(run.id, GrowthRunStageCode.DISCOVER);
   let keyword = run.resolvedKeyword;
-  if (!keyword) {
-    if (run.program.inputType === 'KEYWORD') keyword = run.program.inputValue.trim();
-    else if (externalSource) {
-      keyword = (await contentAi.deriveKeyword({
+  const explicitKeywords = run.program.inputs
+    .filter((input) => input.type === GrowthInputType.KEYWORD)
+    .map((input) => input.value.trim());
+  const derivedKeywords = keyword ? [] : await Promise.all(externalSources.map(async (external) => (
+    await contentAi.deriveKeyword({
         language: run.site.language,
-        sourceType: run.program.inputType === 'REFERENCE_URL' ? 'REFERENCE_URL' : 'COMPETITOR_SITE',
-        title: externalSource.title,
-        content: externalSource.content
-      })).keyword;
-    }
-  }
-  if (!keyword) throw new Error('无法从用户线索中解析出可验证的目标关键词');
+        sourceType: external.type,
+        title: external.source.title,
+        content: external.source.content
+      })
+  ).keyword));
+  const competitorFallbackKeywords = run.program.inputs
+    .filter((input) => input.type === GrowthInputType.COMPETITOR_SITE)
+    .map((input) => new URL(input.normalizedValue).hostname.replace(/^www\./, '').split('.')[0].replace(/[-_]+/g, ' ').trim())
+    .filter((value) => value.length >= 2);
+  const primarySeedKeywords = [...(keyword ? [keyword] : []), ...explicitKeywords, ...derivedKeywords];
+  const seedKeywords = [...new Map(
+    (primarySeedKeywords.length ? primarySeedKeywords : competitorFallbackKeywords)
+      .map((seed) => [seed.toLocaleLowerCase().normalize('NFKC'), seed.trim()] as const)
+  ).values()].filter(Boolean);
+  if (!seedKeywords.length) throw new Error('无法从用户线索中解析出可验证的目标关键词');
+  keyword ||= seedKeywords[0];
+  const inputTypes = [...new Set(run.program.inputs.map((input) => input.type))];
+  const includesReference = inputTypes.includes(GrowthInputType.REFERENCE_URL);
   let opportunity = run.opportunityId ? await workerPrisma.opportunity.findUnique({ where: { id: run.opportunityId }, include: { snapshot: true } }) : null;
   let scoredCandidates: ReturnType<typeof scoreKeywordCandidate>[] = [];
   let gscSignalCount = 0;
   if (!opportunity) {
-    const discoveredByProvider = await dataForSeoProvider.discoverKeywords({
-      seedKeyword: keyword,
+    const expansionSeeds = [...seedKeywords]
+      .sort((left, right) => businessRelevanceScore(right, right, targetContext.content) - businessRelevanceScore(left, left, targetContext.content))
+      .slice(0, 5);
+    const competitorDomains = run.program.inputs
+      .filter((input) => input.type === GrowthInputType.COMPETITOR_SITE)
+      .map((input) => new URL(input.normalizedValue).hostname.replace(/^www\./, ''));
+    const discoveryBatches = await Promise.all(expansionSeeds.map((seedKeyword, index) => dataForSeoProvider.discoverKeywords({
+      seedKeyword,
       languageCode: market.languageCode,
       locationCode: market.locationCode,
       targetDomain: new URL(targetContext.normalizedUrl).hostname,
-      competitorDomain: run.program.inputType === 'COMPETITOR_SITE' && externalSource
-        ? new URL(externalSource.normalizedUrl).hostname
-        : undefined
-    });
+      competitorDomains: index === 0 ? competitorDomains : [],
+      includeSiteKeywords: index === 0
+    })));
     const siteHostname = new URL(targetContext.normalizedUrl).hostname.replace(/^www\./, '');
     const gscSeeds = extractGscOpportunitySeeds({
       current: currentGscRows,
@@ -435,10 +495,37 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       brandTerms: [targetContext.site.name, siteHostname, siteHostname.split('.')[0]].filter(Boolean)
     });
     gscSignalCount = gscSeeds.length;
-    const discoveredByKeyword = new Map(discoveredByProvider.map((candidate) => [
-      candidate.keyword.toLocaleLowerCase().normalize('NFKC'),
-      candidate
-    ]));
+    const discoveredByKeyword = new Map<string, KeywordDiscoveryCandidate>();
+    for (const candidate of discoveryBatches.flat()) {
+      const key = candidate.keyword.toLocaleLowerCase().normalize('NFKC');
+      const existing = discoveredByKeyword.get(key);
+      if (!existing) {
+        discoveredByKeyword.set(key, { ...candidate });
+        continue;
+      }
+      existing.searchVolume = Math.max(existing.searchVolume, candidate.searchVolume);
+      existing.keywordDifficulty = candidate.keywordDifficulty ?? existing.keywordDifficulty;
+      existing.intent = candidate.intent || existing.intent;
+      existing.intentProbability = candidate.intentProbability ?? existing.intentProbability;
+      existing.rank = candidate.rank ?? existing.rank;
+      existing.rankingUrl = candidate.rankingUrl || existing.rankingUrl;
+      existing.sources = [...new Set([...existing.sources, ...candidate.sources])];
+    }
+    for (const seed of seedKeywords) {
+      const key = seed.toLocaleLowerCase().normalize('NFKC');
+      if (!discoveredByKeyword.has(key)) {
+        discoveredByKeyword.set(key, {
+          keyword: seed,
+          searchVolume: 0,
+          keywordDifficulty: null,
+          intent: null,
+          intentProbability: null,
+          rank: null,
+          rankingUrl: null,
+          sources: ['USER_SEED']
+        });
+      }
+    }
     for (const seed of gscSeeds) {
       const key = seed.keyword.toLocaleLowerCase().normalize('NFKC');
       const existing = discoveredByKeyword.get(key);
@@ -460,28 +547,35 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       }
     }
     const discovered = [...discoveredByKeyword.values()];
-    const seedKey = keyword.toLocaleLowerCase().normalize('NFKC');
+    const seedKeys = new Set(seedKeywords.map((seed) => seed.toLocaleLowerCase().normalize('NFKC')));
     const prioritized = discovered
       .sort((left, right) => {
-        const leftSeed = left.keyword.toLocaleLowerCase().normalize('NFKC') === seedKey ? 1 : 0;
-        const rightSeed = right.keyword.toLocaleLowerCase().normalize('NFKC') === seedKey ? 1 : 0;
+        const leftSeed = seedKeys.has(left.keyword.toLocaleLowerCase().normalize('NFKC')) ? 1 : 0;
+        const rightSeed = seedKeys.has(right.keyword.toLocaleLowerCase().normalize('NFKC')) ? 1 : 0;
         const leftGsc = left.sources.some((source) => source.startsWith('GSC_')) ? 1 : 0;
         const rightGsc = right.sources.some((source) => source.startsWith('GSC_')) ? 1 : 0;
         return rightSeed - leftSeed || rightGsc - leftGsc || right.searchVolume - left.searchVolume || left.keyword.localeCompare(right.keyword);
       })
-      .slice(0, 12);
+      .slice(0, 25);
     const metrics = await dataForSeoProvider.scanKeywords({
       keywords: prioritized.map(({ keyword: candidateKeyword }) => candidateKeyword),
       languageCode: market.languageCode,
       locationCode: market.locationCode
     });
-    scoredCandidates = prioritized.map((discovery, index) => scoreKeywordCandidate({
-      discovery,
-      metrics: metrics[index],
-      seedKeyword: keyword!,
-      businessCorpus: targetContext.content,
-      pages: targetContext.pages
-    })).sort((left, right) => left.score.expectedValueMicros === right.score.expectedValueMicros
+    scoredCandidates = prioritized.map((discovery, index) => {
+      const closestSeed = seedKeywords.reduce((best, seed) =>
+        businessRelevanceScore(discovery.keyword, seed, targetContext.content) > businessRelevanceScore(discovery.keyword, best, targetContext.content)
+          ? seed
+          : best
+      , seedKeywords[0]);
+      return scoreKeywordCandidate({
+        discovery,
+        metrics: metrics[index],
+        seedKeyword: closestSeed,
+        businessCorpus: targetContext.content,
+        pages: targetContext.pages
+      });
+    }).sort((left, right) => left.score.expectedValueMicros === right.score.expectedValueMicros
       ? left.sourceKey.localeCompare(right.sourceKey)
       : left.score.expectedValueMicros > right.score.expectedValueMicros ? -1 : 1);
     const selectedCandidate = scoredCandidates.find(({ score }) => score.qualified) || scoredCandidates[0];
@@ -520,10 +614,12 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
         siteId: run!.siteId,
         source: DataSource.DATAFORSEO,
         status: DataStatus.LIVE,
-        formulaVersion: 'seo-opportunity-pool-4',
+        formulaVersion: 'seo-opportunity-pool-5',
         fetchedAt: new Date(metrics.fetchedAt),
         payload: {
           seedKeyword: keyword,
+          seedKeywords,
+          inputTypes,
           market,
           gscSnapshotId: latestGscSnapshot?.id || null,
           candidates: scoredCandidates.map((candidate) => ({
@@ -558,7 +654,13 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
           snapshotId: snapshot.id,
           siteSnapshotId,
           sourceKey: `run:${run!.id}:${candidate.sourceKey}`,
-          type: candidate.target ? 'EXISTING_PAGE' : run!.program.inputType === 'COMPETITOR_SITE' ? 'COMPETITOR_GAP' : run!.program.inputType === 'REFERENCE_URL' ? 'CONTENT_GAP' : 'KGR',
+          type: candidate.target
+            ? 'EXISTING_PAGE'
+            : candidate.discovery.sources.includes('COMPETITOR_GAP')
+              ? 'COMPETITOR_GAP'
+              : includesReference
+                ? 'CONTENT_GAP'
+                : 'KGR',
           title: candidate.discovery.keyword,
           targetUrl: candidate.target?.page.url,
           keyword: candidate.discovery.keyword,
@@ -576,7 +678,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
           riskPenaltyMicros: candidate.score.riskPenaltyMicros,
           expectedValueMicros: candidate.score.expectedValueMicros,
           formulaVersion: candidate.score.formulaVersion,
-          evidence: { source: 'DATAFORSEO', snapshotId: snapshot.id, inputType: run!.program.inputType, market, discovery: candidate.discovery, qualified: candidate.score.qualified, reason: candidate.score.reason, cannibalizationTarget: candidate.target || null } as unknown as Prisma.InputJsonValue
+          evidence: { source: 'DATAFORSEO', snapshotId: snapshot.id, inputTypes, market, discovery: candidate.discovery, qualified: candidate.score.qualified, reason: candidate.score.reason, cannibalizationTarget: candidate.target || null } as unknown as Prisma.InputJsonValue
         }, include: { snapshot: true } }));
       }
       const created = createdCandidates.find((candidate) => candidate.keyword === keyword);
@@ -597,7 +699,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
             scoreVersion: 'growth-decision-4',
             rationale: {
               rejectedBecause: evidence.reason || '数据置信度、预期价值或风险门禁未达标',
-              inputType: run!.program.inputType,
+              inputTypes,
               qualified: evidence.qualified === true
             }
           } });
@@ -700,8 +802,8 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
           scoreMicros: selected ? learnedExpectedValue : candidate.expectedValueMicros || 0n,
           scoreVersion: 'growth-decision-4',
           rationale: selected
-            ? { selectedBecause: selection.reason, inputType: run!.program.inputType, gscSnapshotId: gscSnapshot?.id || null, learningSampleCount: learningSamples.length, baseExpectedValueMicros: (candidate.expectedValueMicros || 0n).toString(), learnedExpectedValueMicros: learnedExpectedValue.toString() }
-            : { rejectedBecause: (candidate.evidence as { reason?: string }).reason || '本轮只执行预期价值最高且风险可控的一项动作', inputType: run!.program.inputType },
+            ? { selectedBecause: selection.reason, inputTypes, gscSnapshotId: gscSnapshot?.id || null, learningSampleCount: learningSamples.length, baseExpectedValueMicros: (candidate.expectedValueMicros || 0n).toString(), learnedExpectedValueMicros: learnedExpectedValue.toString() }
+            : { rejectedBecause: (candidate.evidence as { reason?: string }).reason || '本轮只执行预期价值最高且风险可控的一项动作', inputTypes },
           selectedActionType: selected ? actionType : undefined
         } });
         if (selected) selectedDecisionId = decision.id;
@@ -773,6 +875,9 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
     internalLinks: relevantInternalLinks
   });
   const allowedSourceTitles = knowledgeInput.map(({ title }) => title);
+  const closestExternalOverlap = (html: string) => externalSources
+    .map(({ source }) => assessSourceOriginality(html, source.content))
+    .sort((left, right) => right.overlapRatio - left.overlapRatio)[0];
   let generated: { title: string; slug: string; html: string; qualityReport: ReturnType<typeof deterministicActionQualityGate> & Record<string, unknown> };
   if (action.type === GrowthActionType.UPDATE_TITLE) {
     const optimized = await contentAi.optimizeTitle({ keyword, language: run.site.language, currentTitle: beforeSnapshot!.title, pageText: beforeSnapshot!.content, seoSnapshot: opportunity.snapshot.payload });
@@ -796,7 +901,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       ? `\n<!-- wp:html -->\n${section.html}\n<!-- /wp:html -->`
       : section.html;
     const html = `${beforeSnapshot!.content}${addition}`;
-    const originality = externalSource ? assessSourceOriginality(section.html, externalSource.content) : undefined;
+    const originality = closestExternalOverlap(section.html);
     generated = {
       title: beforeSnapshot!.title,
       slug: beforeSnapshot!.slug,
@@ -805,7 +910,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
     };
   } else if (action.type === GrowthActionType.CONTENT_REFRESH) {
     const refreshed = await contentAi.refreshContent({ keyword, language: run.site.language, currentTitle: beforeSnapshot!.title, currentHtml: beforeSnapshot!.content, seoSnapshot: opportunity.snapshot.payload, knowledge: knowledgeInput, brief });
-    const originality = externalSource ? assessSourceOriginality(refreshed.html, externalSource.content) : undefined;
+    const originality = closestExternalOverlap(refreshed.html);
     generated = {
       title: beforeSnapshot!.title,
       slug: beforeSnapshot!.slug,
@@ -828,7 +933,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       internalLinks: relevantInternalLinks
     });
     const linked = insertContextualInternalLinks(article.html, brief.internalLinkTargets);
-    const originality = externalSource ? assessSourceOriginality(linked.html, externalSource.content) : undefined;
+    const originality = closestExternalOverlap(linked.html);
     const siteDuplication = targetContext.pages
       .filter(({ url }) => url !== beforeSnapshot?.url)
       .map(({ content }) => assessSourceOriginality(linked.html, content))

@@ -59,7 +59,7 @@ const installBusinessApi = async (page: Page) => {
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/ledger`) return reply({ balanceMicros: '11090000000', heldMicros: '0', availableMicros: '11090000000', entries: [] });
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/sites/${siteId}/growth-programs`) return reply([]);
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/sites/${siteId}/growth-status`) return reply(started ? {
-      program: { id: programId, siteId, mode: 'ONCE', inputType: 'KEYWORD', inputValue: 'enterprise crm', status: 'ACTIVE', deliveredRunCount: 0, consecutiveWins: 0, createdAt: '2026-09-06T00:00:00.000Z' },
+      program: { id: programId, siteId, mode: 'ONCE', inputs: [{ id: 'input-1', type: 'KEYWORD', value: 'enterprise crm', position: 0 }], status: 'ACTIVE', deliveredRunCount: 0, consecutiveWins: 0, createdAt: '2026-09-06T00:00:00.000Z' },
       run: { id: runId, siteId, programId, trigger: 'USER', status: 'RUNNING', currentStage: 'DISCOVER', stages: stages(true), createdAt: '2026-09-06T00:00:00.000Z', updatedAt: '2026-09-06T00:01:00.000Z' },
       action: null,
       stages: stages(true),
@@ -70,12 +70,12 @@ const installBusinessApi = async (page: Page) => {
       started = true;
       submittedBody = request.postDataJSON();
       idempotencyKey = request.headers()['idempotency-key'] || '';
-      const submittedInput = (submittedBody as { input: { type: string; value: string } }).input;
+      const submittedInputs = (submittedBody as { inputs: Array<{ type: string; value: string }> }).inputs;
       return reply({
-        program: { id: programId, siteId, mode: 'ONCE', inputType: submittedInput.type, inputValue: submittedInput.value, status: 'ACTIVE', deliveredRunCount: 0, consecutiveWins: 0, createdAt: '2026-09-06T00:00:00.000Z' },
+        program: { id: programId, siteId, mode: 'ONCE', inputs: submittedInputs.map((input, position) => ({ id: `input-${position}`, ...input, position })), status: 'ACTIVE', deliveredRunCount: 0, consecutiveWins: 0, createdAt: '2026-09-06T00:00:00.000Z' },
         run: { id: runId, siteId, programId, trigger: 'USER', status: 'QUEUED', currentStage: 'UNDERSTAND', stages: stages(false), createdAt: '2026-09-06T00:00:00.000Z', updatedAt: '2026-09-06T00:00:00.000Z' },
         job: { id: '60000000-0000-4000-8000-000000000006', type: 'GROWTH_RUN', status: 'QUEUED', createdAt: '2026-09-06T00:00:00.000Z' }
-      }, 201);
+      }, 202);
     }
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: { code: 'UNMOCKED', message: `${method} ${path}`, traceId: 'e2e' } }) });
   });
@@ -87,9 +87,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 for (const scenario of [
-  { name: '关键词', tab: null, placeholder: '例如：2026年企业级高可用架构实操指南...', type: 'KEYWORD', value: '企业 CRM SEO' },
-  { name: '参考文章', tab: '参考文章', placeholder: 'https://example.com/blog/...（系统不会近似改写或复制）', type: 'REFERENCE_URL', value: 'https://reference.example.com/research' },
-  { name: '竞品站点', tab: '对标竞品', placeholder: 'https://competitor.com', type: 'COMPETITOR_SITE', value: 'https://competitor.example.com' }
+  { name: '关键词', tab: null, placeholder: /企业级高可用架构/, type: 'KEYWORD', value: '企业 CRM SEO' },
+  { name: '参考文章', tab: '参考文章', placeholder: /example.com\/article-a/, type: 'REFERENCE_URL', value: 'https://reference.example.com/research' },
+  { name: '竞品站点', tab: '对标竞品', placeholder: /competitor-a.com/, type: 'COMPETITOR_SITE', value: 'https://competitor.example.com' }
 ] as const) {
   test(`${scenario.name}可以一键创建可恢复的真实任务`, async ({ page }) => {
     const fixture = await installBusinessApi(page);
@@ -99,7 +99,7 @@ for (const scenario of [
     if (scenario.tab) await page.getByRole('button', { name: scenario.tab }).click();
     await page.getByPlaceholder(scenario.placeholder).fill(scenario.value);
     await page.getByRole('button', { name: /开始执行|针对|以参考文章/ }).click();
-    await expect.poll(() => fixture.submitted()).toEqual({ mode: 'ONCE', input: { type: scenario.type, value: scenario.value } });
+    await expect.poll(() => fixture.submitted()).toEqual({ mode: 'ONCE', inputs: [{ type: scenario.type, value: scenario.value }] });
     expect(fixture.idempotencyKey()).toMatch(/^[0-9a-f-]{36}$/i);
     await expect(page.getByText('正在用真实搜索数据评分候选机会。')).toBeVisible();
     await expect(page.getByRole('button', { name: /发现机会/ })).toContainText('执行中');
@@ -110,3 +110,45 @@ for (const scenario of [
     await expect(page.getByText('SITE_SNAPSHOT', { exact: true })).toBeVisible();
   });
 }
+
+test('关键词、参考文章与竞品可以组合成同一个增长程序', async ({ page }) => {
+  const fixture = await installBusinessApi(page);
+  await page.goto('/');
+  await page.getByPlaceholder(/企业级高可用架构/).fill('企业 CRM SEO\nCRM 获客');
+  await page.getByRole('button', { name: '参考文章' }).click();
+  await page.getByPlaceholder(/example.com\/article-a/).fill('https://reference.example.com/research');
+  await page.getByRole('button', { name: '对标竞品' }).click();
+  await page.getByPlaceholder(/competitor-a.com/).fill('https://competitor-a.example.com\nhttps://competitor-b.example.com');
+  await page.getByRole('button', { name: /组合全部增长线索/ }).click();
+  await expect.poll(() => fixture.submitted()).toEqual({
+    mode: 'ONCE',
+    inputs: [
+      { type: 'KEYWORD', value: '企业 CRM SEO' },
+      { type: 'KEYWORD', value: 'CRM 获客' },
+      { type: 'REFERENCE_URL', value: 'https://reference.example.com/research' },
+      { type: 'COMPETITOR_SITE', value: 'https://competitor-a.example.com' },
+      { type: 'COMPETITOR_SITE', value: 'https://competitor-b.example.com' }
+    ]
+  });
+});
+
+test('持续增长与一次性执行使用同一套组合输入契约', async ({ page }) => {
+  const fixture = await installBusinessApi(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: '自动执行', exact: true }).click();
+  await page.getByRole('button', { name: '新建持续增长' }).click();
+  await page.getByPlaceholder('每行一个，可输入多个').fill('wordpress seo\n内容增长');
+  const urlInputs = page.getByPlaceholder('每行一个完整 HTTPS 地址，可不填');
+  await urlInputs.nth(0).fill('https://reference.example.com/guide');
+  await urlInputs.nth(1).fill('https://competitor.example.com');
+  await page.getByRole('button', { name: '启动持续增长' }).click();
+  await expect.poll(() => fixture.submitted()).toEqual({
+    mode: 'CONTINUOUS',
+    inputs: [
+      { type: 'KEYWORD', value: 'wordpress seo' },
+      { type: 'KEYWORD', value: '内容增长' },
+      { type: 'REFERENCE_URL', value: 'https://reference.example.com/guide' },
+      { type: 'COMPETITOR_SITE', value: 'https://competitor.example.com' }
+    ]
+  });
+});

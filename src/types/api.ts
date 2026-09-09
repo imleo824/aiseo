@@ -41,12 +41,19 @@ export type PageVersion = { id: string; kind: 'BEFORE' | 'AFTER' | 'ROLLBACK'; r
 export type MeasurementSample = { id: string; source: 'GSC' | 'LEADING_INDICATORS'; windowDays: 7 | 14 | 28 | 56; baseline: Record<string, unknown>; measurement: Record<string, unknown>; confidenceMicros: string; outcome: 'NOT_READY' | 'WIN' | 'NEUTRAL' | 'LOSS' | 'INCONCLUSIVE'; observedAt: string };
 export type SiteSnapshotSummary = { id: string; status: string; sourceVersion: string; market: Record<string, unknown>; health: Record<string, unknown>; corpusChecksum: string; pageCount: number; auditedPageCount: number; fetchedAt: string; pages?: Array<{ id: string; url: string; resourceType: string; status: string; modifiedAt?: string; title: string; wordCount: number; contentChecksum: string; technicalEvidence: Record<string, unknown> }> };
 export type GrowthCandidate = { id: string; status: 'PROPOSED' | 'SELECTED' | 'DEFERRED' | 'REJECTED' | 'EXECUTED'; rank: number; scoreMicros: string; scoreVersion: string; rationale: Record<string, unknown>; opportunity: Opportunity; action?: Pick<GrowthAction, 'id' | 'type' | 'status' | 'targetUrl'> };
+export type GrowthInputType = 'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE';
+export type GrowthInput = {
+  id?: string;
+  type: GrowthInputType;
+  value: string;
+  normalizedValue?: string;
+  position?: number;
+};
 export type GrowthProgram = {
   id: string;
   siteId: string;
   mode: 'ONCE' | 'CONTINUOUS';
-  inputType: 'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE';
-  inputValue: string;
+  inputs: GrowthInput[];
   status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'BLOCKED';
   nextRunAt?: string;
   lastRunAt?: string;

@@ -26,12 +26,19 @@ const siteUpdateSchema = z.object({ name: z.string().trim().min(1).max(120).opti
 const memberSchema = z.object({ profileId: z.string().uuid(), role: z.enum(['ADMIN', 'EDITOR', 'VIEWER']) });
 const growthInputSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('KEYWORD'), value: z.string().trim().min(2).max(200) }),
-  z.object({ type: z.literal('REFERENCE_URL'), value: z.string().url().max(2_000).refine((value) => value.startsWith('https://'), '参考文章必须使用 HTTPS') }),
-  z.object({ type: z.literal('COMPETITOR_SITE'), value: z.string().url().max(2_000).refine((value) => value.startsWith('https://'), '竞品站点必须使用 HTTPS') })
+  z.object({ type: z.literal('REFERENCE_URL'), value: z.string().url().max(2_000).refine((value) => /^https:\/\//i.test(value), '参考文章必须使用 HTTPS') }),
+  z.object({ type: z.literal('COMPETITOR_SITE'), value: z.string().url().max(2_000).refine((value) => /^https:\/\//i.test(value), '竞品站点必须使用 HTTPS') })
 ]);
 const growthProgramSchema = z.object({
   mode: z.enum(['ONCE', 'CONTINUOUS']),
-  input: growthInputSchema,
+  inputs: z.array(growthInputSchema).min(1).max(30).superRefine((inputs, context) => {
+    const limits = { KEYWORD: 20, REFERENCE_URL: 5, COMPETITOR_SITE: 5 } as const;
+    for (const type of Object.keys(limits) as Array<keyof typeof limits>) {
+      if (inputs.filter((input) => input.type === type).length > limits[type]) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: `${type} 输入数量不能超过 ${limits[type]} 个` });
+      }
+    }
+  }),
   budgetLimitMicros: z.string().regex(/^\d+$/).transform(BigInt).optional()
 });
 
@@ -195,7 +202,7 @@ apiRouter.get('/me/export', asyncRoute(async (request, response) => {
       tx.dataSnapshot.findMany({ where: { organizationId: { in: ids } } }),
       tx.siteSnapshot.findMany({ where: { organizationId: { in: ids } }, include: { pages: true } }),
       tx.opportunity.findMany({ where: { organizationId: { in: ids } } }),
-      tx.growthProgram.findMany({ where: { organizationId: { in: ids } } }),
+      tx.growthProgram.findMany({ where: { organizationId: { in: ids } }, include: { inputs: { orderBy: { position: 'asc' } } } }),
       tx.growthRun.findMany({ where: { organizationId: { in: ids } }, include: { stages: true } }),
       tx.growthAction.findMany({ where: { organizationId: { in: ids } }, include: { evidence: true, pageVersions: true } }),
       tx.measurementSample.findMany({ where: { organizationId: { in: ids } } }),
@@ -506,8 +513,7 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/growth-programs', a
         organizationId: orgId,
         siteId,
         mode: input.mode as GrowthProgramMode,
-        inputType: input.input.type as GrowthInputType,
-        inputValue: input.input.value,
+        inputs: input.inputs.map((item) => ({ type: item.type as GrowthInputType, value: item.value })),
         occurrenceKey: key,
         budgetLimitMicros: input.budgetLimitMicros
       });
@@ -522,7 +528,7 @@ apiRouter.get('/organizations/:organizationId/sites/:siteId/growth-programs', as
   const programs = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
     if (!await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } })) throw new NotFoundError('站点不存在');
-    return tx.growthProgram.findMany({ where: { organizationId: orgId, siteId }, include: { runs: { orderBy: { createdAt: 'desc' }, take: 1, include: { stages: { orderBy: { createdAt: 'asc' } } } } }, orderBy: { createdAt: 'desc' } });
+    return tx.growthProgram.findMany({ where: { organizationId: orgId, siteId }, include: { inputs: { orderBy: { position: 'asc' } }, runs: { orderBy: { createdAt: 'desc' }, take: 1, include: { stages: { orderBy: { createdAt: 'asc' } } } } }, orderBy: { createdAt: 'desc' } });
   });
   sendData(response, programs);
 }));
@@ -531,7 +537,7 @@ apiRouter.get('/organizations/:organizationId/growth-programs/:programId', async
   const profileId = userId(request), orgId = organizationId(request), programId = idSchema.parse(request.params.programId);
   const program = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const found = await tx.growthProgram.findFirst({ where: { id: programId, organizationId: orgId }, include: { site: { select: { id: true, name: true, domain: true, wordpressStatus: true, integrations: { where: { provider: 'GSC' }, select: { status: true, lastSyncedAt: true }, take: 1 } } }, runs: { orderBy: { createdAt: 'desc' }, take: 20, include: { stages: { orderBy: { createdAt: 'asc' } }, actions: true } } } });
+    const found = await tx.growthProgram.findFirst({ where: { id: programId, organizationId: orgId }, include: { inputs: { orderBy: { position: 'asc' } }, site: { select: { id: true, name: true, domain: true, wordpressStatus: true, integrations: { where: { provider: 'GSC' }, select: { status: true, lastSyncedAt: true }, take: 1 } } }, runs: { orderBy: { createdAt: 'desc' }, take: 20, include: { stages: { orderBy: { createdAt: 'asc' } }, actions: true } } } });
     if (!found) throw new NotFoundError('增长程序不存在');
     return found;
   });
@@ -546,7 +552,7 @@ const changeProgramStatus = (status: GrowthProgramStatus) => asyncRoute(async (r
       const program = await tx.growthProgram.findFirst({ where: { id: programId, organizationId: orgId } });
       if (!program) throw new NotFoundError('增长程序不存在');
       if (program.mode === GrowthProgramMode.ONCE && status === GrowthProgramStatus.ACTIVE) throw new ConflictError('一次性程序不能恢复；请创建一次新的执行');
-      const updated = await tx.growthProgram.update({ where: { id: programId }, data: { status, nextRunAt: status === GrowthProgramStatus.ACTIVE ? new Date() : program.nextRunAt, lockedUntil: null, lastError: null } });
+      const updated = await tx.growthProgram.update({ where: { id: programId }, data: { status, nextRunAt: status === GrowthProgramStatus.ACTIVE ? new Date() : program.nextRunAt, lockedUntil: null, lastError: null }, include: { inputs: { orderBy: { position: 'asc' } } } });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: status === GrowthProgramStatus.PAUSED ? 'GROWTH_PROGRAM_PAUSED' : 'GROWTH_PROGRAM_RESUMED', targetType: 'growth_program', targetId: programId } });
       return { statusCode: 200, data: { program: updated } };
     } });
@@ -568,12 +574,12 @@ apiRouter.get('/organizations/:organizationId/sites/:siteId/growth-status', asyn
     } });
     if (!site) throw new NotFoundError('站点不存在');
     const [program, run, gsc] = await Promise.all([
-      tx.growthProgram.findFirst({ where: { organizationId: orgId, siteId }, orderBy: { updatedAt: 'desc' } }),
+      tx.growthProgram.findFirst({ where: { organizationId: orgId, siteId }, orderBy: { updatedAt: 'desc' }, include: { inputs: { orderBy: { position: 'asc' } } } }),
       tx.growthRun.findFirst({
         where: { organizationId: orgId, siteId },
         orderBy: { createdAt: 'desc' },
         include: {
-          program: true,
+          program: { include: { inputs: { orderBy: { position: 'asc' } } } },
           stages: { orderBy: { createdAt: 'asc' } },
           opportunity: true,
           siteSnapshot: { select: { id: true, status: true, sourceVersion: true, market: true, health: true, corpusChecksum: true, pageCount: true, auditedPageCount: true, fetchedAt: true } },
@@ -644,7 +650,7 @@ apiRouter.get('/organizations/:organizationId/growth-runs/:runId', asyncRoute(as
   const profileId = userId(request), orgId = organizationId(request), runId = idSchema.parse(request.params.runId);
   const run = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const found = await tx.growthRun.findFirst({ where: { id: runId, organizationId: orgId }, include: { program: true, stages: { orderBy: { createdAt: 'asc' } }, opportunity: true, siteSnapshot: true, draft: { include: { reviews: true, publishAttempts: true } }, actions: { include: { evidence: true, pageVersions: true, measurements: { orderBy: { windowDays: 'asc' } } } } } });
+    const found = await tx.growthRun.findFirst({ where: { id: runId, organizationId: orgId }, include: { program: { include: { inputs: { orderBy: { position: 'asc' } } } }, stages: { orderBy: { createdAt: 'asc' } }, opportunity: true, siteSnapshot: true, draft: { include: { reviews: true, publishAttempts: true } }, actions: { include: { evidence: true, pageVersions: true, measurements: { orderBy: { windowDays: 'asc' } } } } } });
     if (!found) throw new NotFoundError('增长执行不存在');
     const gsc = await tx.integrationConnection.findFirst({ where: { organizationId: orgId, siteId: found.siteId, provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, select: { lastSyncedAt: true } });
     return { ...found, measurement: { gscConnected: Boolean(gsc), lastSyncedAt: gsc?.lastSyncedAt || null, trafficClaimAllowed: Boolean(gsc) } };

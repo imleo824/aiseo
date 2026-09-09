@@ -23,13 +23,21 @@ describe('growthProgramService', () => {
       organizationId: '00000000-0000-0000-0000-000000000001',
       siteId: '00000000-0000-0000-0000-000000000002',
       mode: GrowthProgramMode.ONCE,
-      inputType: GrowthInputType.KEYWORD,
-      inputValue: ' WordPress SEO ',
+      inputs: [
+        { type: GrowthInputType.KEYWORD, value: ' WordPress SEO ' },
+        { type: GrowthInputType.REFERENCE_URL, value: 'https://EXAMPLE.com/article/#source' },
+        { type: GrowthInputType.COMPETITOR_SITE, value: 'https://competitor.example.com/' }
+      ],
       occurrenceKey: 'request-1'
     });
 
     expect(runCreate.mock.calls[0][0].data.stages.create).toHaveLength(5);
-    expect(programCreate.mock.calls[0][0].data.inputValue).toBe('WordPress SEO');
+    expect(programCreate.mock.calls[0][0].data).not.toHaveProperty('inputValue');
+    expect(programCreate.mock.calls[0][0].data.inputs.create).toEqual([
+      expect.objectContaining({ type: GrowthInputType.KEYWORD, value: 'WordPress SEO', normalizedValue: 'wordpress seo', position: 0 }),
+      expect.objectContaining({ type: GrowthInputType.REFERENCE_URL, value: 'https://EXAMPLE.com/article/#source', normalizedValue: 'https://example.com/article', position: 1 }),
+      expect.objectContaining({ type: GrowthInputType.COMPETITOR_SITE, normalizedValue: 'https://competitor.example.com/', position: 2 })
+    ]);
     expect(createJob).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ type: 'GROWTH_RUN', priceAction: 'GROWTH_RUN' }));
   });
 
@@ -46,12 +54,29 @@ describe('growthProgramService', () => {
       organizationId: '00000000-0000-0000-0000-000000000001',
       siteId: '00000000-0000-0000-0000-000000000002',
       mode: GrowthProgramMode.ONCE,
-      inputType: GrowthInputType.KEYWORD,
-      inputValue: 'SEO',
+      inputs: [{ type: GrowthInputType.KEYWORD, value: 'SEO' }],
       occurrenceKey: 'request-1'
     });
     expect(result.replayed).toBe(true);
     expect(createJob).not.toHaveBeenCalled();
     expect(tx.growthRun.create).not.toHaveBeenCalled();
+  });
+
+  it('deduplicates canonical inputs without collapsing different input types', async () => {
+    const { normalizeGrowthProgramInputs } = await import('./growthProgramService');
+    const normalized = normalizeGrowthProgramInputs([
+      { type: GrowthInputType.KEYWORD, value: 'SEO' },
+      { type: GrowthInputType.KEYWORD, value: ' seo ' },
+      { type: GrowthInputType.REFERENCE_URL, value: 'https://example.com' }
+    ]);
+    expect(normalized).toHaveLength(2);
+    expect(normalized.map(({ type }) => type)).toEqual([GrowthInputType.KEYWORD, GrowthInputType.REFERENCE_URL]);
+    expect(normalized.every(({ valueFingerprint }) => /^[a-f0-9]{64}$/.test(valueFingerprint))).toBe(true);
+  });
+
+  it('rejects non-HTTPS and credential-bearing external URLs', async () => {
+    const { normalizeGrowthProgramInputs } = await import('./growthProgramService');
+    expect(() => normalizeGrowthProgramInputs([{ type: GrowthInputType.REFERENCE_URL, value: 'http://example.com/article' }])).toThrow(/HTTPS/);
+    expect(() => normalizeGrowthProgramInputs([{ type: GrowthInputType.COMPETITOR_SITE, value: 'https://user:secret@example.com' }])).toThrow(/账号密码/);
   });
 });

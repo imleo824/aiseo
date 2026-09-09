@@ -10,10 +10,10 @@ import {
 } from "../types/seo";
 import { api as productionApi } from '../lib/api';
 import { supabase } from '../lib/supabase';
-import type { Draft, GrowthCandidate, GrowthProgram, GrowthRun, GrowthStatus, JobRun, Ledger, Me, Site as ProductionSite, SiteSnapshotSummary } from '../types/api';
+import type { Draft, GrowthCandidate, GrowthInput, GrowthProgram, GrowthRun, GrowthStatus, JobRun, Ledger, Me, Site as ProductionSite, SiteSnapshotSummary } from '../types/api';
 
 type ProductionTask = {
-  id: string; siteId: string; inputType: 'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE'; inputValue: string;
+  id: string; siteId: string; inputs: GrowthInput[];
   status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'BLOCKED'; deliveredRunCount: number;
   lastRunAt?: string; nextRunAt?: string; createdAt: string;
 };
@@ -69,22 +69,27 @@ const toLegacyDraft = (draft: Draft): ArticleDraft => ({
   createdAt: draft.createdAt || new Date().toISOString()
 });
 
-const toLegacyTask = (task: ProductionTask, sites: WordPressSite[]): AutomatedTask => ({
+const toLegacyTask = (task: ProductionTask, sites: WordPressSite[]): AutomatedTask => {
+  const primary = task.inputs[0];
+  const label = task.inputs.map(({ value }) => value).join('、');
+  return ({
   id: task.id,
   siteId: task.siteId,
   siteName: sites.find((site) => site.id === task.siteId)?.name || '未知站点',
-  taskName: `持续增长 · ${task.inputValue.slice(0, 30)}`,
+  taskName: `持续增长 · ${label.slice(0, 30)}`,
   scheduleType: 'WEEKLY',
   scheduleTime: '系统自适应',
-  targetKeywordTopic: task.inputValue,
-  sourceType: task.inputType,
+  targetKeywordTopic: label,
+  sourceType: primary?.type,
+  inputs: task.inputs.map(({ type, value }) => ({ type, value })),
   articleCountPerRun: 1,
   totalArticles: task.deliveredRunCount,
   status: task.status === 'ACTIVE' ? 'ACTIVE' : 'PAUSED',
   lastRunAt: task.lastRunAt,
   nextRunAt: task.nextRunAt || task.createdAt,
   createdAt: task.createdAt
-});
+  });
+};
 
 export class ApiService {
   private organizationId = '';
@@ -368,11 +373,11 @@ export class ApiService {
   public async createGrowthProgram(
     siteId: string,
     mode: 'ONCE' | 'CONTINUOUS',
-    input: { type: 'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE'; value: string },
+    inputs: GrowthInput[],
     onProgress?: (run: GrowthRun) => void
   ) {
     const { organizationId } = await this.resolveWorkspace();
-    const created = (await productionApi.post<{ program: GrowthProgram; run: GrowthRun; job: JobRun }>(`/organizations/${organizationId}/sites/${siteId}/growth-programs`, { mode, input })).data;
+    const created = (await productionApi.post<{ program: GrowthProgram; run: GrowthRun; job: JobRun }>(`/organizations/${organizationId}/sites/${siteId}/growth-programs`, { mode, inputs })).data;
     onProgress?.(created.run);
     return { program: created.program, run: created.run, draft: created.run.draft ? toLegacyDraft(created.run.draft) : undefined };
   }
@@ -424,10 +429,9 @@ export class ApiService {
   public async createTask(data: Partial<AutomatedTask>) {
     const { organizationId } = await this.resolveWorkspace();
     if (!data.siteId || data.siteId === 'all') throw new Error('请选择一个已连接的 WordPress 站点');
-    const sourceValue = data.targetKeywordTopic?.trim();
-    if (!sourceValue) throw new Error('请提供关键词、参考文章链接或竞品站点');
-    const inputType = data.sourceType || 'KEYWORD';
-    const created = (await productionApi.post<{ program: GrowthProgram }>(`/organizations/${organizationId}/sites/${data.siteId}/growth-programs`, { mode: 'CONTINUOUS', input: { type: inputType, value: sourceValue } })).data.program;
+    const inputs = (data.inputs || []).map(({ type, value }) => ({ type, value: value.trim() })).filter(({ value }) => Boolean(value));
+    if (!inputs.length) throw new Error('请提供关键词、参考文章链接或竞品站点');
+    const created = (await productionApi.post<{ program: GrowthProgram }>(`/organizations/${organizationId}/sites/${data.siteId}/growth-programs`, { mode: 'CONTINUOUS', inputs })).data.program;
     const sites = await this.getSites();
     return { task: toLegacyTask(created as ProductionTask, sites.sites) };
   }

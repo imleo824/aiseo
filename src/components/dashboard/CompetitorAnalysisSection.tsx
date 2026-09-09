@@ -20,24 +20,24 @@ export const CompetitorAnalysisSection: React.FC<CompetitorAnalysisSectionProps>
       </div>
 
       <div className="relative">
-          <input
-            type="url"
+          <textarea
             value={competitorInput}
             onChange={(e) => onCompetitorInputChange(e.target.value)}
-            placeholder="粘贴竞品 HTTPS 页面（如 https://competitor.com/product/）"
-            className="w-full px-3.5 py-2.5 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs pr-12"
+            placeholder={'每行一个竞品站点，例如：\nhttps://competitor-a.com\nhttps://competitor-b.com'}
+            rows={3}
+            className="w-full resize-none px-3.5 py-2.5 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs pr-12"
           />
           {competitorInput && (
             <button
               type="button"
               onClick={() => onCompetitorInputChange('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md"
+              className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md"
             >
               清空
             </button>
           )}
       </div>
-      <p className="text-[11px] text-slate-500">系统会抓取该页面、提炼非品牌搜索意图，再使用 DataForSEO 验证真实需求与竞争度。</p>
+      <p className="text-[11px] text-slate-500">系统会组合多个竞品的内容缺口和排名词，再使用 DataForSEO 验证真实需求与竞争度。</p>
     </div>
   );
 };

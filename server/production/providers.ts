@@ -193,43 +193,50 @@ export const dataForSeoProvider = {
     locationCode: number;
     languageCode: string;
     targetDomain: string;
-    competitorDomain?: string;
+    competitorDomains?: string[];
+    includeSiteKeywords?: boolean;
   }): Promise<KeywordDiscoveryCandidate[]> {
     const common = { location_code: input.locationCode, language_code: input.languageCode };
-    const [suggestions, related, siteKeywords, competitorKeywords, competitorGap] = await Promise.all([
+    const competitorDomains = [...new Set((input.competitorDomains || []).map((domain) => domain.toLocaleLowerCase()))].slice(0, 5);
+    const [suggestions, related, siteKeywords, competitorResults] = await Promise.all([
       dataForSeoLive('dataforseo_labs/google/keyword_suggestions/live', {
         ...common, keyword: input.seedKeyword, include_seed_keyword: true, limit: 30
       }),
       dataForSeoLive('dataforseo_labs/google/related_keywords/live', {
         ...common, keyword: input.seedKeyword, include_seed_keyword: true, depth: 1, limit: 30
       }),
-      dataForSeoLive('dataforseo_labs/google/ranked_keywords/live', {
-        ...common, target: input.targetDomain, limit: 30,
-        order_by: ['keyword_data.keyword_info.search_volume,desc']
-      }).catch(() => ({ result: [] })),
-      input.competitorDomain
-        ? dataForSeoLive('dataforseo_labs/google/ranked_keywords/live', {
-          ...common, target: input.competitorDomain, limit: 30,
+      input.includeSiteKeywords === false
+        ? Promise.resolve({ result: [] })
+        : dataForSeoLive('dataforseo_labs/google/ranked_keywords/live', {
+          ...common, target: input.targetDomain, limit: 30,
           order_by: ['keyword_data.keyword_info.search_volume,desc']
-        })
-        : Promise.resolve({ result: [] }),
-      input.competitorDomain
-        ? dataForSeoLive('dataforseo_labs/google/domain_intersection/live', {
-          ...common,
-          target1: input.competitorDomain,
-          target2: input.targetDomain,
-          intersections: false,
-          limit: 30,
-          order_by: ['keyword_data.keyword_info.search_volume,desc']
-        })
-        : Promise.resolve({ result: [] })
+        }).catch(() => ({ result: [] })),
+      Promise.all(competitorDomains.map(async (competitorDomain) => {
+        const [ranked, gap] = await Promise.all([
+          dataForSeoLive('dataforseo_labs/google/ranked_keywords/live', {
+            ...common, target: competitorDomain, limit: 30,
+            order_by: ['keyword_data.keyword_info.search_volume,desc']
+          }),
+          dataForSeoLive('dataforseo_labs/google/domain_intersection/live', {
+            ...common,
+            target1: competitorDomain,
+            target2: input.targetDomain,
+            intersections: false,
+            limit: 30,
+            order_by: ['keyword_data.keyword_info.search_volume,desc']
+          })
+        ]);
+        return { ranked, gap };
+      }))
     ]);
     const merged = mergeKeywordCandidates([
       { source: 'KEYWORD_SUGGESTIONS', items: taskItems(suggestions) },
       { source: 'RELATED_KEYWORDS', items: taskItems(related) },
       { source: 'SITE_RANKED_KEYWORDS', items: taskItems(siteKeywords) },
-      { source: 'COMPETITOR_RANKED_KEYWORDS', items: taskItems(competitorKeywords) },
-      { source: 'COMPETITOR_GAP', items: taskItems(competitorGap) }
+      ...competitorResults.flatMap(({ ranked, gap }) => [
+        { source: 'COMPETITOR_RANKED_KEYWORDS', items: taskItems(ranked) },
+        { source: 'COMPETITOR_GAP', items: taskItems(gap) }
+      ])
     ]);
     const seedKey = input.seedKeyword.toLocaleLowerCase().normalize('NFKC');
     if (!merged.some((candidate) => candidate.keyword.toLocaleLowerCase().normalize('NFKC') === seedKey)) {

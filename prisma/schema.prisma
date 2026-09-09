@@ -323,6 +323,7 @@ model Organization {
   keywordScans                   KeywordScan[]
   opportunities                  Opportunity[]
   growthPrograms                 GrowthProgram[]
+  growthProgramInputs            GrowthProgramInput[]
   growthRuns                     GrowthRun[]
   growthRunStages                GrowthRunStage[]
   jobs                           JobRun[]
@@ -386,6 +387,7 @@ model Site {
   keywordScans                          KeywordScan[]
   opportunities                         Opportunity[]
   growthPrograms                        GrowthProgram[]
+  growthProgramInputs                   GrowthProgramInput[]
   growthRuns                            GrowthRun[]
   growthRunStages                       GrowthRunStage[]
   drafts                                ContentDraft[]
@@ -562,8 +564,6 @@ model GrowthProgram {
   organizationId    String              @map("organization_id") @db.Uuid
   siteId            String              @map("site_id") @db.Uuid
   mode              GrowthProgramMode
-  inputType         GrowthInputType     @map("input_type")
-  inputValue        String              @map("input_value")
   inputFingerprint  String              @map("input_fingerprint")
   status            GrowthProgramStatus @default(ACTIVE)
   budgetLimitMicros BigInt?             @map("budget_limit_micros")
@@ -577,12 +577,35 @@ model GrowthProgram {
   updatedAt         DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   site              Site                @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  inputs            GrowthProgramInput[]
   runs              GrowthRun[]
 
   @@unique([organizationId, inputFingerprint], map: "growth_programs_org_fingerprint_key")
   @@index([organizationId, siteId, createdAt(sort: Desc)], map: "growth_programs_org_site_created_idx")
   @@index([siteId], map: "growth_programs_site_id_idx")
   @@map("growth_programs")
+}
+
+model GrowthProgramInput {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String          @map("organization_id") @db.Uuid
+  siteId           String          @map("site_id") @db.Uuid
+  programId        String          @map("program_id") @db.Uuid
+  type             GrowthInputType
+  value            String
+  normalizedValue  String          @map("normalized_value")
+  valueFingerprint String          @map("value_fingerprint")
+  position         Int
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site             Site            @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  program          GrowthProgram   @relation(fields: [programId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([programId, valueFingerprint], map: "growth_program_inputs_program_fingerprint_key")
+  @@unique([programId, position], map: "growth_program_inputs_program_position_key")
+  @@index([organizationId, programId, position], map: "growth_program_inputs_org_program_position_idx")
+  @@index([siteId, type], map: "growth_program_inputs_site_type_idx")
+  @@map("growth_program_inputs")
 }
 
 model GrowthRun {

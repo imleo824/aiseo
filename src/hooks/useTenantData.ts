@@ -10,7 +10,7 @@ import type {
   TenantAccount,
   PipelineStepStatus
 } from '../types/seo';
-import type { GrowthRun, GrowthStatus } from '../types/api';
+import type { GrowthInput, GrowthRun, GrowthStatus } from '../types/api';
 import { ApiError } from '../lib/api';
 
 const EMPTY_SITES: WordPressSite[] = [];
@@ -106,12 +106,12 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     targetSiteIds: string[],
     addLog: (message: string) => void,
     setPipelineStep: (step: number, status: PipelineStepStatus) => void,
-    source?: { type: 'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE'; value: string }
+    inputs?: GrowthInput[]
   ) => {
     const targetSites = sites.filter((site) => targetSiteIds.includes(site.id));
     if (!targetSites.length) return undefined;
     if (account && account.credits < 25) throw new Error(`当前积分余额 (${account.credits} 积分) 不足 25 积分，请先充值 USDT 兑换积分。`);
-    if (!source?.value.trim()) throw new Error('请提供关键词、参考文章链接或竞品站点');
+    if (!inputs?.some(({ value }) => value.trim())) throw new Error('请提供关键词、参考文章链接或竞品站点');
     addLog('[准备启动] 已创建可恢复、可审计的自然流量增长程序。');
     const stageNumbers = { UNDERSTAND: 1, DISCOVER: 2, DECIDE: 3, EXECUTE: 4, LEARN: 5 } as const;
     const observed = new Map<string, string>();
@@ -128,7 +128,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
         }
       }
     };
-    const result = await api.createGrowthProgram(targetSites[0].id, 'ONCE', source, onProgress);
+    const result = await api.createGrowthProgram(targetSites[0].id, 'ONCE', inputs, onProgress);
     addLog(`[任务已入队] 运行 ${result.run.id} 已持久化，可以刷新页面或稍后回来继续查看。`);
     await invalidateTenantResources();
     return result.draft;

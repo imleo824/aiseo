@@ -7,7 +7,7 @@ set local search_path = public, extensions;
 -- can continue to execute while SET ROLE is exercising the real RLS boundary.
 grant usage on schema extensions to app_backend, app_worker;
 grant execute on all functions in schema extensions to app_backend, app_worker;
-select plan(70);
+select plan(77);
 
 select is(
   (select count(*) from pg_class
@@ -17,6 +17,7 @@ select is(
      'public.integration_connections'::regclass, 'public.knowledge_sources'::regclass,
      'public.data_snapshots'::regclass, 'public.keyword_scans'::regclass,
      'public.opportunities'::regclass, 'public.growth_programs'::regclass,
+     'public.growth_program_inputs'::regclass,
      'public.growth_runs'::regclass, 'public.growth_run_stages'::regclass,
      'public.job_runs'::regclass, 'public.content_drafts'::regclass,
      'public.draft_reviews'::regclass, 'public.publish_attempts'::regclass,
@@ -34,7 +35,7 @@ select is(
      'public.policy_versions'::regclass,
      'public.wordpress_compatibility_profiles'::regclass
    ]) and relrowsecurity),
-  39::bigint,
+  40::bigint,
   'every business table has RLS enabled'
 );
 
@@ -57,6 +58,7 @@ select ok(not has_table_privilege('app_backend', 'public.payment_intents', 'dele
 select ok(not has_table_privilege('app_worker', 'public.profiles', 'update'), 'Worker cannot mutate profile authorization state');
 select ok(not has_table_privilege('app_worker', 'public.payment_intents', 'insert'), 'Worker cannot manufacture payment intents');
 select ok(not has_table_privilege('anon', 'public.growth_programs', 'select,insert,update,delete'), 'anon cannot access growth programs');
+select ok(not has_table_privilege('anon', 'public.growth_program_inputs', 'select,insert,update,delete'), 'anon cannot access growth program inputs');
 select ok(not has_table_privilege('anon', 'public.wordpress_compatibility_profiles', 'select,insert,update,delete'), 'anon cannot access WordPress compatibility evidence');
 select ok(
   has_table_privilege('app_backend', 'public.wordpress_compatibility_profiles', 'select,insert')
@@ -74,6 +76,11 @@ select ok(
   and has_table_privilege('app_backend', 'public.growth_programs', 'update')
   and not has_table_privilege('app_backend', 'public.growth_programs', 'delete'),
   'Web may create, pause and resume growth programs without deleting history'
+);
+select ok(
+  has_table_privilege('app_backend', 'public.growth_program_inputs', 'select,insert')
+  and not has_table_privilege('app_backend', 'public.growth_program_inputs', 'update,delete'),
+  'Web may append but cannot rewrite growth program inputs'
 );
 select ok(
   has_table_privilege('app_backend', 'public.growth_run_stages', 'select')
@@ -152,8 +159,15 @@ set local role app_backend;
 insert into public.sites (id, organization_id, domain, name, updated_at)
 values ('00000000-0000-0000-0000-0000000000a3', (select organization_id from rls_context where label = 'a'), 'org-a.example.test', 'Org A site', now());
 select is((select count(*) from public.sites), 1::bigint, 'owner can select own organization rows');
-insert into public.growth_programs (id, organization_id, site_id, mode, input_type, input_value, input_fingerprint)
-values ('00000000-0000-0000-0000-0000000000a4', (select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000a3', 'ONCE', 'KEYWORD', 'WordPress SEO', 'rls-owner-program');
+insert into public.growth_programs (id, organization_id, site_id, mode, input_fingerprint)
+values ('00000000-0000-0000-0000-0000000000a4', (select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000a3', 'ONCE', 'rls-owner-program');
+insert into public.growth_program_inputs (
+  id, organization_id, site_id, program_id, type, value, normalized_value, value_fingerprint, position
+) values (
+  '00000000-0000-0000-0000-0000000000a8', (select organization_id from rls_context where label = 'a'),
+  '00000000-0000-0000-0000-0000000000a3', '00000000-0000-0000-0000-0000000000a4',
+  'KEYWORD', 'WordPress SEO', 'wordpress seo', repeat('a', 64), 0
+);
 select is((select count(*) from public.growth_programs), 1::bigint, 'owner can create and select own growth program');
 insert into public.growth_runs (id, organization_id, site_id, program_id, trigger, occurrence_key)
 values ('00000000-0000-0000-0000-0000000000a5', (select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000a3', '00000000-0000-0000-0000-0000000000a4', 'USER', 'rls-owner-run');
@@ -206,14 +220,35 @@ select throws_like(
   '%append-only%',
   'WordPress compatibility profiles cannot be erased by ordinary operations'
 );
+select throws_like(
+  $$update public.growth_program_inputs set value = 'mutated' where id = '00000000-0000-0000-0000-0000000000a8'$$,
+  '%append-only%',
+  'growth program inputs cannot be rewritten'
+);
+select throws_like(
+  $$delete from public.growth_program_inputs where id = '00000000-0000-0000-0000-0000000000a8'$$,
+  '%append-only%',
+  'growth program inputs cannot be erased by ordinary operations'
+);
 
 insert into public.sites (id, organization_id, domain, name, updated_at)
 values ('00000000-0000-0000-0000-0000000000b3', (select organization_id from rls_context where label = 'b'), 'org-b.example.test', 'Org B site', now());
 set local role app_worker;
 select throws_like(
-  format('insert into public.growth_programs (organization_id, site_id, mode, input_type, input_value, input_fingerprint) values (%L, %L, %L, %L, %L, %L)', (select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000b3', 'ONCE', 'KEYWORD', 'cross tenant', 'cross-tenant-integrity'),
+  format('insert into public.growth_programs (organization_id, site_id, mode, input_fingerprint) values (%L, %L, %L, %L)', (select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000b3', 'ONCE', 'cross-tenant-integrity'),
   '%site does not belong to organization%',
   'database rejects a cross-tenant site reference even for the Worker'
+);
+select throws_like(
+  format(
+    'insert into public.growth_program_inputs (organization_id, site_id, program_id, type, value, normalized_value, value_fingerprint, position) values (%L, %L, %L, %L, %L, %L, %L, %s)',
+    (select organization_id from rls_context where label = 'b'),
+    '00000000-0000-0000-0000-0000000000b3',
+    '00000000-0000-0000-0000-0000000000a4',
+    'KEYWORD', 'cross tenant', 'cross tenant', repeat('b', 64), 1
+  ),
+  '%tenant or site does not match program%',
+  'database rejects a cross-tenant growth input even for the Worker'
 );
 reset role;
 
@@ -244,6 +279,7 @@ select is(
   'cross-organization SELECT is denied while the user retains access to their own site'
 );
 select is((select count(*) from public.growth_programs), 0::bigint, 'cross-organization growth-program SELECT is denied');
+select is((select count(*) from public.growth_program_inputs), 0::bigint, 'cross-organization growth-program-input SELECT is denied');
 select is((select count(*) from public.growth_runs), 0::bigint, 'cross-organization growth-run SELECT is denied');
 select is((select count(*) from public.site_snapshots), 0::bigint, 'cross-organization site-snapshot SELECT is denied');
 select is((select count(*) from public.wordpress_compatibility_profiles), 0::bigint, 'cross-organization WordPress compatibility SELECT is denied');
@@ -266,6 +302,7 @@ select set_config('app.organization_id', (select organization_id::text from rls_
 set local role app_backend;
 select is((select count(*) from public.sites), 1::bigint, 'viewer can SELECT organization rows');
 select is((select count(*) from public.growth_runs), 1::bigint, 'viewer can SELECT organization growth runs');
+select is((select count(*) from public.growth_program_inputs), 1::bigint, 'viewer can SELECT immutable growth program inputs');
 select is((select count(*) from public.site_snapshots), 1::bigint, 'viewer can SELECT immutable evidence for their organization');
 select is((select count(*) from public.wordpress_compatibility_profiles), 1::bigint, 'viewer can SELECT WordPress compatibility evidence for their organization');
 select throws_like(
@@ -305,8 +342,15 @@ insert into rls_context
 select 'd', organization_id from public.organization_members where profile_id = '00000000-0000-0000-0000-0000000000d4';
 insert into public.sites (id, organization_id, domain, name, updated_at)
 values ('00000000-0000-0000-0000-0000000000d5', (select organization_id from rls_context where label = 'd'), 'erase.example.test', 'Erase site', now());
-insert into public.growth_programs (id, organization_id, site_id, mode, input_type, input_value, input_fingerprint)
-values ('00000000-0000-0000-0000-0000000000d6', (select organization_id from rls_context where label = 'd'), '00000000-0000-0000-0000-0000000000d5', 'ONCE', 'KEYWORD', 'erase', 'erasure-program');
+insert into public.growth_programs (id, organization_id, site_id, mode, input_fingerprint)
+values ('00000000-0000-0000-0000-0000000000d6', (select organization_id from rls_context where label = 'd'), '00000000-0000-0000-0000-0000000000d5', 'ONCE', 'erasure-program');
+insert into public.growth_program_inputs (
+  id, organization_id, site_id, program_id, type, value, normalized_value, value_fingerprint, position
+) values (
+  '00000000-0000-0000-0000-0000000000d9', (select organization_id from rls_context where label = 'd'),
+  '00000000-0000-0000-0000-0000000000d5', '00000000-0000-0000-0000-0000000000d6',
+  'KEYWORD', 'erase', 'erase', repeat('d', 64), 0
+);
 insert into public.growth_runs (id, organization_id, site_id, program_id, trigger, occurrence_key)
 values ('00000000-0000-0000-0000-0000000000d7', (select organization_id from rls_context where label = 'd'), '00000000-0000-0000-0000-0000000000d5', '00000000-0000-0000-0000-0000000000d6', 'USER', 'erasure-run');
 insert into public.site_snapshots (id, organization_id, site_id, run_id, source_version, market, health, corpus_checksum, page_count, audited_page_count)

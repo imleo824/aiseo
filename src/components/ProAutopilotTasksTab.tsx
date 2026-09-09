@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { WordPressSite, AutomatedTask } from '../types/seo';
+import type { GrowthInput } from '../types/api';
 import {
   Clock,
   Play,
@@ -13,6 +14,16 @@ import {
   Tag,
   FileText
 } from 'lucide-react';
+
+const splitKeywords = (value: string): string[] => value
+  .split(/[\n,，;；]+/)
+  .map((item) => item.trim())
+  .filter(Boolean);
+
+const splitUrls = (value: string): string[] => value
+  .split(/[\s,，;；]+/)
+  .map((item) => item.trim())
+  .filter(Boolean);
 
 interface ProAutopilotTasksTabProps {
   sites: WordPressSite[];
@@ -39,8 +50,9 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
 
   // Modal Form State
   const [siteId, setSiteId] = useState('');
-  const [targetKeywordTopic, setTargetKeywordTopic] = useState('');
-  const [sourceType, setSourceType] = useState<'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE'>('KEYWORD');
+  const [keywordInputs, setKeywordInputs] = useState('');
+  const [referenceInputs, setReferenceInputs] = useState('');
+  const [competitorInputs, setCompetitorInputs] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const showToast = (msg: string) => {
@@ -54,15 +66,21 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
       return;
     }
     setSiteId(eligibleSites[0].id);
-    setTargetKeywordTopic('');
-    setSourceType('KEYWORD');
+    setKeywordInputs('');
+    setReferenceInputs('');
+    setCompetitorInputs('');
     setIsModalOpen(true);
   };
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!siteId || !targetKeywordTopic.trim()) {
-      showToast('请选择站点并输入增长线索');
+    const inputs: GrowthInput[] = [
+      ...splitKeywords(keywordInputs).map((value): GrowthInput => ({ type: 'KEYWORD', value })),
+      ...splitUrls(referenceInputs).map((value): GrowthInput => ({ type: 'REFERENCE_URL', value })),
+      ...splitUrls(competitorInputs).map((value): GrowthInput => ({ type: 'COMPETITOR_SITE', value }))
+    ];
+    if (!siteId || !inputs.length) {
+      showToast('请选择站点并至少输入一种增长线索');
       return;
     }
 
@@ -77,8 +95,9 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
         siteName,
         scheduleType: 'WEEKLY',
         scheduleTime: '系统自适应',
-        targetKeywordTopic: targetKeywordTopic.trim(),
-        sourceType,
+        targetKeywordTopic: inputs.map(({ value }) => value).join('、'),
+        sourceType: inputs[0].type,
+        inputs,
         articleCountPerRun: 1,
         status: 'ACTIVE'
       });
@@ -299,26 +318,20 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                 </select>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <label className="font-bold text-slate-800">执行来源</label>
-                  <select value={sourceType} onChange={(event) => setSourceType(event.target.value as typeof sourceType)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400">
-                    <option value="KEYWORD">关键词</option>
-                    <option value="REFERENCE_URL">参考文章链接</option>
-                    <option value="COMPETITOR_SITE">竞品站点</option>
-                  </select>
+                  <label className="font-bold text-slate-800">关键词或主题</label>
+                  <textarea value={keywordInputs} onChange={(event) => setKeywordInputs(event.target.value)} rows={2} placeholder="每行一个，可输入多个" className="w-full resize-none px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400" />
                 </div>
-                <div className="space-y-1.5 sm:col-span-2">
-                  <label className="font-bold text-slate-800">执行目标</label>
-                <input
-                  type={sourceType === 'KEYWORD' ? 'text' : 'url'}
-                  value={targetKeywordTopic}
-                  onChange={(e) => setTargetKeywordTopic(e.target.value)}
-                  placeholder={sourceType === 'KEYWORD' ? '输入核心关键词或主题' : '输入完整 HTTPS 地址'}
-                  required
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
-                />
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-800">参考文章链接</label>
+                  <textarea value={referenceInputs} onChange={(event) => setReferenceInputs(event.target.value)} rows={2} placeholder="每行一个完整 HTTPS 地址，可不填" className="w-full resize-none px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400" />
                 </div>
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-800">竞品站点</label>
+                  <textarea value={competitorInputs} onChange={(event) => setCompetitorInputs(event.target.value)} rows={2} placeholder="每行一个完整 HTTPS 地址，可不填" className="w-full resize-none px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400" />
+                </div>
+                <p className="text-xs text-slate-500">三类线索可任意组合，至少填写一种。系统自动扩展主题、判断市场和选择安全动作。</p>
               </div>
 
               <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-xs leading-5 text-indigo-900">

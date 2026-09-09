@@ -3,7 +3,6 @@ export type SeoMarket = {
   languageCode: string;
   source: 'GSC_COUNTRY' | 'COUNTRY_DOMAIN' | 'SITE_LOCALE' | 'PLATFORM_DEFAULT';
   confidence: number;
-  needsConfirmation: boolean;
   evidence: string[];
 };
 
@@ -82,7 +81,6 @@ export const resolveSeoMarket = (input: {
       languageCode: normalizedLanguage(input.siteLocale || input.language),
       source: 'GSC_COUNTRY',
       confidence: 0.95,
-      needsConfirmation: false,
       evidence: ['GSC dominant country: ' + dominantGscCountry.country.toLocaleUpperCase()]
     };
   }
@@ -92,7 +90,6 @@ export const resolveSeoMarket = (input: {
       languageCode: match.languageCode || normalizedLanguage(input.siteLocale || input.language),
       source: 'COUNTRY_DOMAIN',
       confidence: 0.9,
-      needsConfirmation: false,
       evidence: ['Country-code domain suffix: ' + match.suffix]
     };
   }
@@ -108,7 +105,6 @@ export const resolveSeoMarket = (input: {
       languageCode: normalizedLanguage(locale),
       source: 'SITE_LOCALE',
       confidence: 0.8,
-      needsConfirmation: false,
       evidence: ['Site locale: ' + locale]
     };
   }
@@ -117,7 +113,6 @@ export const resolveSeoMarket = (input: {
     languageCode: normalizedLanguage(input.siteLocale || input.language),
     source: 'PLATFORM_DEFAULT',
     confidence: 0.45,
-    needsConfirmation: true,
-    evidence: ['No country-specific domain, locale or GSC country evidence']
+    evidence: ['No country-specific signal; deterministic platform market applied automatically']
   };
 };

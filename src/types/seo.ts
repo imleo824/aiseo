@@ -355,6 +355,7 @@ export interface AutomatedTask {
   scheduleTime: string;
   targetKeywordTopic: string;
   sourceType?: 'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE';
+  inputs?: Array<{ type: 'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE'; value: string }>;
   articleCountPerRun: number;
   totalArticles?: number; // 累计文章
   status: 'ACTIVE' | 'PAUSED';
