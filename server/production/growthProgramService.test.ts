@@ -74,6 +74,49 @@ describe('growthProgramService', () => {
     expect(normalized.every(({ valueFingerprint }) => /^[a-f0-9]{64}$/.test(valueFingerprint))).toBe(true);
   });
 
+  it('allows an empty signal set so the worker can discover from the connected site', async () => {
+    const { normalizeGrowthProgramInputs } = await import('./growthProgramService');
+    expect(normalizeGrowthProgramInputs([])).toEqual([]);
+  });
+
+  it('rejects a configured budget that cannot fund one priced execution', async () => {
+    const tx = {
+      growthProgram: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn() },
+      actionPrice: { findFirst: vi.fn().mockResolvedValue({ creditMicros: 25_000_000n }) }
+    };
+    const { growthProgramService } = await import('./growthProgramService');
+    await expect(growthProgramService.create(tx as never, {
+      organizationId: '00000000-0000-0000-0000-000000000001',
+      siteId: '00000000-0000-0000-0000-000000000002',
+      mode: GrowthProgramMode.ONCE,
+      inputs: [],
+      occurrenceKey: 'request-budget',
+      budgetLimitMicros: 20_000_000n
+    })).rejects.toThrow(/预算上限/);
+    expect(tx.growthProgram.create).not.toHaveBeenCalled();
+  });
+
+  it('blocks a scheduled paid run before the program can exceed its lifetime budget', async () => {
+    const tx = {
+      growthRun: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn(), update: vi.fn() },
+      growthProgram: { findUniqueOrThrow: vi.fn().mockResolvedValue({ budgetLimitMicros: 50_000_000n, runs: [{ jobRunId: '00000000-0000-0000-0000-000000000010' }] }) },
+      actionPrice: { findFirst: vi.fn().mockResolvedValue({ creditMicros: 25_000_000n }) },
+      creditHold: { aggregate: vi.fn().mockResolvedValue({ _sum: { amountMicros: 30_000_000n } }) }
+    };
+    const { growthProgramService } = await import('./growthProgramService');
+    await expect(growthProgramService.createScheduledRun(tx as never, {
+      organizationId: '00000000-0000-0000-0000-000000000001',
+      siteId: '00000000-0000-0000-0000-000000000002',
+      programId: '00000000-0000-0000-0000-000000000003',
+      occurrenceKey: '2026-09-10T00:00:00.000Z'
+    })).rejects.toThrow(/预算上限/);
+    expect(tx.creditHold.aggregate).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: { in: ['HELD', 'SETTLED'] } })
+    }));
+    expect(tx.growthRun.create).not.toHaveBeenCalled();
+    expect(createJob).not.toHaveBeenCalled();
+  });
+
   it('rejects non-HTTPS and credential-bearing external URLs', async () => {
     const { normalizeGrowthProgramInputs } = await import('./growthProgramService');
     expect(() => normalizeGrowthProgramInputs([{ type: GrowthInputType.REFERENCE_URL, value: 'http://example.com/article' }])).toThrow(/HTTPS/);

@@ -184,16 +184,6 @@ export type EvergreenHealthStatus =
   | 'STABLE_GROWTH'             // 📈 持续引流中
   | 'DECAY_WARNING';            // ⚠️ 检测到轻度衰退，建议自愈
 
-export interface IndexingPushStatus {
-  baiduPushed: boolean;
-  baiduQuotaLeft: number;
-  indexNowBroadcasted: boolean;
-  googleSitemapPinged: boolean;
-  pushedTimestamp?: string;
-  responseStatus?: string;
-}
-
-
 export interface SiteHealthDiagnostics {
   restApiStatus: boolean;
   authStatus: boolean;
@@ -211,7 +201,7 @@ export interface ScoreBreakdown {
   winProbability: number;     // 15%
   currentRanking: number;     // 12%
   engagementPotential: number;// 10%
-  googleBaiduReuse: number;   // 10%
+  contentUtility: number;     // 10%
   internalLinkValue: number;  // 5%
   freshness: number;          // 5%
   dataReliability: number;    // 5%
@@ -300,29 +290,6 @@ export const AUTOMATION_PIPELINE_STAGES = [
 
 export const AUTOMATION_PIPELINE_STAGE_COUNT = AUTOMATION_PIPELINE_STAGES.length;
 
-export type AutomationIndexingStatus = 'SUBMITTED' | 'SKIPPED' | 'FAILED';
-
-export interface ArticleGenerationAutomation {
-  internalLinking: {
-    status: 'INSERTED' | 'SKIPPED';
-    message: string;
-    targetUrl?: string;
-  };
-  publishing: {
-    status: 'PUBLISHED' | 'BLOCKED';
-    message: string;
-    publishedUrl?: string;
-  };
-  indexing: {
-    status: AutomationIndexingStatus;
-    results: Array<{
-      provider: 'BAIDU' | 'GOOGLE';
-      status: AutomationIndexingStatus;
-      message: string;
-    }>;
-  };
-}
-
 export interface ArticleDraft {
   id: string;
   opportunityId: string;
@@ -336,7 +303,6 @@ export interface ArticleDraft {
   searchIntent?: SearchIntentType;
   evergreenStatus?: EvergreenHealthStatus;
   lastEvergreenRefreshAt?: string;
-  indexingPushStatus?: IndexingPushStatus;
   sourcesUsed: string[];
   qualityGate: QualityGateResult;
   status: 'DRAFT' | 'QUALITY_PASSED' | 'QUALITY_FAILED' | 'PENDING_APPROVAL' | 'PUBLISHED' | 'ROLLED_BACK';
@@ -424,58 +390,4 @@ export interface UsageLedgerItem {
   costPerIndexedPage: number;
   budgetLimit: number;
   budgetUsed: number;
-}
-
-export interface BaiduSubmissionLog {
-  id: string;
-  url: string;
-  submittedAt: string;
-  type: 'DAILY_API' | 'SITEMAP';
-  status: 'SUBMITTED' | 'INDEXED' | 'PENDING';
-  remainQuota: number;
-}
-
-export type CompetitorAttackKeywordType = 'ALTERNATIVE' | 'FEATURE_GAP' | 'PAIN_POINT' | 'PRICING_COMPARISON';
-
-export interface CompetitorAttackKeyword {
-  keyword: string;
-  type: CompetitorAttackKeywordType;
-  typeLabel: string;
-  intent: string;
-  attackAngle: string;
-  difficulty: 'LOW' | 'MEDIUM' | 'HIGH';
-  recommendedH2s: string[];
-}
-
-export interface CompetitorAttackAnalysis {
-  competitor: string;
-  competitorOverview: string;
-  competitorWeaknesses: string[];
-  attackKeywords: CompetitorAttackKeyword[];
-  strategicAdvice: string;
-}
-
-export type KeywordVulnerabilityType =
-  | 'KGR_GOLD'                  // 🟢 KGR黄金词 (<0.25)
-  | 'SERP_FORUM_VULNERABILITY'   // ⚡ SERP漏洞 (Reddit/知乎/论坛霸榜)
-  | 'PAIN_POINT_LONGTAIL'       // 🎯 痛点长尾词 (零搜索量假象/高转化)
-  | 'COMMERCIAL_CONVERSION'     // 💰 商业调查高转化词 (对比评测/替代方案)
-  | 'CONTENT_DECAY_EXPIRED';     // ⌛ 搜索结果过时超车词
-
-export interface KeywordOpportunityItem {
-  id: string;
-  keyword: string;
-  searchVolume: number;           // 月估算搜索量
-  kd: number;                    // 关键词难度 (0-100)
-  kgrIndex: number;              // KGR 黄金比例 (Allintitle/Volume)
-  serpVulnerabilityScore: number;// SERP漏洞指数 (0-100)
-  commercialIntentScore: number; // 商业转化意图 (0-100)
-  roiScore: number;              // 综合 ROI 性价比得分 (0-100)
-  vulnerabilityType: KeywordVulnerabilityType;
-  vulnerabilityLabel: string;
-  serpWeaknesses: string[];       // 扫描到的 SERP 漏洞列表
-  recommendedTitle: string;
-  recommendedAngle: string;
-  recommendedH2s: string[];
-  searchIntent: SearchIntentType;
 }

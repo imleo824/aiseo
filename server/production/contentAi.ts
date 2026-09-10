@@ -26,7 +26,8 @@ const sectionOutput = z.object({
   })).max(30).default([])
 });
 const refreshOutput = z.object({
-  html: z.string().trim().min(200).max(200_000),
+  targetHtml: z.string().min(20).max(80_000),
+  replacementHtml: z.string().trim().min(100).max(80_000),
   coverageTopics: z.array(z.string().trim().min(2).max(180)).min(1).max(30),
   claimSources: z.array(z.object({
     claim: z.string().trim().min(2).max(500),
@@ -52,6 +53,55 @@ const briefOutput = z.object({
 });
 
 export type ContentBrief = z.infer<typeof briefOutput>;
+
+const normalizedEvidenceText = (value: string): string => sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} })
+  .toLocaleLowerCase()
+  .normalize('NFKC')
+  .replace(/[^\p{L}\p{N}]+/gu, ' ')
+  .trim();
+const evidenceTokens = (value: string): string[] => normalizedEvidenceText(value)
+  .match(/[a-z0-9][a-z0-9-]{1,}|\p{Script=Han}{2,}/gu) || [];
+const supportedByEvidence = (claim: string, source: string): boolean => {
+  const normalizedClaim = normalizedEvidenceText(claim);
+  const normalizedSource = normalizedEvidenceText(source);
+  if (normalizedClaim.length >= 6 && normalizedSource.includes(normalizedClaim)) return true;
+  const tokens = [...new Set(evidenceTokens(claim))];
+  return tokens.length > 0 && tokens.filter((token) => normalizedSource.includes(token)).length / tokens.length >= 0.6;
+};
+const comparableHttpsUrl = (value: string): string | null => {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:') return null;
+    url.hash = '';
+    url.hostname = url.hostname.toLocaleLowerCase().replace(/^www\./, '');
+    url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+    return url.toString();
+  } catch {
+    return null;
+  }
+};
+
+export const validateContentBriefEvidence = (
+  brief: ContentBrief,
+  knowledge: Array<{ title: string; content: string }>,
+  internalLinks: Array<{ title: string; url: string }>
+): ContentBrief => {
+  const sources = new Map(knowledge.map((source) => [normalizedEvidenceText(source.title), source]));
+  for (const fact of brief.allowedSiteFacts) {
+    const source = sources.get(normalizedEvidenceText(fact.sourceTitle));
+    if (!source || !source.title.startsWith('[TARGET_SITE]') || !supportedByEvidence(fact.fact, source.content)) {
+      throw new ExternalServiceError('AI 内容简报包含无法从客户站点证据验证的事实');
+    }
+  }
+  const allowedLinks = new Set(internalLinks.map(({ url }) => comparableHttpsUrl(url)).filter((url): url is string => Boolean(url)));
+  if (brief.internalLinkTargets.some(({ url }) => {
+    const normalized = comparableHttpsUrl(url);
+    return !normalized || !allowedLinks.has(normalized);
+  })) {
+    throw new ExternalServiceError('AI 内容简报包含未经验证的内部链接');
+  }
+  return brief;
+};
 
 const cleanJson = (value: string): unknown => JSON.parse(value.trim().replace(/^```json\s*/i, '').replace(/\s*```$/, ''));
 const askModel = async (prompt: string, temperature: number): Promise<string> => {
@@ -128,7 +178,11 @@ export const contentAi = {
       }
     });
     try {
-      return briefOutput.parse(cleanJson(await askModel(prompt, 0)));
+      return validateContentBriefEvidence(
+        briefOutput.parse(cleanJson(await askModel(prompt, 0))),
+        input.knowledge,
+        input.internalLinks
+      );
     } catch (error) {
       if (error instanceof ExternalServiceError) throw error;
       throw new ExternalServiceError('AI 内容简报结果不符合正式 JSON 契约');
@@ -218,7 +272,7 @@ export const contentAi = {
 
   async refreshContent(input: { keyword: string; language: string; currentTitle: string; currentHtml: string; seoSnapshot: unknown; knowledge: Array<{ title: string; content: string }>; brief: ContentBrief }) {
     const prompt = JSON.stringify({
-      task: 'Refresh the existing page as one coherent publication-ready page. Preserve supported customer facts and the page purpose, remove obsolete repetition, close the verified intent gaps, and improve structure. Do not merely append a section. Do not copy references or invent facts, quotes, studies, metrics, products, customer claims, traffic, or rankings.',
+      task: 'Return one bounded local replacement for the existing page. targetHtml must be copied byte-for-byte from one unique contiguous fragment of currentPage and must cover no more than 60% of the visible page. replacementHtml replaces only that fragment, preserves supported customer facts and any unknown WordPress markup, and closes a verified intent gap. Never return the complete page. Do not copy references or invent facts, quotes, studies, metrics, products, customer claims, traffic, or rankings.',
       language: input.language,
       keyword: input.keyword,
       currentTitle: input.currentTitle,
@@ -227,7 +281,8 @@ export const contentAi = {
       brief: input.brief,
       knowledge: input.knowledge.map((source) => ({ title: source.title, content: source.content.slice(0, 20_000) })),
       output: {
-        html: 'complete semantic page body with headings; no title or bibliography',
+        targetHtml: 'one exact, unique, unchanged fragment copied from currentPage',
+        replacementHtml: 'semantic HTML replacing only targetHtml; never the complete page',
         coverageTopics: 'brief topics actually covered',
         claimSources: [{ claim: 'factual claim used', sourceTitle: 'exact supplied source title' }],
         changeSummary: ['specific meaningful changes made']
@@ -238,12 +293,12 @@ export const contentAi = {
       if (error instanceof ExternalServiceError) throw error;
       throw new ExternalServiceError('AI 内容刷新结果不符合正式 JSON 契约');
     }
-    const html = sanitizeHtml(parsed.html, {
+    const replacementHtml = sanitizeHtml(parsed.replacementHtml, {
       allowedTags: ['article', 'section', 'p', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'strong', 'em', 'blockquote', 'a', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'code', 'pre'],
       allowedAttributes: { a: ['href', 'title', 'rel'] },
       allowedSchemes: ['https']
     });
-    if (html.length < 200 || !/<h[2-3]\b/i.test(html)) throw new ExternalServiceError('内容刷新未通过结构门禁');
-    return { ...parsed, html };
+    if (replacementHtml.length < 100 || !/<h[2-3]\b/i.test(replacementHtml)) throw new ExternalServiceError('内容刷新未通过结构门禁');
+    return { ...parsed, replacementHtml };
   }
 };

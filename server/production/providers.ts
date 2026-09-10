@@ -109,8 +109,11 @@ export const keywordCandidateFromItem = (item: ProviderRecord, source: string): 
   const keywordDifficulty = finiteNumber(keywordProperties.keyword_difficulty ?? item.keyword_difficulty) ?? null;
   const intent = String(keywordIntent.label || searchIntentInfo.main_intent || item.main_intent || '').trim() || null;
   const intentProbability = finiteNumber(keywordIntent.probability ?? searchIntentInfo.intent_probability ?? item.intent_probability) ?? null;
-  const rank = finiteNumber(serpItem.rank_group ?? item.rank_group) ?? null;
-  const rankingUrl = String(serpItem.url || item.url || '').trim() || null;
+  // Only a ranking returned for the customer's own domain is an existing-page
+  // signal. Competitor ranks must never steer an update toward a competitor URL.
+  const targetSiteRanking = source === 'SITE_RANKED_KEYWORDS';
+  const rank = targetSiteRanking ? finiteNumber(serpItem.rank_group ?? item.rank_group) ?? null : null;
+  const rankingUrl = targetSiteRanking ? String(serpItem.url || item.url || '').trim() || null : null;
   return { keyword, searchVolume, keywordDifficulty, intent, intentProbability, rank, rankingUrl, sources: [source] };
 };
 
@@ -147,10 +150,34 @@ export type KeywordMetrics = {
   keyword: string;
   searchVolume: number;
   keywordDifficulty: number;
-  allintitleCount: number;
   serp: unknown;
   serpEvidenceCount: number;
   fetchedAt: string;
+};
+
+const comparableSerpUrl = (value: string): string | null => {
+  try {
+    const url = new URL(value);
+    url.hash = '';
+    url.search = '';
+    url.hostname = url.hostname.toLocaleLowerCase().replace(/^www\./, '');
+    url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+    return url.toString();
+  } catch {
+    return null;
+  }
+};
+
+export const targetRankFromSerp = (serp: unknown, targetUrl: string): number | null => {
+  if (!isRecord(serp) || !Array.isArray(serp.items)) return null;
+  const target = comparableSerpUrl(targetUrl);
+  if (!target) return null;
+  for (const item of serp.items.filter(isRecord)) {
+    const url = comparableSerpUrl(String(item.url || ''));
+    const rank = finiteNumber(item.rank_group ?? item.rank_absolute);
+    if (url === target && rank !== null && rank > 0) return Math.round(rank);
+  }
+  return null;
 };
 
 export const dataForSeoProvider = {
@@ -164,11 +191,10 @@ export const dataForSeoProvider = {
     const keywords = [...new Set(input.keywords.map((keyword) => keyword.trim()).filter(Boolean))].slice(0, 25);
     if (!keywords.length) return [];
     const common = { location_code: input.locationCode, language_code: input.languageCode };
-    const [volumeTask, difficultyTask, serpTasks, allintitleTasks] = await Promise.all([
+    const [volumeTask, difficultyTask, serpTasks] = await Promise.all([
       dataForSeoLive('keywords_data/google_ads/search_volume/live', { ...common, keywords }),
       dataForSeoLive('dataforseo_labs/google/bulk_keyword_difficulty/live', { ...common, keywords }),
-      dataForSeoBatch('serp/google/organic/live/advanced', keywords.map((keyword) => ({ ...common, keyword, depth: 20 }))),
-      dataForSeoBatch('serp/google/organic/live/advanced', keywords.map((keyword) => ({ ...common, keyword: 'allintitle:' + keyword, depth: 10 })))
+      dataForSeoBatch('serp/google/organic/live/advanced', keywords.map((keyword) => ({ ...common, keyword, depth: 20 })))
     ]);
     const volumes = new Map(taskItems(volumeTask).map((item) => [String(item.keyword).toLocaleLowerCase().normalize('NFKC'), Number(item.search_volume)]));
     const difficulties = new Map(taskItems(difficultyTask).map((item) => [String(item.keyword).toLocaleLowerCase().normalize('NFKC'), Number(item.keyword_difficulty)]));
@@ -178,13 +204,12 @@ export const dataForSeoProvider = {
       const searchVolume = volumes.get(key);
       const keywordDifficulty = difficulties.get(key);
       const serp = serpTasks[index]?.result?.[0];
-      const allintitleCount = Number(allintitleTasks[index]?.result?.[0]?.se_results_count);
       const serpEvidenceCount = Array.isArray(serp?.items) ? serp.items.length : 0;
-      if (![searchVolume, keywordDifficulty, allintitleCount].every(Number.isFinite)) {
-        throw new ExternalServiceError('DataForSEO 未返回完整的搜索量、KD 或 allintitle 数据: ' + keyword);
+      if (![searchVolume, keywordDifficulty].every(Number.isFinite)) {
+        throw new ExternalServiceError('DataForSEO 未返回完整的搜索量或关键词难度数据: ' + keyword);
       }
       if (serpEvidenceCount < 1) throw new ExternalServiceError('DataForSEO 未返回可核验的 SERP 结果: ' + keyword);
-      return { keyword, searchVolume: searchVolume!, keywordDifficulty: keywordDifficulty!, allintitleCount, serp, serpEvidenceCount, fetchedAt };
+      return { keyword, searchVolume: searchVolume!, keywordDifficulty: keywordDifficulty!, serp, serpEvidenceCount, fetchedAt };
     });
   },
 
@@ -314,6 +339,36 @@ export const tronGridProvider = {
   }
 };
 
+export const selectGscProperty = (
+  siteDomain: string,
+  properties: Array<{ siteUrl: string; permissionLevel: string }>
+): string | null => {
+  let target: URL;
+  try {
+    target = new URL(/^https?:\/\//i.test(siteDomain) ? siteDomain : `https://${siteDomain}`);
+  } catch {
+    return null;
+  }
+  const hostname = target.hostname.toLocaleLowerCase().replace(/^www\./, '');
+  const candidates = properties.flatMap((property) => {
+    if (!property.siteUrl || property.permissionLevel === 'siteUnverifiedUser') return [];
+    if (property.siteUrl.startsWith('sc-domain:')) {
+      const domain = property.siteUrl.slice('sc-domain:'.length).toLocaleLowerCase().replace(/^www\./, '').replace(/\.$/, '');
+      if (hostname !== domain && !hostname.endsWith(`.${domain}`)) return [];
+      return [{ propertyId: property.siteUrl, score: hostname === domain ? 4_000 + domain.length : 3_000 + domain.length }];
+    }
+    try {
+      const prefix = new URL(property.siteUrl);
+      const propertyHost = prefix.hostname.toLocaleLowerCase().replace(/^www\./, '');
+      if (propertyHost !== hostname || target.protocol !== prefix.protocol || !target.pathname.startsWith(prefix.pathname)) return [];
+      return [{ propertyId: property.siteUrl, score: 2_000 + prefix.pathname.length }];
+    } catch {
+      return [];
+    }
+  });
+  return candidates.sort((left, right) => right.score - left.score || left.propertyId.localeCompare(right.propertyId))[0]?.propertyId || null;
+};
+
 export const gscProvider = {
   authorizationUrl(state: string): string {
     if (!env.gscClientId || !env.gscClientSecret) throw new ValidationError('GSC OAuth 尚未配置');
@@ -321,14 +376,25 @@ export const gscProvider = {
     return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
   },
 
-  async exchangeCode(code: string): Promise<{ refreshToken: string; scope: string }> {
+  async exchangeCode(code: string): Promise<{ accessToken: string; refreshToken: string; scope: string }> {
     if (!env.gscClientId || !env.gscClientSecret) throw new ValidationError('GSC OAuth 尚未配置');
     const token = await json(await externalFetch('https://oauth2.googleapis.com/token', {
       method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ code, client_id: env.gscClientId, client_secret: env.gscClientSecret, redirect_uri: `${env.appBaseUrl}/api/v1/integrations/gsc/callback`, grant_type: 'authorization_code' })
     }));
-    if (!token.refresh_token) throw new ExternalServiceError('Google 未返回 refresh_token，请重新授权离线访问');
-    return { refreshToken: String(token.refresh_token), scope: String(token.scope || 'https://www.googleapis.com/auth/webmasters.readonly') };
+    if (!token.access_token || !token.refresh_token) throw new ExternalServiceError('Google 未返回离线访问所需的完整令牌，请重新授权');
+    return { accessToken: String(token.access_token), refreshToken: String(token.refresh_token), scope: String(token.scope || 'https://www.googleapis.com/auth/webmasters.readonly') };
+  },
+
+  async listProperties(accessToken: string): Promise<Array<{ siteUrl: string; permissionLevel: string }>> {
+    const result = await json(await externalFetch('https://www.googleapis.com/webmasters/v3/sites', {
+      headers: { authorization: `Bearer ${accessToken}` }
+    }));
+    if (!Array.isArray(result.siteEntry)) return [];
+    return result.siteEntry
+      .filter(isRecord)
+      .map((entry) => ({ siteUrl: String(entry.siteUrl || ''), permissionLevel: String(entry.permissionLevel || '') }))
+      .filter(({ siteUrl, permissionLevel }) => siteUrl && permissionLevel && permissionLevel !== 'siteUnverifiedUser');
   },
 
   async sync(input: { refreshToken: string; propertyId: string; startDate: string; endDate: string }) {

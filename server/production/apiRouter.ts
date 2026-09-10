@@ -11,7 +11,7 @@ import { jobService } from './jobService';
 import { withRequestScope, withSerializableScope, type TransactionClient } from './prisma';
 import { currentEncryptionKeyVersion, encryptSecret } from './crypto';
 import { env } from './env';
-import { gscProvider } from './providers';
+import { gscProvider, selectGscProperty } from './providers';
 import { wordPressService } from './wordpress';
 import { gscComparisonWindow } from './gscData';
 import { growthProgramService } from './growthProgramService';
@@ -31,7 +31,7 @@ const growthInputSchema = z.discriminatedUnion('type', [
 ]);
 const growthProgramSchema = z.object({
   mode: z.enum(['ONCE', 'CONTINUOUS']),
-  inputs: z.array(growthInputSchema).min(1).max(30).superRefine((inputs, context) => {
+  inputs: z.array(growthInputSchema).max(30).default([]).superRefine((inputs, context) => {
     const limits = { KEYWORD: 20, REFERENCE_URL: 5, COMPETITOR_SITE: 5 } as const;
     for (const type of Object.keys(limits) as Array<keyof typeof limits>) {
       if (inputs.filter((input) => input.type === type).length > limits[type]) {
@@ -39,7 +39,7 @@ const growthProgramSchema = z.object({
       }
     }
   }),
-  budgetLimitMicros: z.string().regex(/^\d+$/).transform(BigInt).optional()
+  budgetLimitMicros: z.string().regex(/^\d+$/).max(30).transform(BigInt).optional()
 });
 
 const userId = (request: Request): string => {
@@ -81,7 +81,7 @@ const consumeOauthState = async (
 
 export const apiRouter = Router();
 
-type GscState = { organizationId: string; profileId: string; siteId: string; propertyId: string; nonce: string; expiresAt: number };
+type GscState = { organizationId: string; profileId: string; siteId: string; nonce: string; expiresAt: number };
 type WordPressState = { organizationId: string; profileId: string; siteId: string; nonce: string; expiresAt: number };
 const signGscState = (state: GscState): string => {
   if (!env.gscStateSecret) throw new ValidationError('GSC_STATE_SECRET 尚未配置');
@@ -117,13 +117,19 @@ apiRouter.get('/integrations/gsc/callback', asyncRoute(async (request, response)
   const state = readGscState(String(request.query.state || ''));
   const code = String(request.query.code || '');
   if (!code) throw new ValidationError('Google 未返回授权码');
-  await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
+  const site = await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
     await assertRole(tx, state.profileId, state.organizationId, OrganizationRole.EDITOR);
     await consumeOauthState(tx, state.nonce, 'gsc-oauth-state');
+    const found = await tx.site.findFirst({ where: { id: state.siteId, organizationId: state.organizationId } });
+    if (!found) throw new NotFoundError('站点不存在');
+    return found;
   });
   const credentials = await gscProvider.exchangeCode(code);
+  const propertyId = selectGscProperty(site.domain, await gscProvider.listProperties(credentials.accessToken));
+  if (!propertyId) throw new ValidationError('该 Google 账号没有与当前 WordPress 域名匹配的已验证 GSC 属性');
+  const storedCredentials = { refreshToken: credentials.refreshToken, scope: credentials.scope };
   await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
-    const connection = await tx.integrationConnection.upsert({ where: { siteId_provider: { siteId: state.siteId, provider: 'GSC' } }, create: { organizationId: state.organizationId, siteId: state.siteId, provider: 'GSC', propertyId: state.propertyId, encryptedCredentials: encryptSecret(credentials), keyVersion: currentEncryptionKeyVersion(), status: SiteConnectionStatus.VERIFYING }, update: { propertyId: state.propertyId, encryptedCredentials: encryptSecret(credentials), keyVersion: currentEncryptionKeyVersion(), status: SiteConnectionStatus.VERIFYING, lastErrorCode: null, lastErrorMessage: null } });
+    const connection = await tx.integrationConnection.upsert({ where: { siteId_provider: { siteId: state.siteId, provider: 'GSC' } }, create: { organizationId: state.organizationId, siteId: state.siteId, provider: 'GSC', propertyId, encryptedCredentials: encryptSecret(storedCredentials), keyVersion: currentEncryptionKeyVersion(), status: SiteConnectionStatus.VERIFYING }, update: { propertyId, encryptedCredentials: encryptSecret(storedCredentials), keyVersion: currentEncryptionKeyVersion(), status: SiteConnectionStatus.VERIFYING, lastErrorCode: null, lastErrorMessage: null } });
     const end = new Date(Date.now() - 3 * 86_400_000);
     const start = new Date(end.getTime() - 27 * 86_400_000);
     const date = (value: Date) => value.toISOString().slice(0, 10);
@@ -133,7 +139,7 @@ apiRouter.get('/integrations/gsc/callback', asyncRoute(async (request, response)
       idempotencyKey: `gsc-initial:${connection.id}:${date(end)}`,
       payload: { connectionId: connection.id, siteId: state.siteId, startDate: date(start), endDate: date(end) }
     });
-    await tx.auditEvent.create({ data: { organizationId: state.organizationId, actorId: state.profileId, action: 'GSC_AUTHORIZED', targetType: 'site', targetId: state.siteId, metadata: { propertyId: state.propertyId, initialSyncQueued: true } } });
+    await tx.auditEvent.create({ data: { organizationId: state.organizationId, actorId: state.profileId, action: 'GSC_AUTHORIZED', targetType: 'site', targetId: state.siteId, metadata: { propertyId, initialSyncQueued: true, selection: 'AUTO_DOMAIN_MATCH' } } });
   });
   response.redirect('/?gsc=syncing');
 }));
@@ -198,7 +204,7 @@ apiRouter.get('/me/export', asyncRoute(async (request, response) => {
     const [sites, wordpressCompatibilityProfiles, knowledgeSources, snapshots, siteSnapshots, opportunities, growthPrograms, growthRuns, growthActions, measurementSamples, drafts, ledger, payments, auditEvents] = await Promise.all([
       tx.site.findMany({ where: { organizationId: { in: ids } }, select: { id: true, organizationId: true, name: true, domain: true, language: true, wordpressStatus: true, wordpressCompatibilityMode: true, wordpressCompatibilityCheckedAt: true, createdAt: true } }),
       tx.wordPressCompatibilityProfile.findMany({ where: { organizationId: { in: ids } } }),
-      tx.knowledgeSource.findMany({ where: { organizationId: { in: ids } } }),
+      tx.knowledgeSource.findMany({ where: { organizationId: { in: ids } }, include: { contentBlob: true } }),
       tx.dataSnapshot.findMany({ where: { organizationId: { in: ids } } }),
       tx.siteSnapshot.findMany({ where: { organizationId: { in: ids } }, include: { pages: true } }),
       tx.opportunity.findMany({ where: { organizationId: { in: ids } } }),
@@ -449,15 +455,13 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/wordpress/recheck',
 
 apiRouter.post('/organizations/:organizationId/sites/:siteId/gsc/authorize', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request);
-  const input = parseBody(z.object({ propertyId: z.string().trim().min(3).max(500) }), request);
-  if (!input.propertyId.startsWith('sc-domain:') && !/^https:\/\//.test(input.propertyId)) throw new ValidationError('GSC 属性必须是 sc-domain: 或 HTTPS URL');
   const nonce = randomUUID();
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { siteId, ...input }, execute: async () => {
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { siteId }, execute: async () => {
       if (!await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } })) throw new NotFoundError('站点不存在');
       await tx.idempotencyKey.create({ data: { organizationId: orgId, profileId, key: nonce, requestHash: 'gsc-oauth-state', expiresAt: new Date(Date.now() + 10 * 60_000) } });
-      const authorizationUrl = gscProvider.authorizationUrl(signGscState({ organizationId: orgId, profileId, siteId, propertyId: input.propertyId, nonce, expiresAt: Date.now() + 10 * 60_000 }));
+      const authorizationUrl = gscProvider.authorizationUrl(signGscState({ organizationId: orgId, profileId, siteId, nonce, expiresAt: Date.now() + 10 * 60_000 }));
       return { statusCode: 200, data: { authorizationUrl } };
     } });
   });

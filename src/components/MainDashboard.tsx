@@ -178,10 +178,6 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
         ...splitUrlSignals(rewriteInput).map((value): GrowthInput => ({ type: 'REFERENCE_URL', value })),
         ...splitUrlSignals(competitorInput).map((value): GrowthInput => ({ type: 'COMPETITOR_SITE', value }))
       ];
-      if (!inputs.length) {
-        showToast('请至少输入一个关键词、参考文章或竞品站点');
-        return;
-      }
     }
     const targetSiteIds = targetSiteId ? [targetSiteId] : safeSites.map(s => s.id);
 
@@ -379,7 +375,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             </div>
 
             <p className="text-[11px] text-slate-500 px-1">
-              三类线索可以组合使用；每项支持输入多个值，换行分隔。至少填写一种即可开始。
+              三类线索可组合且支持多个值；全部留空时，系统会从已连接站点自动发现机会。
             </p>
 
             {/* 模式 1：自定义关键词 */}

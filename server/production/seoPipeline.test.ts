@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assessSourceOriginality, deterministicActionQualityGate, insertContextualInternalLinks, selectRelevantInternalLinks } from './seoPipeline';
+import { applyVerifiedLocalHtmlPatch, assessSourceOriginality, deterministicActionQualityGate, insertContextualInternalLinks, selectRelevantInternalLinks } from './seoPipeline';
 
 describe('selectRelevantInternalLinks', () => {
   it('selects only relevant, stable internal links', () => {
@@ -31,7 +31,10 @@ describe('content safety gates', () => {
     expect(deterministicActionQualityGate({ actionType: 'UPDATE_TITLE', title: 'Changed title', html: `${original}<p>unexpected rewrite</p>`, beforeHtml: original }).passed).toBe(false);
     const linked = insertContextualInternalLinks(original, [{ title: 'Original customer content', url: 'https://example.com/related' }]);
     expect(linked.inserted).toHaveLength(1);
-    expect(deterministicActionQualityGate({ actionType: 'ADD_INTERNAL_LINKS', title: 'Existing Page Title', html: linked.html, beforeHtml: original, insertedInternalLinks: linked.inserted.length }).passed).toBe(true);
+    expect(linked.html).toContain('<a href="https://example.com/related" rel="noopener">Original customer content</a>');
+    expect(linked.html).not.toContain('更多信息可参阅');
+    expect(deterministicActionQualityGate({ actionType: 'ADD_INTERNAL_LINKS', title: 'Existing Page Title', html: linked.html, beforeHtml: original, insertedInternalLinks: linked.inserted.length, allowedLinkUrls: ['https://example.com/related'] }).passed).toBe(true);
+    expect(deterministicActionQualityGate({ actionType: 'ADD_INTERNAL_LINKS', title: 'Existing Page Title', html: linked.html, beforeHtml: original, insertedInternalLinks: linked.inserted.length, allowedLinkUrls: [] }).passed).toBe(false);
   });
 
   it('requires a refresh to change the page while retaining its verified topic', () => {
@@ -42,10 +45,25 @@ describe('content safety gates', () => {
       title: 'WordPress SEO Foundations Guide',
       beforeHtml: original,
       requiredTopics: ['WordPress SEO foundations', 'Internal linking workflow'],
-      declaredCoveredTopics: ['WordPress SEO foundations', 'Internal linking workflow']
+      declaredCoveredTopics: ['WordPress SEO foundations', 'Internal linking workflow'],
+      claimSources: [{ claim: 'Technical optimization and crawlability help search engines discover useful pages.', sourceTitle: 'Verified WordPress guide' }],
+      allowedSourceTitles: ['Verified WordPress guide'],
+      sourceDocuments: [{ title: 'Verified WordPress guide', content: 'Technical optimization and crawlability help search engines discover useful pages.' }]
     };
     expect(deterministicActionQualityGate({ ...common, html: refreshed }).passed).toBe(true);
     expect(deterministicActionQualityGate({ ...common, html: original }).passed).toBe(false);
     expect(deterministicActionQualityGate({ ...common, html: '<article><h2>Luxury cruises</h2><p>Unrelated travel deals and resort packages for vacation planning.</p></article>' }).passed).toBe(false);
+  });
+
+  it('applies only an exact, unique, bounded local refresh patch', () => {
+    const original = '<article><h2>Foundations</h2><p>Stable customer facts and positioning remain untouched throughout this page.</p><h2>Old workflow</h2><p>This verified section needs a precise update for the current workflow.</p><h2>Resources</h2><p>Existing customer resources and support details remain unchanged.</p></article>';
+    const target = '<h2>Old workflow</h2><p>This verified section needs a precise update for the current workflow.</p>';
+    const replacement = '<h2>Current workflow</h2><p>This verified section now explains the current workflow with evidence, clear steps, safe validation, and a reversible outcome.</p>';
+    const patched = applyVerifiedLocalHtmlPatch(original, target, replacement);
+    expect(patched.html).toContain(replacement);
+    expect(patched.html).toContain('Stable customer facts and positioning remain untouched');
+    expect(patched.targetCharacters).toBeGreaterThan(20);
+    expect(() => applyVerifiedLocalHtmlPatch(original, original, replacement)).toThrow(/局部修改范围/);
+    expect(() => applyVerifiedLocalHtmlPatch(original, '<p>missing</p>', replacement)).toThrow(/精确且唯一/);
   });
 });

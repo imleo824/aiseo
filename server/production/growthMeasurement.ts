@@ -98,3 +98,24 @@ export const evaluateGrowthOutcome = (
   if (clickDelta < 0 && confidence >= 0.35 && positionDelta <= 0) return { outcome: 'LOSS', confidenceMicros, clickDelta };
   return { outcome: 'NEUTRAL', confidenceMicros, clickDelta };
 };
+
+export const evaluateRankOutcome = (
+  currentRank: number | null,
+  baselineRank: number | null
+): { outcome: 'WIN' | 'NEUTRAL' | 'LOSS' | 'INCONCLUSIVE'; confidenceMicros: bigint; rankImprovement: number | null } => {
+  if (baselineRank === null && currentRank === null) {
+    return { outcome: 'INCONCLUSIVE', confidenceMicros: 250_000n, rankImprovement: null };
+  }
+  if (baselineRank === null && currentRank !== null) {
+    return { outcome: currentRank <= 20 ? 'WIN' : 'INCONCLUSIVE', confidenceMicros: 600_000n, rankImprovement: null };
+  }
+  if (baselineRank !== null && currentRank === null) {
+    return { outcome: baselineRank <= 20 ? 'LOSS' : 'INCONCLUSIVE', confidenceMicros: 600_000n, rankImprovement: null };
+  }
+  const rankImprovement = baselineRank! - currentRank!;
+  return {
+    outcome: rankImprovement >= 3 ? 'WIN' : rankImprovement <= -3 ? 'LOSS' : 'NEUTRAL',
+    confidenceMicros: 700_000n,
+    rankImprovement
+  };
+};

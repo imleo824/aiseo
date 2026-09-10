@@ -9,6 +9,7 @@ import {
   GrowthInputType,
   GrowthProgramMode,
   GrowthProgramStatus,
+  GrowthRunTrigger,
   GrowthRunStageCode,
   GrowthRunStageStatus,
   GrowthRunStatus,
@@ -32,16 +33,16 @@ import { extractGscOpportunitySeeds, gscComparisonWindow, readGscRows } from './
 import { continuousCadenceDays, selectGrowthAction } from './growthPolicy';
 import { growthProgramService } from './growthProgramService';
 import { jobService } from './jobService';
-import { dataForSeoProvider, gscProvider, tronGridProvider, type KeywordDiscoveryCandidate } from './providers';
+import { dataForSeoProvider, gscProvider, targetRankFromSerp, tronGridProvider, type KeywordDiscoveryCandidate } from './providers';
 import { closeQueue, getProductionQueue, getQueueConnection, PRODUCTION_QUEUE, productionJobOptions } from './queue';
 import { capturePublicSource, type CapturedSource } from './sourceFetcher';
-import { assessSourceOriginality, deterministicActionQualityGate, insertContextualInternalLinks, selectRelevantInternalLinks } from './seoPipeline';
+import { applyVerifiedLocalHtmlPatch, assessSourceOriginality, deterministicActionQualityGate, insertContextualInternalLinks, selectRelevantInternalLinks } from './seoPipeline';
 import { resolveSeoMarket } from './seoMarket';
 import type { SeoMarket } from './seoMarket';
 import { assertSafeWordPressMutation, wordPressService, wordpressCompatibilityAllows, type WordPressEditableSnapshot, type WordPressSiteContext } from './wordpress';
 import { persistWordPressCompatibility, scanWordPressCompatibility } from './wordpressCompatibility';
 import { applyObservedActionMultiplier, businessRelevanceScore, contentCoverageScore, findCannibalizationMatch, scoreKeywordCandidate } from './growthDiscovery';
-import { actionMeasurementWindow, aggregateTargetGsc, evaluateGrowthOutcome } from './growthMeasurement';
+import { actionMeasurementWindow, aggregateTargetGsc, evaluateGrowthOutcome, evaluateRankOutcome } from './growthMeasurement';
 import { persistSiteSnapshot } from './siteSnapshotService';
 import { disconnectWorkerDatabase, workerPrisma } from './workerPrisma';
 import { assertDatabaseSecurity } from './databaseSecurity';
@@ -49,6 +50,7 @@ import { logger } from '../utils/logger';
 import { resolvePublicHttpsOrigin } from '../utils/networkSafety';
 import { ConflictError, ValidationError } from '../domain/errors';
 import { parsePublishingConfirmationPolicy, PUBLISH_CONFIRMATION_SETTING_KEY } from './publishingPolicy';
+import { evidenceSourceRole, growthEvidenceFingerprint, knowledgeSourceIdentity, selectRelevantSiteEvidence, shouldSkipUnchangedEvidence } from './knowledgeEvidence';
 
 type QueuePayload = { jobRunId?: string; system?: boolean };
 type Evidence = Array<Record<string, unknown>>;
@@ -138,18 +140,30 @@ const persistSource = async (tx: Prisma.TransactionClient, input: {
   prefix: '[TARGET_SITE]' | '[REFERENCE]' | '[COMPETITOR]';
   source: Pick<CapturedSource, 'normalizedUrl' | 'title' | 'content' | 'checksum' | 'fetchedAt'>;
 }): Promise<string> => {
-  const existing = await tx.knowledgeSource.findUnique({ where: { organizationId_checksum: { organizationId: input.organizationId, checksum: input.source.checksum } } });
+  const role = evidenceSourceRole(input.prefix);
+  const identityFingerprint = knowledgeSourceIdentity({
+    siteId: input.siteId,
+    role,
+    normalizedUrl: input.source.normalizedUrl,
+    checksum: input.source.checksum
+  });
+  const existing = await tx.knowledgeSource.findUnique({ where: { organizationId_identityFingerprint: { organizationId: input.organizationId, identityFingerprint } } });
   if (existing) return existing.id;
+  const contentBlob = await tx.knowledgeContentBlob.upsert({
+    where: { organizationId_checksum: { organizationId: input.organizationId, checksum: input.source.checksum } },
+    create: { organizationId: input.organizationId, checksum: input.source.checksum, content: input.source.content },
+    update: {}
+  });
   const created = await tx.knowledgeSource.create({ data: {
     organizationId: input.organizationId,
     siteId: input.siteId,
-    type: 'ALLOWLISTED_URL',
+    contentBlobId: contentBlob.id,
+    role,
+    identityFingerprint,
     title: `${input.prefix} ${input.source.title}`.slice(0, 200),
     sourceUrl: input.source.normalizedUrl,
     normalizedUrl: input.source.normalizedUrl,
-    content: input.source.content,
     summary: input.source.content.slice(0, 500),
-    checksum: input.source.checksum,
     fetchedAt: new Date(input.source.fetchedAt)
   } });
   return created.id;
@@ -212,8 +226,8 @@ const restorePersistedUnderstanding = async (run: {
 }) => {
   const snapshot = await workerPrisma.siteSnapshot.findUnique({ where: { runId: run.id }, include: { pages: true } });
   if (!snapshot) return null;
-  const sources = await workerPrisma.knowledgeSource.findMany({ where: { id: { in: run.knowledgeSourceIds }, organizationId: run.organizationId, status: DataStatus.LIVE } });
-  const targetSource = sources.find(({ title }) => title.startsWith('[TARGET_SITE]'));
+  const sources = await workerPrisma.knowledgeSource.findMany({ where: { id: { in: run.knowledgeSourceIds }, organizationId: run.organizationId, status: DataStatus.LIVE }, include: { contentBlob: true } });
+  const targetSource = sources.find(({ role }) => role === 'TARGET_SITE');
   if (!targetSource?.normalizedUrl || sources.length !== run.knowledgeSourceIds.length) {
     throw new Error('已完成的网站理解阶段缺少不可变站点语料，拒绝重新抓取并混用不同证据版本');
   }
@@ -262,7 +276,7 @@ const restorePersistedUnderstanding = async (run: {
   const targetContext: WordPressSiteContext = {
     normalizedUrl: targetSource.normalizedUrl,
     title: targetSource.title,
-    content: targetSource.content,
+    content: targetSource.contentBlob.content,
     checksum: snapshot.corpusChecksum,
     fetchedAt: snapshot.fetchedAt.toISOString(),
     internalLinks: pages.map(({ title, url }) => ({ title, url })),
@@ -285,9 +299,9 @@ const restorePersistedUnderstanding = async (run: {
   };
   const externalSources: ExternalGrowthSource[] = sources.flatMap((knowledge) => {
     if (knowledge.id === targetSource.id || !knowledge.normalizedUrl) return [];
-    const type = knowledge.title.startsWith('[REFERENCE]')
+    const type = knowledge.role === 'REFERENCE'
       ? GrowthInputType.REFERENCE_URL
-      : knowledge.title.startsWith('[COMPETITOR]')
+      : knowledge.role === 'COMPETITOR'
         ? GrowthInputType.COMPETITOR_SITE
         : null;
     if (!type) return [];
@@ -296,8 +310,8 @@ const restorePersistedUnderstanding = async (run: {
       source: {
         normalizedUrl: knowledge.normalizedUrl,
         title: knowledge.title.replace(/^\[(?:REFERENCE|COMPETITOR)]\s*/, ''),
-        content: knowledge.content,
-        checksum: knowledge.checksum,
+        content: knowledge.contentBlob.content,
+        checksum: knowledge.contentBlob.checksum,
         fetchedAt: (knowledge.fetchedAt || knowledge.createdAt).toISOString()
       }
     }];
@@ -321,7 +335,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
     include: { program: { include: { inputs: { orderBy: { position: 'asc' } } } }, site: true, actions: true }
   });
   if (!run) throw new Error('增长执行不存在');
-  if (run.status === GrowthRunStatus.DELIVERED || run.status === GrowthRunStatus.CANCELLED) return run.id;
+  if (run.status === GrowthRunStatus.DELIVERED || run.status === GrowthRunStatus.SKIPPED || run.status === GrowthRunStatus.CANCELLED) return run.id;
   if (run.draftId) return run.id;
   if (run.site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !run.site.wordpressCredentials || !run.site.wordpressVerifiedAt) {
     throw new ValidationError('WordPress 连接未通过验证，无法执行真实站点分析');
@@ -397,11 +411,6 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       url: externalInputs[index].normalizedValue,
       reason: (result.reason instanceof Error ? result.reason.message : String(result.reason)).slice(0, 500)
     }] : []);
-    const hasKeywordInput = run.program.inputs.some((input) => input.type === GrowthInputType.KEYWORD);
-    const hasCompetitorInput = run.program.inputs.some((input) => input.type === GrowthInputType.COMPETITOR_SITE);
-    if (!hasKeywordInput && !hasCompetitorInput && !externalSources.length) {
-      throw new ValidationError('所有参考文章均不可访问，无法形成真实增长线索');
-    }
     understanding = await workerPrisma.$transaction(async (tx) => {
       const ids = [await persistSource(tx, { organizationId: run!.organizationId, siteId: run!.siteId, prefix: '[TARGET_SITE]', source: targetContext })];
       const externalEvidence = [] as Evidence;
@@ -444,6 +453,70 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
   }
   const { health, targetContext, market, externalSources, sourceIds, siteSnapshotId } = understanding;
 
+  const evidenceFingerprint = growthEvidenceFingerprint({
+    siteChecksum: targetContext.checksum,
+    gscEvidence: { current: currentGscRows, previous: previousGscRows },
+    externalChecksums: externalSources.map(({ source }) => source.checksum)
+  });
+  if (shouldSkipUnchangedEvidence({
+    scheduled: run.trigger === GrowthRunTrigger.SCHEDULED,
+    currentFingerprint: evidenceFingerprint,
+    lastFingerprint: run.program.lastEvidenceFingerprint,
+    lastEvaluatedAt: run.program.lastEvidenceAt,
+    runCreatedAt: run.createdAt
+  })) {
+    await workerPrisma.$transaction(async (tx) => {
+      const now = new Date();
+      await billingService.releaseCreditHold(tx, jobRunId);
+      await tx.growthRunStage.updateMany({
+        where: {
+          runId: run!.id,
+          stage: { in: [GrowthRunStageCode.DISCOVER, GrowthRunStageCode.DECIDE, GrowthRunStageCode.EXECUTE, GrowthRunStageCode.LEARN] }
+        },
+        data: {
+          status: GrowthRunStageStatus.SKIPPED,
+          summary: '站点、搜索表现与外部线索均无新证据，本轮不重复执行也不扣费。',
+          processedCount: 0,
+          totalCount: 0,
+          errorCode: null,
+          errorMessage: null,
+          finishedAt: now
+        }
+      });
+      await tx.growthRun.update({
+        where: { id: run!.id },
+        data: {
+          status: GrowthRunStatus.SKIPPED,
+          currentStage: GrowthRunStageCode.UNDERSTAND,
+          errorCode: null,
+          errorMessage: null,
+          finishedAt: now,
+          delivery: {
+            skipped: true,
+            charged: false,
+            reason: 'NO_NEW_EVIDENCE',
+            evidenceFingerprint,
+            nextForcedEvaluationAfterDays: 28
+          }
+        }
+      });
+      await tx.growthProgram.update({
+        where: { id: run!.programId },
+        data: { status: GrowthProgramStatus.ACTIVE, lastRunAt: now, lastError: null }
+      });
+      await tx.auditEvent.create({
+        data: {
+          organizationId: run!.organizationId,
+          action: 'GROWTH_RUN_SKIPPED',
+          targetType: 'growth_run',
+          targetId: run!.id,
+          metadata: { reason: 'NO_NEW_EVIDENCE', charged: false, evidenceFingerprint, forcedEvaluationDays: 28 }
+        }
+      });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return run.id;
+  }
+
   await startStage(run.id, GrowthRunStageCode.DISCOVER);
   let keyword = run.resolvedKeyword;
   const explicitKeywords = run.program.inputs
@@ -457,16 +530,24 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
         content: external.source.content
       })
   ).keyword));
+  const siteDerivedKeywords = keyword || explicitKeywords.length || derivedKeywords.length
+    ? []
+    : [(await contentAi.deriveKeyword({
+      language: run.site.language,
+      sourceType: 'SITE',
+      title: targetContext.site.name,
+      content: targetContext.content
+    })).keyword];
   const competitorFallbackKeywords = run.program.inputs
     .filter((input) => input.type === GrowthInputType.COMPETITOR_SITE)
     .map((input) => new URL(input.normalizedValue).hostname.replace(/^www\./, '').split('.')[0].replace(/[-_]+/g, ' ').trim())
     .filter((value) => value.length >= 2);
-  const primarySeedKeywords = [...(keyword ? [keyword] : []), ...explicitKeywords, ...derivedKeywords];
+  const primarySeedKeywords = [...(keyword ? [keyword] : []), ...explicitKeywords, ...derivedKeywords, ...siteDerivedKeywords];
   const seedKeywords = [...new Map(
     (primarySeedKeywords.length ? primarySeedKeywords : competitorFallbackKeywords)
       .map((seed) => [seed.toLocaleLowerCase().normalize('NFKC'), seed.trim()] as const)
   ).values()].filter(Boolean);
-  if (!seedKeywords.length) throw new Error('无法从用户线索中解析出可验证的目标关键词');
+  if (!seedKeywords.length) throw new Error('无法从站点事实或可选线索中解析出可验证的目标关键词');
   keyword ||= seedKeywords[0];
   const inputTypes = [...new Set(run.program.inputs.map((input) => input.type))];
   const includesReference = inputTypes.includes(GrowthInputType.REFERENCE_URL);
@@ -586,13 +667,11 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
   const fallbackPage = opportunity?.targetUrl
     ? targetContext.pages.find(({ url }) => url === opportunity?.targetUrl)
     : findCannibalizationMatch(keyword, targetContext.pages)?.page;
-  const gscRankingUrl = selectedCandidate?.discovery.sources.some((source) => source.startsWith('GSC_'))
-    ? selectedCandidate.discovery.rankingUrl
-    : null;
-  const gscTargetPage = gscRankingUrl
-    ? targetContext.pages.find(({ url, resourceType }) => (resourceType === 'posts' || resourceType === 'pages') && comparableUrl(url) === comparableUrl(gscRankingUrl))
+  const verifiedRankingUrl = selectedCandidate?.discovery.rankingUrl || null;
+  const rankedTargetPage = verifiedRankingUrl
+    ? targetContext.pages.find(({ url, resourceType }) => (resourceType === 'posts' || resourceType === 'pages') && comparableUrl(url) === comparableUrl(verifiedRankingUrl))
     : undefined;
-  const cannibalized = gscTargetPage || selectedCandidate?.target?.page || fallbackPage;
+  const cannibalized = rankedTargetPage || selectedCandidate?.target?.page || fallbackPage;
   const relevantInternalLinks = selectRelevantInternalLinks(keyword, cannibalized?.title || keyword, targetContext.internalLinks.filter(({ url }) => url !== cannibalized?.url));
   const mutableCoreTarget = cannibalized && (cannibalized.resourceType === 'posts' || cannibalized.resourceType === 'pages')
     ? { ...cannibalized, resourceType: cannibalized.resourceType as 'posts' | 'pages' }
@@ -646,7 +725,6 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       } });
       const createdCandidates = [];
       for (const candidate of scoredCandidates) {
-        const volume = BigInt(Math.max(0, candidate.metrics.searchVolume));
         createdCandidates.push(await tx.opportunity.create({ data: {
           organizationId: run!.organizationId,
           siteId: run!.siteId,
@@ -660,15 +738,12 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
               ? 'COMPETITOR_GAP'
               : includesReference
                 ? 'CONTENT_GAP'
-                : 'KGR',
+                : 'CONTENT_GAP',
           title: candidate.discovery.keyword,
           targetUrl: candidate.target?.page.url,
           keyword: candidate.discovery.keyword,
           searchVolume: candidate.metrics.searchVolume,
           keywordDifficulty: candidate.metrics.keywordDifficulty,
-          allintitleCount: candidate.metrics.allintitleCount,
-          kgrNumerator: BigInt(candidate.metrics.allintitleCount),
-          kgrDenominator: volume,
           roiScoreMicros: candidate.score.expectedValueMicros,
           trafficPotentialMicros: candidate.score.trafficPotentialMicros,
           businessRelevanceMicros: candidate.score.businessRelevanceMicros,
@@ -683,6 +758,10 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       }
       const created = createdCandidates.find((candidate) => candidate.keyword === keyword);
       if (!created) throw new Error('已评分机会未能持久化');
+      await tx.growthProgram.update({
+        where: { id: run!.programId },
+        data: { lastEvidenceFingerprint: evidenceFingerprint, lastEvidenceAt: new Date() }
+      });
       const qualification = selectedCandidate.score;
       if (!qualification.qualified) {
         for (let index = 0; index < createdCandidates.length; index += 1) {
@@ -714,7 +793,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
           evidence: [{ type: 'DATAFORSEO_SNAPSHOT', snapshotId: snapshot.id, fetchedAt: metrics.fetchedAt, qualified: false, reason: qualification.reason }]
         });
         await tx.growthRunStage.updateMany({ where: { runId: run!.id, stage: { in: [GrowthRunStageCode.DECIDE, GrowthRunStageCode.EXECUTE, GrowthRunStageCode.LEARN] } }, data: { status: GrowthRunStageStatus.SKIPPED, summary: '没有合格机会，本阶段未执行。', processedCount: 0, totalCount: 0, finishedAt: new Date() } });
-        await tx.growthRun.update({ where: { id: run!.id }, data: { resolvedKeyword: keyword, opportunityId: created.id, status: GrowthRunStatus.BLOCKED, errorCode: 'NO_QUALIFIED_OPPORTUNITY', errorMessage: qualification.reason, finishedAt: new Date(), delivery: { skipped: true, charged: false, reason: qualification.reason, snapshotId: snapshot.id } } });
+        await tx.growthRun.update({ where: { id: run!.id }, data: { resolvedKeyword: keyword, opportunityId: created.id, status: GrowthRunStatus.SKIPPED, errorCode: null, errorMessage: null, finishedAt: new Date(), delivery: { skipped: true, charged: false, reason: qualification.reason, snapshotId: snapshot.id } } });
         await tx.growthProgram.update({ where: { id: run!.programId }, data: { status: run!.program.mode === GrowthProgramMode.ONCE ? GrowthProgramStatus.COMPLETED : GrowthProgramStatus.ACTIVE, lastRunAt: new Date(), lastError: null } });
         await tx.auditEvent.create({ data: { organizationId: run!.organizationId, action: 'GROWTH_RUN_SKIPPED', targetType: 'growth_run', targetId: run!.id, metadata: { reason: qualification.reason, charged: false, snapshotId: snapshot.id } } });
         return null;
@@ -767,8 +846,10 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       if (conflicting) {
         await workerPrisma.$transaction(async (tx) => {
           await billingService.releaseCreditHold(tx, jobRunId);
-          await tx.growthRunStage.update({ where: { runId_stage: { runId: run!.id, stage: GrowthRunStageCode.DECIDE } }, data: { status: GrowthRunStageStatus.BLOCKED, summary: '同一 URL 仍处于观察或冷却期，本轮不执行也不扣费。', errorCode: 'TARGET_COOLDOWN_ACTIVE', finishedAt: new Date() } });
-          await tx.growthRun.update({ where: { id: run!.id }, data: { status: GrowthRunStatus.BLOCKED, errorCode: 'TARGET_COOLDOWN_ACTIVE', errorMessage: '同一 URL 仍处于观察或冷却期', finishedAt: new Date() } });
+          await tx.growthRunStage.update({ where: { runId_stage: { runId: run!.id, stage: GrowthRunStageCode.DECIDE } }, data: { status: GrowthRunStageStatus.SKIPPED, summary: '同一 URL 仍处于观察或冷却期，本轮不执行也不扣费。', errorCode: null, finishedAt: new Date() } });
+          await tx.growthRunStage.updateMany({ where: { runId: run!.id, stage: { in: [GrowthRunStageCode.EXECUTE, GrowthRunStageCode.LEARN] } }, data: { status: GrowthRunStageStatus.SKIPPED, summary: '目标页面仍在观察期，本阶段未执行。', finishedAt: new Date() } });
+          await tx.growthRun.update({ where: { id: run!.id }, data: { status: GrowthRunStatus.SKIPPED, errorCode: null, errorMessage: null, finishedAt: new Date(), delivery: { skipped: true, charged: false, reason: 'TARGET_COOLDOWN_ACTIVE', targetUrl: cannibalized.url } } });
+          await tx.auditEvent.create({ data: { organizationId: run!.organizationId, action: 'GROWTH_RUN_SKIPPED', targetType: 'growth_run', targetId: run!.id, metadata: { reason: 'TARGET_COOLDOWN_ACTIVE', charged: false, targetUrl: cannibalized.url } } });
         });
         return run.id;
       }
@@ -860,11 +941,25 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
 
   await startStage(run.id, GrowthRunStageCode.EXECUTE);
   if (run.draftId) return run.id;
-  const knowledge = await workerPrisma.knowledgeSource.findMany({ where: { id: { in: sourceIds }, organizationId: run.organizationId, status: DataStatus.LIVE } });
+  const knowledge = await workerPrisma.knowledgeSource.findMany({ where: { id: { in: sourceIds }, organizationId: run.organizationId, status: DataStatus.LIVE }, include: { contentBlob: true } });
   if (knowledge.length !== sourceIds.length) throw new Error('自动站点语料未完整持久化');
   const beforeSnapshot: WordPressEditableSnapshot | undefined = action.type === GrowthActionType.CREATE_CONTENT ? undefined : targetSnapshot;
   if (action.type !== GrowthActionType.CREATE_CONTENT && !beforeSnapshot) throw new Error('更新动作缺少可恢复的 WordPress 原始版本');
-  const knowledgeInput = knowledge.map(({ title, content }) => ({ title, content }));
+  const targetEvidence = selectRelevantSiteEvidence(keyword, targetContext.pages);
+  const siteProfileEvidence = {
+    title: '[TARGET_SITE] Verified site profile',
+    content: `Name: ${targetContext.site.name}\nDescription: ${targetContext.site.description}\nLocale: ${targetContext.site.locale || run.site.language}`,
+    url: targetContext.normalizedUrl
+  };
+  const pageEvidence = targetEvidence.map((page) => ({
+    title: `[TARGET_SITE] ${page.title} (${page.url})`.slice(0, 200),
+    content: page.content,
+    url: page.url
+  }));
+  const externalEvidence = knowledge
+    .filter(({ role }) => role !== 'TARGET_SITE')
+    .map(({ title, contentBlob, normalizedUrl }) => ({ title, content: contentBlob.content, url: normalizedUrl }));
+  const knowledgeInput = [siteProfileEvidence, ...pageEvidence, ...externalEvidence];
   const opportunityEvidence = opportunity.evidence as { discovery?: { intent?: string | null } };
   const brief = await contentAi.createBrief({
     keyword,
@@ -874,7 +969,16 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
     knowledge: knowledgeInput,
     internalLinks: relevantInternalLinks
   });
-  const allowedSourceTitles = knowledgeInput.map(({ title }) => title);
+  const claimEvidence = knowledgeInput.filter(({ title }) => !title.startsWith('[COMPETITOR]'));
+  const allowedSourceTitles = claimEvidence.map(({ title }) => title);
+  const sourceDocuments = claimEvidence.map(({ title, content }) => ({ title, content }));
+  const allowedLinkUrls = Array.from(new Set([
+    ...relevantInternalLinks.map(({ url }) => url),
+    ...knowledgeInput
+      .filter(({ title }) => !title.startsWith('[COMPETITOR]'))
+      .map(({ url }) => url)
+      .filter((url): url is string => Boolean(url))
+  ]));
   const closestExternalOverlap = (html: string) => externalSources
     .map(({ source }) => assessSourceOriginality(html, source.content))
     .sort((left, right) => right.overlapRatio - left.overlapRatio)[0];
@@ -893,7 +997,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       title: beforeSnapshot!.title,
       slug: beforeSnapshot!.slug,
       html: linked.html,
-      qualityReport: { ...deterministicActionQualityGate({ actionType: 'ADD_INTERNAL_LINKS', title: beforeSnapshot!.title, html: linked.html, beforeHtml: beforeSnapshot!.content, insertedInternalLinks: linked.inserted.length }), internalLinks: { inserted: linked.inserted.length, items: linked.inserted } }
+      qualityReport: { ...deterministicActionQualityGate({ actionType: 'ADD_INTERNAL_LINKS', title: beforeSnapshot!.title, html: linked.html, beforeHtml: beforeSnapshot!.content, insertedInternalLinks: linked.inserted.length, allowedLinkUrls }), internalLinks: { inserted: linked.inserted.length, items: linked.inserted } }
     };
   } else if (action.type === GrowthActionType.ADD_CONTENT_SECTION) {
     const section = await contentAi.generateSection({ keyword, language: run.site.language, currentTitle: beforeSnapshot!.title, currentHtml: beforeSnapshot!.content, seoSnapshot: opportunity.snapshot.payload, knowledge: knowledgeInput, brief });
@@ -906,21 +1010,23 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       title: beforeSnapshot!.title,
       slug: beforeSnapshot!.slug,
       html,
-      qualityReport: { ...deterministicActionQualityGate({ actionType: 'ADD_CONTENT_SECTION', title: beforeSnapshot!.title, html, beforeHtml: beforeSnapshot!.content, originality, claimSources: section.claimSources, allowedSourceTitles, forbiddenClaims: brief.forbiddenClaims }), addedSection: section.heading, brief, coverageTopics: section.coverageTopics, claimSources: section.claimSources }
+      qualityReport: { ...deterministicActionQualityGate({ actionType: 'ADD_CONTENT_SECTION', title: beforeSnapshot!.title, html, beforeHtml: beforeSnapshot!.content, originality, claimSources: section.claimSources, allowedSourceTitles, sourceDocuments, allowedLinkUrls, forbiddenClaims: brief.forbiddenClaims }), addedSection: section.heading, brief, coverageTopics: section.coverageTopics, claimSources: section.claimSources }
     };
   } else if (action.type === GrowthActionType.CONTENT_REFRESH) {
     const refreshed = await contentAi.refreshContent({ keyword, language: run.site.language, currentTitle: beforeSnapshot!.title, currentHtml: beforeSnapshot!.content, seoSnapshot: opportunity.snapshot.payload, knowledge: knowledgeInput, brief });
-    const originality = closestExternalOverlap(refreshed.html);
+    const patch = applyVerifiedLocalHtmlPatch(beforeSnapshot!.content, refreshed.targetHtml, refreshed.replacementHtml);
+    const originality = closestExternalOverlap(refreshed.replacementHtml);
     generated = {
       title: beforeSnapshot!.title,
       slug: beforeSnapshot!.slug,
-      html: refreshed.html,
+      html: patch.html,
       qualityReport: {
-        ...deterministicActionQualityGate({ actionType: 'CONTENT_REFRESH', title: beforeSnapshot!.title, html: refreshed.html, beforeHtml: beforeSnapshot!.content, originality, requiredTopics: brief.requiredTopics, declaredCoveredTopics: refreshed.coverageTopics, claimSources: refreshed.claimSources, allowedSourceTitles, forbiddenClaims: brief.forbiddenClaims }),
+        ...deterministicActionQualityGate({ actionType: 'CONTENT_REFRESH', title: beforeSnapshot!.title, html: patch.html, beforeHtml: beforeSnapshot!.content, originality, requiredTopics: brief.requiredTopics, declaredCoveredTopics: refreshed.coverageTopics, claimSources: refreshed.claimSources, allowedSourceTitles, sourceDocuments, allowedLinkUrls, forbiddenClaims: brief.forbiddenClaims }),
         brief,
         coverageTopics: refreshed.coverageTopics,
         claimSources: refreshed.claimSources,
-        changeSummary: refreshed.changeSummary
+        changeSummary: refreshed.changeSummary,
+        localPatch: { targetCharacters: patch.targetCharacters, replacementCharacters: patch.replacementCharacters }
       }
     };
   } else {
@@ -942,7 +1048,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       title: article.title,
       slug: article.slug,
       html: linked.html,
-      qualityReport: { ...deterministicActionQualityGate({ actionType: 'CREATE_CONTENT', title: article.title, html: linked.html, originality, siteDuplication, requiredTopics: brief.requiredTopics, declaredCoveredTopics: article.coverageTopics, claimSources: article.claimSources, allowedSourceTitles, forbiddenClaims: brief.forbiddenClaims }), internalLinks: { inserted: linked.inserted.length, items: linked.inserted }, brief, claimSources: article.claimSources }
+      qualityReport: { ...deterministicActionQualityGate({ actionType: 'CREATE_CONTENT', title: article.title, html: linked.html, originality, siteDuplication, requiredTopics: brief.requiredTopics, declaredCoveredTopics: article.coverageTopics, claimSources: article.claimSources, allowedSourceTitles, sourceDocuments, allowedLinkUrls, forbiddenClaims: brief.forbiddenClaims }), internalLinks: { inserted: linked.inserted.length, items: linked.inserted }, brief, claimSources: article.claimSources }
     };
   }
   const plannedChangedFields = beforeSnapshot
@@ -1126,13 +1232,11 @@ const processWordPressPublish = async (jobRunId: string): Promise<string> => {
       publicVerification: published.verification as unknown as Prisma.InputJsonValue
     } });
     await tx.growthRun.update({ where: { id: action.runId }, data: { status: GrowthRunStatus.DELIVERED, currentStage: GrowthRunStageCode.LEARN, targetUrl: published.url, deliveredAt: now, finishedAt: now, delivery: { draftId: draft.id, actionId: action.id, publishedUrl: published.url, remotePostId: published.postId, deliveredAt: now.toISOString() } } });
-    await tx.growthRunStage.update({ where: { runId_stage: { runId: action.runId, stage: GrowthRunStageCode.LEARN } }, data: { status: GrowthRunStageStatus.RUNNING, startedAt: now, summary: publiclyVerified ? (gscConnection ? '已交付；等待 14/28/56 天真实 GSC 观察窗口。' : '已交付；未连接 GSC，仅验证页面可访问性与 Sitemap 发现线索。') : 'WordPress 已提交并通过 REST 回读，公开页面仍受缓存影响，正在延迟验证。', evidence: [{ type: 'WORDPRESS_DELIVERY', url: published.url, deliveredAt: now.toISOString(), compatibilityProfileId: compatibilityProfile.id, remoteMutationState, publicVerification: published.verification }] } });
+    await tx.growthRunStage.update({ where: { runId_stage: { runId: action.runId, stage: GrowthRunStageCode.LEARN } }, data: { status: GrowthRunStageStatus.RUNNING, startedAt: now, summary: publiclyVerified ? (gscConnection ? '已交付；等待 14/28/56 天真实 GSC 观察窗口。' : '已交付；等待 14/28/56 天 DataForSEO 精确页面排名观察，不宣称流量变化。') : 'WordPress 已提交并通过 REST 回读，公开页面仍受缓存影响，正在延迟验证。', evidence: [{ type: 'WORDPRESS_DELIVERY', url: published.url, deliveredAt: now.toISOString(), compatibilityProfileId: compatibilityProfile.id, remoteMutationState, publicVerification: published.verification }] } });
     await tx.growthProgram.update({ where: { id: action.run.programId }, data: { status: action.run.program.mode === GrowthProgramMode.ONCE ? GrowthProgramStatus.COMPLETED : GrowthProgramStatus.ACTIVE, deliveredRunCount: { increment: 1 }, lastRunAt: now, lastError: null } });
     await jobService.create(tx, { organizationId: job.organizationId, type: JobType.INDEXING_MONITOR, idempotencyKey: `growth-indexing:${action.id}:1`, payload: { draftId: draft.id, growthRunId: action.runId, actionId: action.id, observationNumber: 1 }, availableAt: new Date(now.getTime() + 60 * 60_000) });
-    if (gscConnection) {
-      for (const windowDays of [14, 28, 56] as const) {
-        await jobService.create(tx, { organizationId: job.organizationId, type: JobType.GROWTH_MEASURE, idempotencyKey: `growth-measure:${action.id}:${windowDays}`, payload: { growthRunId: action.runId, actionId: action.id, windowDays }, availableAt: actionMeasurementWindow(now, windowDays).readyAt });
-      }
+    for (const windowDays of [14, 28, 56] as const) {
+      await jobService.create(tx, { organizationId: job.organizationId, type: JobType.GROWTH_MEASURE, idempotencyKey: `growth-measure:${action.id}:${windowDays}`, payload: { growthRunId: action.runId, actionId: action.id, windowDays }, availableAt: actionMeasurementWindow(now, windowDays).readyAt });
     }
     await tx.auditEvent.create({ data: { organizationId: job.organizationId, action: 'GROWTH_ACTION_PUBLISHED', targetType: 'growth_action', targetId: action.id, metadata: { postId: published.postId, url: published.url, changedFields: published.changedFields, publicVerification: published.verification, remoteMutationState, compatibilityProfileId: compatibilityProfile.id, type: action.type, gscObservationScheduled: Boolean(gscConnection) } } });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -1217,8 +1321,7 @@ const processIndexingMonitor = async (jobRunId: string): Promise<string> => {
       await tx.growthAction.update({ where: { id: payload.actionId! }, data: { status: GrowthActionStatus.FAILED, remoteMutationState: WordPressRemoteMutationState.FAILED } });
       await tx.growthRunStage.update({ where: { runId_stage: { runId: payload.growthRunId!, stage: GrowthRunStageCode.LEARN } }, data: { status: GrowthRunStageStatus.FAILED, summary: 'WordPress REST 写入已提交，但公开页面在延迟验证窗口内始终未反映预期结果。', errorCode: 'WORDPRESS_PUBLIC_VERIFICATION_FAILED', finishedAt: new Date(), evidence: [{ type: 'WORDPRESS_PUBLIC_VERIFICATION', publicVerification }] } });
     } else if (!gsc && finalLeadingObservation) {
-      await tx.growthRunStage.update({ where: { runId_stage: { runId: payload.growthRunId!, stage: GrowthRunStageCode.LEARN } }, data: { status: GrowthRunStageStatus.COMPLETED, summary: '已验证页面持续可访问及 Sitemap 发现线索；未连接 GSC，不宣称流量增长或已收录。', processedCount: observationNumber, totalCount: observationNumber, finishedAt: new Date(), evidence: [{ type: 'LEADING_INDICATORS', pageAccessible: true, sitemapPresent, trafficVerified: false }] } });
-      await tx.growthAction.update({ where: { id: payload.actionId! }, data: { status: GrowthActionStatus.SUCCEEDED, verifiedAt: new Date() } });
+      await tx.growthRunStage.update({ where: { runId_stage: { runId: payload.growthRunId!, stage: GrowthRunStageCode.LEARN } }, data: { status: GrowthRunStageStatus.RUNNING, summary: '已验证页面持续可访问及 Sitemap 发现线索；等待 DataForSEO 排名观察，不宣称流量增长或已收录。', processedCount: observationNumber, totalCount: 10, evidence: [{ type: 'LEADING_INDICATORS', pageAccessible: true, sitemapPresent, trafficVerified: false }] } });
       const sample = await tx.measurementSample.findUnique({ where: { actionId_source_windowDays: { actionId: payload.actionId!, source: MeasurementSource.LEADING_INDICATORS, windowDays: 7 } } });
       if (!sample) await tx.measurementSample.create({ data: {
           organizationId: job.organizationId,
@@ -1255,13 +1358,75 @@ const gscSnapshotPayload = (
 const processGrowthMeasure = async (jobRunId: string): Promise<string> => {
   const job = await workerPrisma.jobRun.findUniqueOrThrow({ where: { id: jobRunId } });
   const payload = job.payload as { growthRunId?: string; actionId?: string; windowDays?: number };
-  if (!payload.growthRunId || !payload.actionId || ![14, 28, 56].includes(payload.windowDays || 0)) throw new Error('GSC 观察参数不完整');
+  if (!payload.growthRunId || !payload.actionId || ![14, 28, 56].includes(payload.windowDays || 0)) throw new Error('增长效果观察参数不完整');
   const windowDays = payload.windowDays as 14 | 28 | 56;
-  const existingSample = await workerPrisma.measurementSample.findUnique({ where: { actionId_source_windowDays: { actionId: payload.actionId, source: MeasurementSource.GSC, windowDays } } });
+  const action = await workerPrisma.growthAction.findFirst({
+    where: { id: payload.actionId, organizationId: job.organizationId },
+    include: {
+      run: true,
+      opportunity: { include: { snapshot: true } },
+      site: { include: { integrations: { where: { provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, take: 1 } } }
+    }
+  });
+  if (!action?.executedAt || !action.targetUrl || !action.opportunity.keyword) throw new Error('观察动作、关键词、执行时间或精确目标 URL 不可用');
+  const connection = action.site.integrations[0];
+  const measurementSource = connection ? MeasurementSource.GSC : MeasurementSource.DATAFORSEO_RANK;
+  const existingSample = await workerPrisma.measurementSample.findUnique({ where: { actionId_source_windowDays: { actionId: payload.actionId, source: measurementSource, windowDays } } });
   if (existingSample) return `${payload.actionId}:${windowDays}:${existingSample.id}`;
-  const action = await workerPrisma.growthAction.findFirst({ where: { id: payload.actionId, organizationId: job.organizationId }, include: { run: true, site: { include: { integrations: { where: { provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, take: 1 } } } } });
-  const connection = action?.site.integrations[0];
-  if (!action || !connection?.propertyId || !action.executedAt || !action.targetUrl) throw new Error('GSC 观察连接、动作时间或精确目标 URL 不可用');
+
+  if (!connection) {
+    const snapshotPayload = recordValue(action.opportunity.snapshot.payload);
+    const market = recordValue(snapshotPayload.market);
+    const locationCode = Number(market.locationCode);
+    const languageCode = String(market.languageCode || '');
+    if (!Number.isInteger(locationCode) || locationCode <= 0 || !languageCode) throw new Error('DataForSEO 观察缺少已验证的市场配置');
+    const metrics = await dataForSeoProvider.scanKeyword({ keyword: action.opportunity.keyword, locationCode, languageCode });
+    const currentRank = targetRankFromSerp(metrics.serp, action.targetUrl);
+    const discovery = recordValue(recordValue(action.opportunity.evidence).discovery);
+    const baselineValue = discovery.rank;
+    const baselineRank = typeof baselineValue === 'number' && Number.isFinite(baselineValue) ? baselineValue : null;
+    const evaluation = evaluateRankOutcome(currentRank, baselineRank);
+    return workerPrisma.$transaction(async (tx) => {
+      const snapshot = await tx.dataSnapshot.create({ data: {
+        organizationId: job.organizationId,
+        siteId: action.siteId,
+        source: DataSource.DATAFORSEO,
+        status: DataStatus.LIVE,
+        formulaVersion: 'dataforseo-rank-observation-1',
+        fetchedAt: new Date(metrics.fetchedAt),
+        periodStart: action.executedAt,
+        periodEnd: new Date(),
+        payload: {
+          keyword: action.opportunity.keyword,
+          targetUrl: action.targetUrl,
+          market: { locationCode, languageCode },
+          rank: currentRank,
+          serpEvidenceCount: metrics.serpEvidenceCount,
+          serp: metrics.serp,
+          trafficVerified: false
+        } as Prisma.InputJsonObject
+      } });
+      const observation = await tx.measurementSample.create({ data: {
+        organizationId: job.organizationId,
+        siteId: action.siteId,
+        actionId: action.id,
+        source: MeasurementSource.DATAFORSEO_RANK,
+        windowDays,
+        sourceSnapshotId: snapshot.id,
+        baseline: { rank: baselineRank, source: 'ACTION_OPPORTUNITY_SNAPSHOT', targetUrl: action.targetUrl },
+        measurement: { rank: currentRank, rankImprovement: evaluation.rankImprovement, source: 'DATAFORSEO_SERP', targetUrl: action.targetUrl, trafficVerified: false, statement: 'Ranking is a leading indicator and is not verified traffic.' },
+        confidenceMicros: evaluation.confidenceMicros,
+        outcome: evaluation.outcome
+      } });
+      await tx.growthRun.update({ where: { id: payload.growthRunId! }, data: { observation: { source: 'DATAFORSEO_RANK', windowDays, baselineRank, currentRank, rankImprovement: evaluation.rankImprovement, outcome: evaluation.outcome, trafficVerified: false, causalClaim: false, targetUrl: action.targetUrl } } });
+      if (windowDays === 56) {
+        await tx.growthRunStage.update({ where: { runId_stage: { runId: payload.growthRunId!, stage: GrowthRunStageCode.LEARN } }, data: { status: GrowthRunStageStatus.COMPLETED, summary: currentRank === null ? '56 天 DataForSEO 窗口未在前 20 名发现目标页面；这是排名领先指标，不代表流量数据。' : `已完成 56 天 DataForSEO 精确页面排名观察：当前第 ${currentRank} 位；未连接 GSC，不宣称流量增长。`, processedCount: 3, totalCount: 3, finishedAt: new Date(), evidence: [{ type: 'DATAFORSEO_RANK_OBSERVATION', measurementSampleId: observation.id, snapshotId: snapshot.id, windowDays: 56, outcome: evaluation.outcome, trafficVerified: false }] } });
+        await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.SUCCEEDED, verifiedAt: new Date() } });
+      }
+      return `${action.id}:${windowDays}:${observation.id}`;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+  if (!connection.propertyId) throw new Error('GSC 观察缺少已验证属性');
   const credentials = decryptSecret<{ refreshToken: string }>(Buffer.from(connection.encryptedCredentials));
   const window = actionMeasurementWindow(action.executedAt, windowDays);
   const [current, previous] = await Promise.all([
@@ -1453,18 +1618,25 @@ const markFailed = async (jobRunId: string, error: unknown): Promise<void> => {
     if (job.type === JobType.GROWTH_MEASURE) {
       if (payload.actionId) {
         const finalWindow = payload.windowDays === 56;
-        const action = await tx.growthAction.findFirst({ where: { id: payload.actionId, organizationId: job.organizationId }, select: { siteId: true } });
+        const action = await tx.growthAction.findFirst({
+          where: { id: payload.actionId, organizationId: job.organizationId },
+          select: {
+            siteId: true,
+            site: { select: { integrations: { where: { provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, select: { id: true }, take: 1 } } }
+          }
+        });
         const windowDays = payload.windowDays === 14 || payload.windowDays === 28 || payload.windowDays === 56 ? payload.windowDays : null;
         if (action && windowDays) {
-          const existing = await tx.measurementSample.findUnique({ where: { actionId_source_windowDays: { actionId: payload.actionId, source: MeasurementSource.GSC, windowDays } } });
+          const source = action.site.integrations.length > 0 ? MeasurementSource.GSC : MeasurementSource.DATAFORSEO_RANK;
+          const existing = await tx.measurementSample.findUnique({ where: { actionId_source_windowDays: { actionId: payload.actionId, source, windowDays } } });
           if (!existing) await tx.measurementSample.create({ data: {
             organizationId: job.organizationId,
             siteId: action.siteId,
             actionId: payload.actionId,
-            source: MeasurementSource.GSC,
+            source,
             windowDays,
             baseline: { available: false },
-            measurement: { available: false, error: message.slice(0, 2_000) },
+            measurement: { available: false, error: message.slice(0, 2_000), trafficVerified: false },
             confidenceMicros: 0n,
             outcome: 'INCONCLUSIVE'
           } });
@@ -1472,7 +1644,7 @@ const markFailed = async (jobRunId: string, error: unknown): Promise<void> => {
         if (finalWindow) await tx.growthAction.updateMany({ where: { id: payload.actionId }, data: { status: GrowthActionStatus.SUCCEEDED, verifiedAt: new Date() } });
       }
       if (payload.growthRunId && payload.windowDays === 56) {
-        await tx.growthRunStage.updateMany({ where: { runId: payload.growthRunId, stage: GrowthRunStageCode.LEARN }, data: { status: GrowthRunStageStatus.FAILED, summary: 'GSC 观察在重试后仍不可用；本次 WordPress 交付保持成功，但不生成流量结论。', errorCode: 'GSC_OBSERVATION_UNAVAILABLE', errorMessage: message.slice(0, 2_000), finishedAt: new Date() } });
+        await tx.growthRunStage.updateMany({ where: { runId: payload.growthRunId, stage: GrowthRunStageCode.LEARN }, data: { status: GrowthRunStageStatus.FAILED, summary: '效果观察在重试后仍不可用；本次 WordPress 交付保持成功，但不生成流量或排名结论。', errorCode: 'GROWTH_OBSERVATION_UNAVAILABLE', errorMessage: message.slice(0, 2_000), finishedAt: new Date() } });
       }
       return;
     }

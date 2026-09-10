@@ -164,6 +164,34 @@ const stableValue = (value: unknown): unknown => {
 };
 const fingerprint = (value: unknown): string => createHash('sha256').update(JSON.stringify(stableValue(value))).digest('hex');
 
+export const wordpressSiteEvidenceFingerprint = (input: {
+  site: { name: string; description: string; locale?: string; url: string };
+  inventory: WordPressSiteContext['inventory'];
+  taxonomyContent: string;
+  mediaContent: string;
+  pages: WordPressSitePage[];
+}): string => fingerprint({
+  site: input.site,
+  inventory: input.inventory,
+  taxonomyContent: input.taxonomyContent,
+  mediaContent: input.mediaContent,
+  pages: [...input.pages]
+    .sort((left, right) => left.url.localeCompare(right.url) || left.resourceType.localeCompare(right.resourceType))
+    .map((page) => ({
+      resourceType: page.resourceType,
+      url: page.url,
+      slug: page.slug,
+      status: page.status,
+      modifiedAt: page.modifiedAt || null,
+      title: page.title,
+      excerpt: page.excerpt,
+      contentChecksum: page.contentChecksum,
+      structureChecksum: page.structureChecksum,
+      seoMetadata: page.seoMetadata,
+      actionCapabilities: page.actionCapabilities
+    }))
+});
+
 const blockTokens = (content: string): string[] => [...content.matchAll(/<!--\s*(\/?)wp:([a-z0-9-]+\/[a-z0-9-]+|[a-z0-9-]+)(?:\s+(\{[\s\S]*?\}))?\s*(\/?)-->/gi)]
   .map((match) => `${match[1] ? 'CLOSE' : match[4] ? 'SELF' : 'OPEN'}:${match[2].toLowerCase()}`);
 const htmlTagTokens = (content: string): string[] => [...content.matchAll(/<\/?([a-z][a-z0-9-]*)\b[^>]*>/gi)]
@@ -1029,33 +1057,35 @@ export const wordPressService = {
     const pageContent = pages
       .map(({ title, url, content: html }) => `[PAGE]\nURL: ${url}\nTITLE: ${title}\nCONTENT: ${plainText(html).slice(0, 20_000)}`)
       .join('\n\n');
-    const content = `[SITE]\nNAME: ${plainText(String(settings.title || root.name || ''))}\nDESCRIPTION: ${plainText(String(settings.description || root.description || ''))}\n${taxonomyContent}\n${mediaContent}\n${pageContent}`
+    const site = {
+      name: String(settings.title || root.name || new URL(origin).hostname),
+      description: String(settings.description || root.description || ''),
+      locale: settings.language ? String(settings.language) : undefined,
+      url: String(settings.url || root.home || root.url || origin)
+    };
+    const inventory = {
+      resourceTypes,
+      unavailableResourceTypes: collections.filter(({ available }) => !available).map(({ resourceType }) => resourceType),
+      categories: categories.items.length,
+      tags: tags.items.length,
+      media: media.items.length,
+      categoriesAvailable: categories.available,
+      tagsAvailable: tags.available,
+      mediaAvailable: media.available
+    };
+    const content = `[SITE]\nNAME: ${plainText(site.name)}\nDESCRIPTION: ${plainText(site.description)}\n${taxonomyContent}\n${mediaContent}\n${pageContent}`
       .slice(0, 500_000);
     if (content.length < 100) throw new ValidationError('已验证的 WordPress 站点没有足够的已发布内容用于站点理解');
     return {
       normalizedUrl: origin,
       title: `WordPress content inventory for ${new URL(origin).hostname}`,
       content,
-      checksum: createHash('sha256').update(content).digest('hex'),
+      checksum: wordpressSiteEvidenceFingerprint({ site, inventory, taxonomyContent, mediaContent, pages }),
       fetchedAt: new Date().toISOString(),
       internalLinks,
       pages,
-      site: {
-        name: String(settings.title || root.name || new URL(origin).hostname),
-        description: String(settings.description || root.description || ''),
-        locale: settings.language ? String(settings.language) : undefined,
-        url: String(settings.url || root.home || root.url || origin)
-      },
-      inventory: {
-        resourceTypes,
-        unavailableResourceTypes: collections.filter(({ available }) => !available).map(({ resourceType }) => resourceType),
-        categories: categories.items.length,
-        tags: tags.items.length,
-        media: media.items.length,
-        categoriesAvailable: categories.available,
-        tagsAvailable: tags.available,
-        mediaAvailable: media.available
-      }
+      site,
+      inventory
     };
   },
 

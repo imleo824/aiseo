@@ -7,14 +7,15 @@ set local search_path = public, extensions;
 -- can continue to execute while SET ROLE is exercising the real RLS boundary.
 grant usage on schema extensions to app_backend, app_worker;
 grant execute on all functions in schema extensions to app_backend, app_worker;
-select plan(77);
+select plan(82);
 
 select is(
   (select count(*) from pg_class
    where oid = any(array[
      'public.profiles'::regclass, 'public.organizations'::regclass,
      'public.organization_members'::regclass, 'public.sites'::regclass,
-     'public.integration_connections'::regclass, 'public.knowledge_sources'::regclass,
+     'public.integration_connections'::regclass, 'public.knowledge_content_blobs'::regclass,
+     'public.knowledge_sources'::regclass,
      'public.data_snapshots'::regclass, 'public.keyword_scans'::regclass,
      'public.opportunities'::regclass, 'public.growth_programs'::regclass,
      'public.growth_program_inputs'::regclass,
@@ -35,7 +36,7 @@ select is(
      'public.policy_versions'::regclass,
      'public.wordpress_compatibility_profiles'::regclass
    ]) and relrowsecurity),
-  40::bigint,
+  41::bigint,
   'every business table has RLS enabled'
 );
 
@@ -59,6 +60,17 @@ select ok(not has_table_privilege('app_worker', 'public.profiles', 'update'), 'W
 select ok(not has_table_privilege('app_worker', 'public.payment_intents', 'insert'), 'Worker cannot manufacture payment intents');
 select ok(not has_table_privilege('anon', 'public.growth_programs', 'select,insert,update,delete'), 'anon cannot access growth programs');
 select ok(not has_table_privilege('anon', 'public.growth_program_inputs', 'select,insert,update,delete'), 'anon cannot access growth program inputs');
+select ok(not has_table_privilege('anon', 'public.knowledge_content_blobs', 'select,insert,update,delete'), 'anon cannot access immutable knowledge bytes');
+select ok(
+  has_table_privilege('app_backend', 'public.knowledge_content_blobs', 'select,insert')
+  and not has_table_privilege('app_backend', 'public.knowledge_content_blobs', 'update,delete'),
+  'Web can append but cannot rewrite immutable knowledge bytes'
+);
+select ok(
+  has_table_privilege('app_worker', 'public.knowledge_content_blobs', 'select,insert')
+  and not has_table_privilege('app_worker', 'public.knowledge_content_blobs', 'update,delete'),
+  'Worker can append but cannot rewrite immutable knowledge bytes'
+);
 select ok(not has_table_privilege('anon', 'public.wordpress_compatibility_profiles', 'select,insert,update,delete'), 'anon cannot access WordPress compatibility evidence');
 select ok(
   has_table_privilege('app_backend', 'public.wordpress_compatibility_profiles', 'select,insert')
@@ -158,6 +170,21 @@ select set_config('app.organization_id', (select organization_id::text from rls_
 set local role app_backend;
 insert into public.sites (id, organization_id, domain, name, updated_at)
 values ('00000000-0000-0000-0000-0000000000a3', (select organization_id from rls_context where label = 'a'), 'org-a.example.test', 'Org A site', now());
+insert into public.knowledge_content_blobs (id, organization_id, checksum, content)
+values ('00000000-0000-0000-0000-0000000000a9', (select organization_id from rls_context where label = 'a'), repeat('c', 64), 'Verified organization-scoped source bytes');
+insert into public.knowledge_sources (
+  id, organization_id, site_id, content_blob_id, role, identity_fingerprint,
+  title, source_url, normalized_url
+) values (
+  '00000000-0000-0000-0000-0000000000aa', (select organization_id from rls_context where label = 'a'),
+  '00000000-0000-0000-0000-0000000000a3', '00000000-0000-0000-0000-0000000000a9',
+  'TARGET_SITE', repeat('d', 64), 'Verified target site', 'https://org-a.example.test/', 'https://org-a.example.test/'
+);
+select ok(
+  (select count(*) from public.knowledge_content_blobs) = 1
+  and (select count(*) from public.knowledge_sources) = 1,
+  'owner can append and select organization-scoped evidence bytes and provenance'
+);
 select is((select count(*) from public.sites), 1::bigint, 'owner can select own organization rows');
 insert into public.growth_programs (id, organization_id, site_id, mode, input_fingerprint)
 values ('00000000-0000-0000-0000-0000000000a4', (select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000a3', 'ONCE', 'rls-owner-program');
@@ -280,6 +307,7 @@ select is(
 );
 select is((select count(*) from public.growth_programs), 0::bigint, 'cross-organization growth-program SELECT is denied');
 select is((select count(*) from public.growth_program_inputs), 0::bigint, 'cross-organization growth-program-input SELECT is denied');
+select is((select count(*) from public.knowledge_content_blobs), 0::bigint, 'cross-organization immutable evidence SELECT is denied');
 select is((select count(*) from public.growth_runs), 0::bigint, 'cross-organization growth-run SELECT is denied');
 select is((select count(*) from public.site_snapshots), 0::bigint, 'cross-organization site-snapshot SELECT is denied');
 select is((select count(*) from public.wordpress_compatibility_profiles), 0::bigint, 'cross-organization WordPress compatibility SELECT is denied');
@@ -342,6 +370,16 @@ insert into rls_context
 select 'd', organization_id from public.organization_members where profile_id = '00000000-0000-0000-0000-0000000000d4';
 insert into public.sites (id, organization_id, domain, name, updated_at)
 values ('00000000-0000-0000-0000-0000000000d5', (select organization_id from rls_context where label = 'd'), 'erase.example.test', 'Erase site', now());
+insert into public.knowledge_content_blobs (id, organization_id, checksum, content)
+values ('00000000-0000-0000-0000-0000000000da', (select organization_id from rls_context where label = 'd'), repeat('e', 64), 'Customer content that must be erased');
+insert into public.knowledge_sources (
+  id, organization_id, site_id, content_blob_id, role, identity_fingerprint,
+  title, source_url, normalized_url
+) values (
+  '00000000-0000-0000-0000-0000000000db', (select organization_id from rls_context where label = 'd'),
+  '00000000-0000-0000-0000-0000000000d5', '00000000-0000-0000-0000-0000000000da',
+  'TARGET_SITE', repeat('f', 64), 'Erasure evidence', 'https://erase.example.test/', 'https://erase.example.test/'
+);
 insert into public.growth_programs (id, organization_id, site_id, mode, input_fingerprint)
 values ('00000000-0000-0000-0000-0000000000d6', (select organization_id from rls_context where label = 'd'), '00000000-0000-0000-0000-0000000000d5', 'ONCE', 'erasure-program');
 insert into public.growth_program_inputs (
@@ -368,7 +406,8 @@ reset role;
 select is((select count(*) from erasure_results where profile_id = '00000000-0000-0000-0000-0000000000d4'), 1::bigint, 'isolated erasure worker claims the due account');
 select ok(
   not exists (select 1 from public.sites where id = '00000000-0000-0000-0000-0000000000d5')
-  and not exists (select 1 from public.site_snapshots where id = '00000000-0000-0000-0000-0000000000d8'),
+  and not exists (select 1 from public.site_snapshots where id = '00000000-0000-0000-0000-0000000000d8')
+  and not exists (select 1 from public.knowledge_content_blobs where id = '00000000-0000-0000-0000-0000000000da'),
   'account erasure cascades through immutable customer content while retaining protected financial records'
 );
 

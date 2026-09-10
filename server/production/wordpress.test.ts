@@ -18,6 +18,27 @@ afterEach(() => {
 });
 
 describe('WordPress atomic read executor', () => {
+  it('fingerprints every page checksum even when the AI corpus representation is bounded', async () => {
+    const { wordpressPageActionCapabilities, wordpressSiteEvidenceFingerprint } = await import('./wordpress');
+    const page = (url: string, contentChecksum: string) => ({
+      wordpressId: url.endsWith('/a') ? '1' : '2', resourceType: 'posts', url, slug: url.endsWith('/a') ? 'a' : 'b', status: 'publish',
+      title: 'Verified page', excerpt: '', content: '<p>bounded representation</p>', contentChecksum, wordCount: 2,
+      internalLinks: [], seoMetadata: {}, editorKind: 'CLASSIC' as const, structureChecksum: 'b'.repeat(64),
+      actionCapabilities: wordpressPageActionCapabilities('CLASSIC', '<p>bounded representation</p>')
+    });
+    const common = {
+      site: { name: 'Example', description: 'Verified service', url: 'https://example.com' },
+      inventory: { resourceTypes: ['posts'], categories: 0, tags: 0, media: 0 },
+      taxonomyContent: '',
+      mediaContent: ''
+    };
+    const first = wordpressSiteEvidenceFingerprint({ ...common, pages: [page('https://example.com/a', 'a'.repeat(64)), page('https://example.com/b', 'c'.repeat(64))] });
+    const reordered = wordpressSiteEvidenceFingerprint({ ...common, pages: [page('https://example.com/b', 'c'.repeat(64)), page('https://example.com/a', 'a'.repeat(64))] });
+    const changedLatePage = wordpressSiteEvidenceFingerprint({ ...common, pages: [page('https://example.com/a', 'a'.repeat(64)), page('https://example.com/b', 'd'.repeat(64))] });
+    expect(reordered).toBe(first);
+    expect(changedLatePage).not.toBe(first);
+  });
+
   it('discovers the official same-origin Application Password authorization endpoint', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ authentication: { 'application-passwords': { endpoints: { authorization: 'https://example.com/wp-admin/authorize-application.php' } } } }), { status: 200 })));
     const { wordPressService } = await import('./wordpress');
@@ -263,6 +284,29 @@ describe('WordPress atomic read executor', () => {
       afterTitle: 'Post', afterContent: linked
     })).toEqual(['content']);
     expect(wordpressPageActionCapabilities('GUTENBERG', dynamic).CONTENT_REFRESH.supported).toBe(false);
+  });
+
+  it('accepts an internal link produced by the SEO pipeline without changing customer-visible text', async () => {
+    const [{ insertContextualInternalLinks }, { assertSafeWordPressMutation, wordpressStructureChecksum }] = await Promise.all([
+      import('./seoPipeline'),
+      import('./wordpress')
+    ]);
+    const before = '<!-- wp:paragraph --><p>Our WordPress SEO guide explains technical audits and content improvements.</p><!-- /wp:paragraph -->';
+    const linked = insertContextualInternalLinks(before, [{
+      title: 'WordPress SEO guide',
+      url: 'https://example.com/wordpress-seo/'
+    }]);
+    expect(linked.inserted).toHaveLength(1);
+    expect(linked.html).toContain('<a href="https://example.com/wordpress-seo/"');
+    expect(assertSafeWordPressMutation({
+      actionType: 'ADD_INTERNAL_LINKS',
+      before: {
+        postId: '4', resourceType: 'posts', url: 'https://example.com/post/', status: 'publish', slug: 'post', title: 'Post',
+        content: before, contentChecksum: 'a'.repeat(64), contentLength: before.length, editorKind: 'GUTENBERG', structureChecksum: wordpressStructureChecksum(before, 'GUTENBERG'), seoMetadata: {}
+      },
+      afterTitle: 'Post',
+      afterContent: linked.html
+    })).toEqual(['content']);
   });
 
   it('rejects a full Classic body rewrite that is not a local diff', async () => {

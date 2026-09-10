@@ -91,6 +91,7 @@ enum GrowthRunStatus {
   RUNNING
   NEEDS_REVIEW
   DELIVERED
+  SKIPPED
   BLOCKED
   FAILED
   CANCELLED
@@ -142,14 +143,13 @@ enum DataStatus {
   STALE
 }
 
-enum KnowledgeSourceType {
-  TEXT
-  ORIGINAL_RESEARCH
-  ALLOWLISTED_URL
+enum KnowledgeSourceRole {
+  TARGET_SITE
+  REFERENCE
+  COMPETITOR
 }
 
 enum OpportunityType {
-  KGR
   CONTENT_GAP
   EXISTING_PAGE
   RANK_11_20
@@ -278,6 +278,7 @@ enum PageVersionKind {
 enum MeasurementSource {
   GSC
   LEADING_INDICATORS
+  DATAFORSEO_RANK
 }
 
 enum GrowthOutcome {
@@ -318,6 +319,7 @@ model Organization {
   members                        OrganizationMember[]
   sites                          Site[]
   integrations                   IntegrationConnection[]
+  knowledgeContentBlobs          KnowledgeContentBlob[]
   knowledgeSources               KnowledgeSource[]
   dataSnapshots                  DataSnapshot[]
   keywordScans                   KeywordScan[]
@@ -430,27 +432,43 @@ model IntegrationConnection {
   @@map("integration_connections")
 }
 
-model KnowledgeSource {
-  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String              @map("organization_id") @db.Uuid
-  siteId         String?             @map("site_id") @db.Uuid
-  type           KnowledgeSourceType
-  title          String
-  sourceUrl      String?             @map("source_url")
-  normalizedUrl  String?             @map("normalized_url")
-  content        String
-  summary        String?
+model KnowledgeContentBlob {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
   checksum       String
-  status         DataStatus          @default(LIVE)
-  fetchedAt      DateTime?           @map("fetched_at")
-  createdAt      DateTime            @default(now()) @map("created_at")
-  updatedAt      DateTime            @updatedAt @map("updated_at")
-  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site           Site?               @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  content        String
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sources        KnowledgeSource[]
 
-  @@unique([organizationId, checksum])
-  @@index([organizationId, siteId, status, createdAt])
+  @@unique([organizationId, checksum], map: "knowledge_content_blobs_org_checksum_key")
+  @@index([organizationId, createdAt(sort: Desc)], map: "knowledge_content_blobs_org_created_idx")
+  @@map("knowledge_content_blobs")
+}
+
+model KnowledgeSource {
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String               @map("organization_id") @db.Uuid
+  siteId              String               @map("site_id") @db.Uuid
+  contentBlobId       String               @map("content_blob_id") @db.Uuid
+  role                KnowledgeSourceRole
+  identityFingerprint String               @map("identity_fingerprint")
+  title               String
+  sourceUrl           String               @map("source_url")
+  normalizedUrl       String               @map("normalized_url")
+  summary             String?
+  status              DataStatus           @default(LIVE)
+  fetchedAt           DateTime?            @map("fetched_at") @db.Timestamptz(6)
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site                Site                 @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  contentBlob         KnowledgeContentBlob @relation(fields: [contentBlobId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, identityFingerprint], map: "knowledge_sources_org_identity_key")
+  @@index([organizationId, siteId, role, status, createdAt(sort: Desc)], map: "knowledge_sources_org_site_role_status_idx")
   @@index([siteId])
+  @@index([contentBlobId])
   @@map("knowledge_sources")
 }
 
@@ -524,9 +542,6 @@ model Opportunity {
   keyword                  String?
   searchVolume             Int?              @map("search_volume")
   keywordDifficulty        Int?              @map("keyword_difficulty")
-  allintitleCount          Int?              @map("allintitle_count")
-  kgrNumerator             BigInt?           @map("kgr_numerator")
-  kgrDenominator           BigInt?           @map("kgr_denominator")
   roiScoreMicros           BigInt?           @map("roi_score_micros")
   evidence                 Json              @default("{}")
   trafficPotentialMicros   BigInt?           @map("traffic_potential_micros")
@@ -560,25 +575,27 @@ model Opportunity {
 }
 
 model GrowthProgram {
-  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId    String              @map("organization_id") @db.Uuid
-  siteId            String              @map("site_id") @db.Uuid
-  mode              GrowthProgramMode
-  inputFingerprint  String              @map("input_fingerprint")
-  status            GrowthProgramStatus @default(ACTIVE)
-  budgetLimitMicros BigInt?             @map("budget_limit_micros")
-  nextRunAt         DateTime?           @map("next_run_at") @db.Timestamptz(6)
-  lastRunAt         DateTime?           @map("last_run_at") @db.Timestamptz(6)
-  lockedUntil       DateTime?           @map("locked_until") @db.Timestamptz(6)
-  consecutiveWins   Int                 @default(0) @map("consecutive_wins")
-  deliveredRunCount Int                 @default(0) @map("delivered_run_count")
-  lastError         String?             @map("last_error")
-  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  site              Site                @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  inputs            GrowthProgramInput[]
-  runs              GrowthRun[]
+  id                      String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId          String               @map("organization_id") @db.Uuid
+  siteId                  String               @map("site_id") @db.Uuid
+  mode                    GrowthProgramMode
+  inputFingerprint        String               @map("input_fingerprint")
+  status                  GrowthProgramStatus  @default(ACTIVE)
+  budgetLimitMicros       BigInt?              @map("budget_limit_micros")
+  nextRunAt               DateTime?            @map("next_run_at") @db.Timestamptz(6)
+  lastRunAt               DateTime?            @map("last_run_at") @db.Timestamptz(6)
+  lockedUntil             DateTime?            @map("locked_until") @db.Timestamptz(6)
+  consecutiveWins         Int                  @default(0) @map("consecutive_wins")
+  deliveredRunCount       Int                  @default(0) @map("delivered_run_count")
+  lastEvidenceFingerprint String?              @map("last_evidence_fingerprint")
+  lastEvidenceAt          DateTime?            @map("last_evidence_at") @db.Timestamptz(6)
+  lastError               String?              @map("last_error")
+  createdAt               DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization            Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  site                    Site                 @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  inputs                  GrowthProgramInput[]
+  runs                    GrowthRun[]
 
   @@unique([organizationId, inputFingerprint], map: "growth_programs_org_fingerprint_key")
   @@index([organizationId, siteId, createdAt(sort: Desc)], map: "growth_programs_org_site_created_idx")

@@ -9,7 +9,7 @@ export type GrowthActionSelection = {
   fallbackReason?: string;
 };
 
-export const OPPORTUNITY_SCORE_VERSION = 'opportunity-score-4';
+export const OPPORTUNITY_SCORE_VERSION = 'opportunity-score-5';
 const MICROS = 1_000_000n;
 const clampRatio = (value: number): number => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
 const ratioMicros = (value: number): bigint => BigInt(Math.round(clampRatio(value) * 1_000_000));
@@ -33,7 +33,6 @@ export type SearchOpportunityScore = {
 export const scoreSearchOpportunity = (input: {
   searchVolume: number;
   keywordDifficulty: number;
-  allintitleCount: number;
   hasSerpEvidence: boolean;
   businessRelevance: number;
   intentProbability: number | null;
@@ -63,8 +62,7 @@ export const scoreSearchOpportunity = (input: {
   );
   const trafficPotentialMicros = BigInt(Math.max(0, Math.round(input.searchVolume))) * clickOpportunityMicros;
   const executionCostMicros = input.existingRank ? 500_000n : 1_500_000n;
-  const competitionPenalty = ratioMicros(Math.min(1, Math.log10(Math.max(1, input.allintitleCount + 1)) / 7));
-  const riskPenaltyMicros = ratioMicros(clampRatio(input.cannibalizationRisk)) + competitionPenalty / 2n;
+  const riskPenaltyMicros = ratioMicros(clampRatio(input.cannibalizationRisk));
   const gross = trafficPotentialMicros
     * businessRelevanceMicros / MICROS
     * intentFitMicros / MICROS
@@ -110,13 +108,11 @@ export const scoreSearchOpportunity = (input: {
 export const qualifySearchOpportunity = (input: {
   searchVolume: number;
   keywordDifficulty: number;
-  allintitleCount: number;
   hasSerpEvidence: boolean;
 }): { qualified: boolean; reason: string } => {
   if (!input.hasSerpEvidence) return { qualified: false, reason: '真实 SERP 结果不可用' };
   if (input.searchVolume <= 0) return { qualified: false, reason: '真实搜索量为 0' };
   if (input.keywordDifficulty >= 100) return { qualified: false, reason: '关键词竞争度不具备可执行空间' };
-  if (input.allintitleCount < 0) return { qualified: false, reason: 'allintitle 数据无效' };
   return { qualified: true, reason: '真实需求与 SERP 证据完整' };
 };
 

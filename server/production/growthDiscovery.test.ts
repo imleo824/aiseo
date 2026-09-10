@@ -19,7 +19,7 @@ describe('site-wide growth discovery', () => {
 
   it('fails closed on weak business fit and qualifies evidence-backed relevant demand', () => {
     const shared = {
-      metrics: { keyword: 'WordPress SEO', searchVolume: 800, keywordDifficulty: 35, allintitleCount: 120, serp: {}, serpEvidenceCount: 10, fetchedAt: '2026-09-05T00:00:00.000Z' },
+      metrics: { keyword: 'WordPress SEO', searchVolume: 800, keywordDifficulty: 35, serp: {}, serpEvidenceCount: 10, fetchedAt: '2026-09-05T00:00:00.000Z' },
       seedKeyword: 'WordPress SEO', pages: [page()]
     };
     const relevant = scoreKeywordCandidate({
@@ -41,7 +41,7 @@ describe('site-wide growth discovery', () => {
   it('can qualify a new site from verified homepage business context without inventing page history', () => {
     const candidate = scoreKeywordCandidate({
       discovery: { keyword: 'WordPress SEO', searchVolume: 500, keywordDifficulty: 30, intent: 'commercial', intentProbability: 0.9, rank: null, rankingUrl: null, sources: ['KEYWORD_SUGGESTIONS', 'SEARCH_INTENT'] },
-      metrics: { keyword: 'WordPress SEO', searchVolume: 500, keywordDifficulty: 30, allintitleCount: 90, serp: {}, serpEvidenceCount: 10, fetchedAt: '2026-09-05T00:00:00.000Z' },
+      metrics: { keyword: 'WordPress SEO', searchVolume: 500, keywordDifficulty: 30, serp: {}, serpEvidenceCount: 10, fetchedAt: '2026-09-05T00:00:00.000Z' },
       seedKeyword: 'WordPress SEO',
       businessCorpus: 'We provide WordPress SEO audits and technical search optimization.',
       pages: []

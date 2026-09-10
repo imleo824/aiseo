@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectPaginatedRows, keywordCandidateFromItem } from './providers';
+import { collectPaginatedRows, keywordCandidateFromItem, selectGscProperty, targetRankFromSerp } from './providers';
 
 describe('DataForSEO response contracts', () => {
   it('parses top-level keyword suggestion metrics', () => {
@@ -22,6 +22,30 @@ describe('DataForSEO response contracts', () => {
     }, 'SITE_RANKED_KEYWORDS')).toMatchObject({ searchVolume: 1200, keywordDifficulty: 42, rank: 14, rankingUrl: 'https://example.com/guide' });
     expect(keywordCandidateFromItem({ keyword: 'wordpress seo', keyword_intent: { label: 'commercial', probability: 0.83 } }, 'SEARCH_INTENT'))
       .toMatchObject({ intent: 'commercial', intentProbability: 0.83 });
+  });
+
+  it('never treats a competitor ranking URL as the customer page', () => {
+    expect(keywordCandidateFromItem({
+      keyword_data: { keyword: 'wordpress seo', keyword_info: { search_volume: 1200 } },
+      ranked_serp_element: { serp_item: { rank_group: 2, url: 'https://competitor.example/guide' } }
+    }, 'COMPETITOR_RANKED_KEYWORDS')).toMatchObject({ rank: null, rankingUrl: null });
+  });
+});
+
+describe('GSC property selection', () => {
+  it('automatically selects the verified property matching the WordPress domain', () => {
+    expect(selectGscProperty('https://blog.example.com', [
+      { siteUrl: 'sc-domain:unrelated.com', permissionLevel: 'siteOwner' },
+      { siteUrl: 'https://blog.example.com/', permissionLevel: 'siteFullUser' },
+      { siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' }
+    ])).toBe('sc-domain:example.com');
+  });
+
+  it('rejects unrelated and unverified properties', () => {
+    expect(selectGscProperty('example.com', [
+      { siteUrl: 'sc-domain:example.com', permissionLevel: 'siteUnverifiedUser' },
+      { siteUrl: 'sc-domain:other.com', permissionLevel: 'siteOwner' }
+    ])).toBeNull();
   });
 });
 
@@ -46,5 +70,16 @@ describe('provider pagination', () => {
       ? Array.from({ length: rowLimit }, (_, offset) => startRow + offset)
       : [], 2, 4);
     expect(rows).toEqual([0, 1, 2, 3]);
+  });
+});
+
+describe('SERP target evidence', () => {
+  it('matches only the exact normalized delivery URL', () => {
+    const serp = { items: [
+      { type: 'organic', rank_group: 7, url: 'https://www.example.com/guide/?utm_source=test' },
+      { type: 'organic', rank_group: 2, url: 'https://competitor.example/guide' }
+    ] };
+    expect(targetRankFromSerp(serp, 'https://example.com/guide')).toBe(7);
+    expect(targetRankFromSerp(serp, 'https://example.com/other')).toBeNull();
   });
 });

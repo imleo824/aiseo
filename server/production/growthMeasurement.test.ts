@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actionMeasurementWindow, aggregateTargetGsc, evaluateGrowthOutcome } from './growthMeasurement';
+import { actionMeasurementWindow, aggregateTargetGsc, evaluateGrowthOutcome, evaluateRankOutcome } from './growthMeasurement';
 
 describe('immutable growth measurement windows', () => {
   it('anchors before and after windows to the action date plus the GSC data lag', () => {
@@ -27,5 +27,12 @@ describe('immutable growth measurement windows', () => {
     const previous = { clicks: 5, impressions: 200, ctr: 0.025, position: 12, queryCount: 2, rowCount: 2 };
     expect(evaluateGrowthOutcome({ clicks: 12, impressions: 300, ctr: 0.04, position: 9, queryCount: 4, rowCount: 4 }, previous).outcome).toBe('WIN');
     expect(evaluateGrowthOutcome({ clicks: 0, impressions: 10, ctr: 0, position: 20, queryCount: 1, rowCount: 1 }, previous).outcome).toBe('INCONCLUSIVE');
+  });
+
+  it('treats provider rank as a leading indicator, including a missing top-20 result', () => {
+    expect(evaluateRankOutcome(8, 15)).toMatchObject({ outcome: 'WIN', rankImprovement: 7 });
+    expect(evaluateRankOutcome(18, 15)).toMatchObject({ outcome: 'LOSS', rankImprovement: -3 });
+    expect(evaluateRankOutcome(null, null).outcome).toBe('INCONCLUSIVE');
+    expect(evaluateRankOutcome(12, null).outcome).toBe('WIN');
   });
 });

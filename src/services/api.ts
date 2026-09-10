@@ -325,9 +325,9 @@ export class ApiService {
     return (await productionApi.post(`/organizations/${organizationId}/sites/${siteId}/wordpress/recheck`, {})).data;
   }
 
-  public async authorizeGsc(siteId: string, propertyId: string) {
+  public async authorizeGsc(siteId: string) {
     const { organizationId } = await this.resolveWorkspace();
-    return (await productionApi.post<{ authorizationUrl: string }>(`/organizations/${organizationId}/sites/${siteId}/gsc/authorize`, { propertyId })).data;
+    return (await productionApi.post<{ authorizationUrl: string }>(`/organizations/${organizationId}/sites/${siteId}/gsc/authorize`, {})).data;
   }
 
   public async syncGsc(siteId: string) {
@@ -430,7 +430,6 @@ export class ApiService {
     const { organizationId } = await this.resolveWorkspace();
     if (!data.siteId || data.siteId === 'all') throw new Error('请选择一个已连接的 WordPress 站点');
     const inputs = (data.inputs || []).map(({ type, value }) => ({ type, value: value.trim() })).filter(({ value }) => Boolean(value));
-    if (!inputs.length) throw new Error('请提供关键词、参考文章链接或竞品站点');
     const created = (await productionApi.post<{ program: GrowthProgram }>(`/organizations/${organizationId}/sites/${data.siteId}/growth-programs`, { mode: 'CONTINUOUS', inputs })).data.program;
     const sites = await this.getSites();
     return { task: toLegacyTask(created as ProductionTask, sites.sites) };

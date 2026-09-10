@@ -95,7 +95,6 @@ export const scoreKeywordCandidate = (input: {
   const score = scoreSearchOpportunity({
     searchVolume: input.metrics.searchVolume,
     keywordDifficulty: input.metrics.keywordDifficulty,
-    allintitleCount: input.metrics.allintitleCount,
     hasSerpEvidence: input.metrics.serpEvidenceCount > 0,
     businessRelevance,
     intentProbability: input.discovery.intentProbability,

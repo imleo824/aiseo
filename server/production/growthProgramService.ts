@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import {
+  CreditHoldStatus,
   GrowthInputType,
   GrowthProgramMode,
   GrowthRunStageCode,
@@ -56,7 +57,6 @@ const normalizeValue = (input: GrowthProgramInputSpec): string => {
 };
 
 export const normalizeGrowthProgramInputs = (inputs: GrowthProgramInputSpec[]) => {
-  if (!inputs.length) throw new ValidationError('请至少提供一个关键词、参考文章链接或竞品站点');
   const normalized = [] as Array<GrowthProgramInputSpec & { normalizedValue: string; valueFingerprint: string; position: number }>;
   const seen = new Set<string>();
   const counts = new Map<GrowthInputType, number>();
@@ -78,8 +78,35 @@ export const normalizeGrowthProgramInputs = (inputs: GrowthProgramInputSpec[]) =
       position: normalized.length
     });
   }
-  if (!normalized.length) throw new ValidationError('请至少提供一个有效增长线索');
   return normalized;
+};
+
+const assertInitialBudget = async (tx: TransactionClient, budgetLimitMicros?: bigint): Promise<void> => {
+  if (budgetLimitMicros === undefined) return;
+  if (budgetLimitMicros <= 0n) throw new ValidationError('增长程序预算上限必须大于 0');
+  const price = await tx.actionPrice.findFirst({ where: { action: 'GROWTH_RUN', active: true }, select: { creditMicros: true } });
+  if (!price) throw new ValidationError('增长执行价格尚未配置');
+  if (price.creditMicros > budgetLimitMicros) throw new ConflictError('预算上限不足以启动一次正式增长执行');
+};
+
+const assertScheduledBudget = async (tx: TransactionClient, programId: string): Promise<void> => {
+  const program = await tx.growthProgram.findUniqueOrThrow({
+    where: { id: programId },
+    select: { budgetLimitMicros: true, runs: { where: { jobRunId: { not: null } }, select: { jobRunId: true } } }
+  });
+  if (program.budgetLimitMicros === null) return;
+  const price = await tx.actionPrice.findFirst({ where: { action: 'GROWTH_RUN', active: true }, select: { creditMicros: true } });
+  if (!price) throw new ValidationError('增长执行价格尚未配置');
+  const jobRunIds = program.runs.flatMap(({ jobRunId }) => jobRunId ? [jobRunId] : []);
+  const committed = jobRunIds.length
+    ? (await tx.creditHold.aggregate({
+      where: { jobRunId: { in: jobRunIds }, status: { in: [CreditHoldStatus.HELD, CreditHoldStatus.SETTLED] } },
+      _sum: { amountMicros: true }
+    }))._sum.amountMicros || 0n
+    : 0n;
+  if (committed + price.creditMicros > program.budgetLimitMicros) {
+    throw new ConflictError('持续增长程序已达到预算上限，已停止创建新的付费执行');
+  }
 };
 
 export const growthProgramService = {
@@ -110,6 +137,7 @@ export const growthProgramService = {
       const run = existing.runs[0] || null;
       return { program: existing, run, job: run?.jobRunId ? await tx.jobRun.findUnique({ where: { id: run.jobRunId } }) : null, replayed: true };
     }
+    await assertInitialBudget(tx, input.budgetLimitMicros);
     if (input.mode === GrowthProgramMode.CONTINUOUS) {
       const active = await tx.growthProgram.findFirst({
         where: { siteId: input.siteId, mode: GrowthProgramMode.CONTINUOUS, status: 'ACTIVE' },
@@ -175,6 +203,7 @@ export const growthProgramService = {
   }) {
     const existing = await tx.growthRun.findUnique({ where: { programId_occurrenceKey: { programId: input.programId, occurrenceKey: input.occurrenceKey } } });
     if (existing) return existing;
+    await assertScheduledBudget(tx, input.programId);
     const run = await tx.growthRun.create({ data: {
       organizationId: input.organizationId,
       siteId: input.siteId,

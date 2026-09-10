@@ -4,9 +4,9 @@ import { continuousCadenceDays, qualifySearchOpportunity, selectGrowthAction } f
 
 describe('unified growth policy', () => {
   it('fails closed when real demand or SERP evidence is missing', () => {
-    expect(qualifySearchOpportunity({ searchVolume: 0, keywordDifficulty: 20, allintitleCount: 5, hasSerpEvidence: true })).toMatchObject({ qualified: false });
-    expect(qualifySearchOpportunity({ searchVolume: 100, keywordDifficulty: 20, allintitleCount: 5, hasSerpEvidence: false })).toMatchObject({ qualified: false });
-    expect(qualifySearchOpportunity({ searchVolume: 100, keywordDifficulty: 20, allintitleCount: 5, hasSerpEvidence: true })).toMatchObject({ qualified: true });
+    expect(qualifySearchOpportunity({ searchVolume: 0, keywordDifficulty: 20, hasSerpEvidence: true })).toMatchObject({ qualified: false });
+    expect(qualifySearchOpportunity({ searchVolume: 100, keywordDifficulty: 20, hasSerpEvidence: false })).toMatchObject({ qualified: false });
+    expect(qualifySearchOpportunity({ searchVolume: 100, keywordDifficulty: 20, hasSerpEvidence: true })).toMatchObject({ qualified: true });
   });
 
   it('chooses the smallest safe action from deterministic evidence', () => {
