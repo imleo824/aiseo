@@ -248,9 +248,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
       )}
 
       {/* 核心操作主卡片 */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-sm space-y-6">
-
-
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-6 shadow-2xs space-y-6">
 
         {/* 步骤 1 & 2 & 3 表单 */}
         <div className="space-y-6">
@@ -259,7 +257,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
               <label className="text-base sm:text-lg font-extrabold text-slate-950 flex items-center gap-2.5">
-                <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-slate-950 text-white flex items-center justify-center text-xs sm:text-sm font-bold shadow-xs">1</span>
+                <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-slate-950 text-white flex items-center justify-center text-xs sm:text-sm font-bold shadow-2xs">1</span>
                 <span>选择站点</span>
               </label>
 
@@ -267,7 +265,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 <button
                   type="button"
                   onClick={onOpenOnboarding}
-                  className="text-xs sm:text-[13px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="text-xs sm:text-[13px] font-bold text-slate-800 hover:text-slate-950 bg-slate-100 hover:bg-slate-200/80 active:bg-slate-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer min-h-[36px]"
                 >
                   <span>+ 添加站点</span>
                 </button>
@@ -275,7 +273,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             </div>
 
             {safeSites.length === 0 ? (
-              <div className="p-4 bg-amber-50/80 rounded-xl border border-amber-200 text-sm text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="p-4 bg-amber-50/80 rounded-xl border border-amber-200/90 text-sm text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
                   <span>暂未绑定站点，请先接入目标 WordPress 网站。</span>
@@ -284,7 +282,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                   <button
                     type="button"
                     onClick={onOpenOnboarding}
-                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg shadow-xs transition shrink-0 cursor-pointer"
+                    className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold text-xs rounded-xl shadow-2xs transition shrink-0 cursor-pointer min-h-[38px]"
                   >
                     + 接入 WordPress 站点
                   </button>
@@ -298,7 +296,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 <select
                   value={selectedSiteId || (safeSites.length > 0 ? safeSites[0].id : '')}
                   onChange={(e) => setSelectedSiteId(e.target.value)}
-                  className="w-full pl-10 pr-10 py-2.5 bg-slate-50/80 hover:bg-slate-100/80 border border-slate-200/90 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:border-slate-400 focus:bg-white transition cursor-pointer appearance-none shadow-2xs"
+                  className="w-full pl-10 pr-10 py-2.5 bg-slate-50/80 hover:bg-slate-100/80 border border-slate-200/90 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:border-slate-400 focus:bg-white transition cursor-pointer appearance-none shadow-2xs min-h-[42px]"
                 >
                   {safeSites.map(s => (
                     <option key={s.id} value={s.id}>
@@ -325,19 +323,19 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
           {/* 第二步：设定发文主题 */}
           <div className="space-y-3 pt-1">
             <label className="text-base sm:text-lg font-extrabold text-slate-950 flex items-center gap-2.5">
-              <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-slate-950 text-white flex items-center justify-center text-xs sm:text-sm font-bold shadow-xs">2</span>
+              <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-slate-950 text-white flex items-center justify-center text-xs sm:text-sm font-bold shadow-2xs">2</span>
               <span>选择主题</span>
             </label>
 
             {/* 3 种模式切换 Tab */}
-            <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-xl gap-1">
+            <div className="grid grid-cols-3 p-1 bg-slate-100/90 rounded-xl gap-1 border border-slate-200/70">
               <button
                 type="button"
                 onClick={() => setMode('KEYWORD')}
-                className={`px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer ${
+                className={`px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer min-h-[42px] ${
                   mode === 'KEYWORD'
-                    ? 'bg-slate-950 text-white shadow-xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    ? 'bg-white text-slate-950 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-950 hover:bg-slate-200/50'
                 }`}
               >
                 <KeyRound className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -348,10 +346,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => setMode('REWRITE')}
-                className={`px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer ${
+                className={`px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer min-h-[42px] ${
                   mode === 'REWRITE'
-                    ? 'bg-slate-950 text-white shadow-xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    ? 'bg-white text-slate-950 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-950 hover:bg-slate-200/50'
                 }`}
               >
                 <Repeat className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -362,10 +360,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => setMode('COMPETITOR')}
-                className={`px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer ${
+                className={`px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer min-h-[42px] ${
                   mode === 'COMPETITOR'
-                    ? 'bg-slate-950 text-white shadow-xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    ? 'bg-white text-slate-950 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-950 hover:bg-slate-200/50'
                 }`}
               >
                 <Swords className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -374,13 +372,13 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               </button>
             </div>
 
-            <p className="text-[11px] text-slate-500 px-1">
+            <p className="text-[11px] text-slate-500 px-1 font-medium">
               三类线索可组合且支持多个值；全部留空时，系统会从已连接站点自动发现机会。
             </p>
 
             {/* 模式 1：自定义关键词 */}
             {mode === 'KEYWORD' && (
-              <div className="space-y-2.5 animate-in fade-in duration-150 bg-slate-50/70 p-3.5 sm:p-4 rounded-xl border border-slate-200/60">
+              <div className="space-y-2.5 animate-in fade-in duration-150 bg-slate-50/70 p-3.5 sm:p-4 rounded-xl border border-slate-200/90 shadow-2xs">
                 <div className="flex items-center justify-between text-xs text-slate-500">
                   <span className="font-semibold text-slate-700 flex items-center gap-1.5">
                     <Search className="w-3.5 h-3.5 text-slate-500" />
@@ -393,13 +391,13 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                     onChange={(e) => setKeywordInput(e.target.value)}
                     placeholder={'例如：\n企业级高可用架构\n云原生容灾方案'}
                     rows={3}
-                    className="w-full resize-none px-3.5 py-2.5 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs"
+                    className="w-full resize-none px-3.5 py-2.5 bg-white border border-slate-200/90 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs"
                   />
                   {keywordInput && (
                     <button
                       type="button"
                       onClick={() => setKeywordInput('')}
-                      className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md"
+                      className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md cursor-pointer"
                     >
                       清空
                     </button>
@@ -410,7 +408,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
             {/* 模式 2：参考文章只用于提取事实、结构和信息缺口 */}
             {mode === 'REWRITE' && (
-              <div className="space-y-2.5 animate-in fade-in duration-150 bg-slate-50/70 p-3.5 sm:p-4 rounded-xl border border-slate-200/60">
+              <div className="space-y-2.5 animate-in fade-in duration-150 bg-slate-50/70 p-3.5 sm:p-4 rounded-xl border border-slate-200/90 shadow-2xs">
                 <div className="flex items-center justify-between text-xs text-slate-500">
                   <span className="font-semibold text-slate-700 flex items-center gap-1.5">
                     <Link2 className="w-3.5 h-3.5 text-slate-500" />
@@ -423,13 +421,13 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                     onChange={(e) => setRewriteInput(e.target.value)}
                     placeholder={'每行一个完整地址，例如：\nhttps://example.com/article-a\nhttps://example.com/article-b'}
                     rows={3}
-                    className="w-full resize-none px-3.5 py-2.5 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs"
+                    className="w-full resize-none px-3.5 py-2.5 bg-white border border-slate-200/90 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs"
                   />
                   {rewriteInput && (
                     <button
                       type="button"
                       onClick={() => setRewriteInput('')}
-                      className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md"
+                      className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md cursor-pointer"
                     >
                       清空
                     </button>

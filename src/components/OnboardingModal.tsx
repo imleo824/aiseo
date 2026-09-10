@@ -168,35 +168,35 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           </div>
 
           {/* WordPress grants credentials on the customer site; secrets are never entered here. */}
-          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
-            <div className="font-semibold text-slate-800 flex items-center justify-between">
+          <div className="p-3.5 bg-slate-50/80 border border-slate-200/90 rounded-xl space-y-2.5 shadow-2xs">
+            <div className="font-bold text-slate-900 flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <Key className="w-3.5 h-3.5 text-slate-700" />
                 <span>WordPress 官方授权</span>
               </div>
-              <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-normal border border-emerald-200">
+              <span className="text-[11px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-lg font-semibold border border-emerald-200/90">
                 无需安装插件
               </span>
             </div>
 
-            <p className="text-[11px] leading-5 text-slate-600">
+            <p className="text-[11px] leading-5 text-slate-600 font-medium">
               点击下方按钮后会跳转到您的 WordPress 站点。批准后系统会自动识别版本、编辑器、插件公开能力及安全动作范围；凭证不会显示在浏览器中。
             </p>
           </div>
 
           {/* Footer Actions */}
-          <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-100">
+          <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
-              className="btn-secondary"
+              className="btn-secondary min-h-[44px] px-4 cursor-pointer"
             >
               取消
             </button>
             <button
               type="submit"
               disabled={!domain.trim() || submitting}
-              className="btn-primary"
+              className="btn-primary min-h-[44px] px-5 shadow-2xs cursor-pointer"
             >
               {submitting ? '正在连接...' : '连接 WordPress'}
             </button>

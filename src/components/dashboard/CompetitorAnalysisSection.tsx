@@ -11,33 +11,35 @@ export const CompetitorAnalysisSection: React.FC<CompetitorAnalysisSectionProps>
   onCompetitorInputChange
 }) => {
   return (
-    <div className="space-y-3 animate-in fade-in duration-150 bg-slate-50/70 p-3.5 sm:p-4 rounded-xl border border-slate-200/60">
+    <div className="space-y-3 animate-in fade-in duration-150 bg-slate-50/70 p-3.5 sm:p-4 rounded-xl border border-slate-200/90 shadow-2xs">
       <div className="flex items-center justify-between text-xs text-slate-600">
         <span className="font-semibold text-slate-700 flex items-center gap-1.5">
           <Swords className="w-3.5 h-3.5 text-slate-600" />
-          输入竞品网站 URL
+          <span>输入竞品网站 URL</span>
         </span>
       </div>
 
       <div className="relative">
-          <textarea
-            value={competitorInput}
-            onChange={(e) => onCompetitorInputChange(e.target.value)}
-            placeholder={'每行一个竞品站点，例如：\nhttps://competitor-a.com\nhttps://competitor-b.com'}
-            rows={3}
-            className="w-full resize-none px-3.5 py-2.5 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs pr-12"
-          />
-          {competitorInput && (
-            <button
-              type="button"
-              onClick={() => onCompetitorInputChange('')}
-              className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md"
-            >
-              清空
-            </button>
-          )}
+        <textarea
+          value={competitorInput}
+          onChange={(e) => onCompetitorInputChange(e.target.value)}
+          placeholder={'每行一个竞品站点，例如：\nhttps://competitor-a.com\nhttps://competitor-b.com'}
+          rows={3}
+          className="w-full resize-none px-3.5 py-2.5 bg-white border border-slate-200/90 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 transition-all duration-150 shadow-2xs pr-14"
+        />
+        {competitorInput && (
+          <button
+            type="button"
+            onClick={() => onCompetitorInputChange('')}
+            className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md cursor-pointer"
+          >
+            清空
+          </button>
+        )}
       </div>
-      <p className="text-[11px] text-slate-500">系统会组合多个竞品的内容缺口和排名词，再使用 DataForSEO 验证真实需求与竞争度。</p>
+      <p className="text-[11px] text-slate-500 font-medium">
+        系统会组合多个竞品的内容缺口和排名词，再使用 DataForSEO 验证真实需求与竞争度。
+      </p>
     </div>
   );
 };

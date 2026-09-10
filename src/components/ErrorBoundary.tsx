@@ -35,25 +35,25 @@ export class ErrorBoundary extends Component<Props, State> {
   public render(): ReactNode {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4 sm:p-6">
-          <div className="max-w-md w-full bg-slate-800 border border-slate-700/80 rounded-xl p-4 sm:p-6 shadow-2xl space-y-4">
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 sm:p-6">
+          <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-4">
             <div className="flex items-center space-x-3 text-amber-400">
-              <AlertTriangle className="w-8 h-8 flex-shrink-0" />
-              <h2 className="text-xl font-bold">系统捕获到前端异常</h2>
+              <AlertTriangle className="w-6 h-6 flex-shrink-0" />
+              <h2 className="text-lg sm:text-xl font-bold text-white">系统捕获到前端异常</h2>
             </div>
-            <p className="text-sm text-slate-300 leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
               组件渲染过程中遭遇未知异常。这不影响底层 API 与数据库状态，您可以尝试刷新恢复视图。
             </p>
             {this.state.error && (
-              <div className="bg-slate-950 p-3 rounded-lg text-xs font-mono text-red-300 overflow-x-auto border border-red-900/40">
+              <div className="bg-slate-950 p-3.5 rounded-xl text-xs font-mono text-rose-300 overflow-x-auto border border-rose-950/60 leading-relaxed">
                 {this.state.error.toString()}
               </div>
             )}
             <button
               onClick={this.handleReset}
-              className="w-full flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 px-4 rounded-lg transition-colors cursor-pointer"
+              className="w-full flex items-center justify-center space-x-2 bg-white hover:bg-slate-100 active:bg-slate-200 text-slate-950 font-bold py-3 px-4 rounded-xl transition cursor-pointer min-h-[44px] shadow-2xs"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className="w-4 h-4 text-slate-800" />
               <span>重新加载工作台</span>
             </button>
           </div>

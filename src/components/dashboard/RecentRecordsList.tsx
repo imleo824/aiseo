@@ -91,11 +91,11 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
   }, [safeDrafts, searchQuery, statusFilter]);
 
   return (
-    <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm">
+    <div className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-2xs">
 
       {/* Toast Notification */}
       {toastMsg && (
-        <div className="fixed top-6 right-6 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-md shadow-xl flex items-center space-x-2 text-sm font-medium animate-in fade-in slide-in-from-top-2 border border-slate-700">
+        <div className="fixed top-6 right-6 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-xl flex items-center space-x-2 text-sm font-medium animate-in fade-in slide-in-from-top-2 border border-slate-700">
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           <span>{toastMsg}</span>
         </div>
@@ -128,12 +128,12 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
           </div>
 
           {/* Status Filter */}
-          <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/80 text-xs font-semibold shrink-0">
+          <div className="inline-flex p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 text-xs font-semibold shrink-0">
             <button
               type="button"
               onClick={() => setStatusFilter('ALL')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer min-h-[34px] ${
-                statusFilter === 'ALL' ? 'bg-white text-slate-950 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer min-h-[36px] ${
+                statusFilter === 'ALL' ? 'bg-white text-slate-950 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-950'
               }`}
             >
               全部
@@ -141,8 +141,8 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
             <button
               type="button"
               onClick={() => setStatusFilter('PUBLISHED')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer min-h-[34px] ${
-                statusFilter === 'PUBLISHED' ? 'bg-white text-slate-950 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer min-h-[36px] ${
+                statusFilter === 'PUBLISHED' ? 'bg-white text-slate-950 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-950'
               }`}
             >
               已上线
@@ -150,8 +150,8 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
             <button
               type="button"
               onClick={() => setStatusFilter('DRAFT')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer min-h-[34px] ${
-                statusFilter === 'DRAFT' ? 'bg-white text-slate-950 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer min-h-[36px] ${
+                statusFilter === 'DRAFT' ? 'bg-white text-slate-950 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-950'
               }`}
             >
               草稿
@@ -363,7 +363,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
                               href={draft.publishedUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 rounded-xl text-xs font-semibold transition flex items-center gap-1 min-h-[34px]"
+                              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 rounded-xl text-xs font-semibold transition flex items-center gap-1 min-h-[38px]"
                             >
                               <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
                               <span>访问</span>
@@ -375,7 +375,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
                               type="button"
                               onClick={() => void handleApprovePublish(draft.id)}
                               disabled={publishingDraftId === draft.id}
-                              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 min-h-[34px] shadow-2xs cursor-pointer"
+                              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 min-h-[38px] shadow-2xs cursor-pointer"
                             >
                               {publishingDraftId === draft.id ? '发布中…' : '审核并发布'}
                             </button>
@@ -387,7 +387,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
                               if (onPreviewDraft) onPreviewDraft(draft);
                               else setActiveDraftModal(draft);
                             }}
-                            className="px-3.5 py-1.5 bg-slate-950 hover:bg-slate-800 active:bg-slate-900 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-2xs min-h-[34px] cursor-pointer"
+                            className="px-3.5 py-2 bg-slate-950 hover:bg-slate-800 active:bg-slate-900 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-2xs min-h-[38px] cursor-pointer"
                           >
                             <Eye className="w-3.5 h-3.5 text-slate-300" />
                             <span>预览</span>
@@ -398,7 +398,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
                               type="button"
                               onClick={() => handlePush(draft.id)}
                               disabled={isPushing}
-                              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 border border-emerald-200/90 rounded-xl text-xs font-semibold transition flex items-center gap-1 disabled:opacity-50 min-h-[34px] cursor-pointer"
+                              className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 border border-emerald-200/90 rounded-xl text-xs font-semibold transition flex items-center gap-1 disabled:opacity-50 min-h-[38px] cursor-pointer"
                             >
                               <Share2 className={`w-3.5 h-3.5 text-emerald-600 ${isPushing ? 'animate-spin' : ''}`} />
                               <span>推送</span>

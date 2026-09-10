@@ -1,8 +1,8 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 RUN apk add --no-cache openssl
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 COPY . .
 # Public browser configuration is served by /runtime-config.js at container
 # startup, so build artifacts never depend on Railway build arguments. Prisma
@@ -15,8 +15,8 @@ FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 RUN apk add --no-cache openssl && addgroup -S app && adduser -S app -G app
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+COPY package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi && npm cache clean --force
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=build /app/dist ./dist

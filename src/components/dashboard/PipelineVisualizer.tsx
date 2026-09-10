@@ -151,23 +151,23 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
         const detail = stageDetails.find((item) => item.stage === stage?.code);
         if (!stage || !detail) return null;
         return (
-          <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm space-y-3 shadow-sm">
+          <div className="rounded-xl border border-slate-200/90 bg-white p-4 text-sm space-y-3 shadow-2xs">
             <div className="flex items-center justify-between gap-3">
               <div className="font-bold text-slate-900">{stage.title} · 真实执行证据</div>
-              <div className="text-xs text-slate-500">
+              <div className="text-xs text-slate-500 font-medium">
                 已处理 {detail.processedCount}{typeof detail.totalCount === 'number' ? ` / ${detail.totalCount}` : ''}
               </div>
             </div>
-            {detail.summary && <p className="text-slate-700 leading-relaxed">{detail.summary}</p>}
+            {detail.summary && <p className="text-slate-700 leading-relaxed text-xs sm:text-sm font-medium">{detail.summary}</p>}
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
               <span>开始：{detail.startedAt ? new Date(detail.startedAt).toLocaleString() : '尚未开始'}</span>
               <span>完成：{detail.finishedAt ? new Date(detail.finishedAt).toLocaleString() : '尚未完成'}</span>
             </div>
-            {detail.errorMessage && <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-rose-800">阻止原因：{detail.errorMessage}</div>}
+            {detail.errorMessage && <div className="rounded-xl bg-rose-50 border border-rose-200 px-3 py-2 text-rose-800 text-xs font-semibold">阻止原因：{detail.errorMessage}</div>}
             {detail.evidence.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {detail.evidence.map((evidence, index) => (
-                  <span key={`${String(evidence.type || 'EVIDENCE')}-${index}`} className="rounded-md bg-slate-100 border border-slate-200 px-2 py-1 text-xs font-mono text-slate-600">
+                  <span key={`${String(evidence.type || 'EVIDENCE')}-${index}`} className="rounded-lg bg-slate-100 border border-slate-200/80 px-2.5 py-1 text-xs font-mono text-slate-700 font-semibold">
                     {String(evidence.type || 'EVIDENCE')}
                   </span>
                 ))}
