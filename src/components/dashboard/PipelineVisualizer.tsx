@@ -64,13 +64,15 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
                     ? '执行中'
                     : `步骤 ${stage.number}`;
 
+          const isLast = stage.number === 5;
+
           return (
             <button
               type="button"
               key={stage.number}
               onClick={() => detail && setExpandedStage((current) => current === stage.number ? null : stage.number)}
               aria-expanded={detail ? expandedStage === stage.number : undefined}
-              className={`p-3 sm:p-3.5 rounded-xl border text-center transition-all duration-200 flex flex-col items-center justify-center gap-1.5 ${
+              className={`p-3 sm:p-3.5 rounded-xl border text-center transition-all duration-200 flex flex-col items-center justify-center gap-1.5 ${isLast ? 'col-span-2 sm:col-span-1' : ''} ${
                 isActive
                   ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-emerald-500/30'
                   : isCompleted

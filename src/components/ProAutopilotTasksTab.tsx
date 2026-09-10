@@ -146,12 +146,12 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
         </div>
       )}
 
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-sm space-y-6">
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-6">
 
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100/60 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
             <div className="flex items-center gap-3">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <h3 className="text-base font-bold text-slate-950 flex items-center gap-2">
                 <Clock className="w-4 h-4 text-slate-500" />
                 <span>计划列表</span>
               </h3>
@@ -160,29 +160,31 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                 onClick={handleOpenCreateModal}
                 disabled={!eligibleSites.length}
                 title={eligibleSites.length ? '新建持续增长程序' : '请先授权连接 WordPress 站点'}
-                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-all shadow-xs flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3.5 py-2 bg-slate-950 hover:bg-slate-800 active:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed min-h-[38px]"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>新建持续增长</span>
               </button>
             </div>
             <div className="flex items-center gap-2 text-xs self-start sm:self-auto">
-              <span className="text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md font-medium">
+              <span className="text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg font-semibold">
                 共 {safeTasks.length} 个计划
               </span>
-              <span className="text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-md font-medium flex items-center gap-1">
-                <FileText className="w-3 h-3 text-indigo-500" />
+              <span className="text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-indigo-500" />
                 <span>共 {safeTasks.reduce((acc, t) => acc + (t.totalArticles || 0), 0)} 篇</span>
               </span>
             </div>
           </div>
 
           {safeTasks.length === 0 ? (
-            <div className="py-12 text-center space-y-3 bg-slate-50/60 rounded-xl border border-dashed border-slate-200/80 px-4">
-              <Bot className="w-10 h-10 text-slate-300 mx-auto" />
+            <div className="py-12 text-center space-y-3 bg-slate-50/50 rounded-xl border border-dashed border-slate-200/90 px-4">
+              <div className="w-12 h-12 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto shadow-2xs">
+                <Bot className="w-6 h-6" />
+              </div>
               <div className="space-y-1">
-                <div className="text-sm font-bold text-slate-700">暂无持续增长程序</div>
-                <div className="text-xs text-slate-500">
+                <div className="text-sm font-bold text-slate-800">暂无持续增长程序</div>
+                <div className="text-xs text-slate-500 max-w-sm mx-auto">
                   连接站点并提供一个增长线索，系统会根据新证据选择下一项 SEO 动作。
                 </div>
               </div>
@@ -198,26 +200,26 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                     key={task.id}
                     className={`p-4 sm:p-5 rounded-xl border transition-all duration-150 flex flex-col md:flex-row md:items-center justify-between gap-4 ${
                       isActive
-                        ? 'bg-white border-slate-200/80/90 shadow-sm hover:border-slate-300'
-                        : 'bg-slate-50/80 border-slate-200/80/60 opacity-80'
+                        ? 'bg-white border-slate-200/90 shadow-2xs hover:border-slate-300'
+                        : 'bg-slate-50/70 border-slate-200/80 opacity-85'
                     }`}
                   >
                     <div className="space-y-2.5 min-w-0 flex-1">
                       <div className="flex items-center gap-2.5 flex-wrap">
-                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1.5 ${
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
                           isActive
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-slate-100 text-slate-500 border border-slate-200/80'
+                            : 'bg-slate-100 text-slate-600 border border-slate-200/80'
                         }`}>
                           <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
                           <span>{isActive ? '运行中' : '已暂停'}</span>
                         </span>
 
-                        <h4 className="font-bold text-sm sm:text-base text-slate-900 truncate">
+                        <h4 className="font-bold text-sm sm:text-base text-slate-950 truncate">
                           {task.taskName}
                         </h4>
 
-                        <span className="text-xs text-slate-500 flex items-center gap-1 bg-slate-100 px-2.5 py-0.5 rounded-lg">
+                        <span className="text-xs font-medium text-slate-600 flex items-center gap-1 bg-slate-100 px-2.5 py-1 rounded-lg">
                           <Globe className="w-3 h-3 text-slate-400" />
                           <span>{task.siteName || '全部站点'}</span>
                         </span>
@@ -236,7 +238,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                           <Zap className="w-3.5 h-3.5 text-amber-500" />
                           <span>每轮最多 1 个动作</span>
                         </span>
-                        <span className="flex items-center gap-1 bg-indigo-50/80 text-indigo-700 border border-indigo-100/90 px-2 py-0.5 rounded-md font-medium">
+                        <span className="flex items-center gap-1 bg-indigo-50/80 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-md font-medium">
                           <FileText className="w-3.5 h-3.5 text-indigo-500" />
                           <span>已交付: <strong className="text-indigo-950 font-bold ml-0.5">{task.totalArticles ?? 0}</strong> 次</span>
                         </span>
@@ -248,10 +250,10 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                         type="button"
                         onClick={() => handleRunNow(task.id)}
                         disabled={isRunning}
-                        className={`flex-1 sm:flex-initial px-3 sm:px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 border ${
+                        className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border min-h-[40px] cursor-pointer ${
                           isRunning
                             ? 'bg-slate-100 text-slate-400 border-slate-200/80 cursor-wait'
-                            : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 active:scale-95'
+                            : 'bg-emerald-50 text-emerald-800 border-emerald-200/90 hover:bg-emerald-100 active:scale-95'
                         }`}
                       >
                         {isRunning ? (
@@ -270,12 +272,13 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                       <button
                         type="button"
                         onClick={() => handleToggleStatus(task)}
-                        className={`p-2 rounded-xl border text-xs transition ${
+                        className={`w-10 h-10 rounded-xl border text-xs transition flex items-center justify-center cursor-pointer ${
                           isActive
-                            ? 'bg-slate-50 text-slate-600 border-slate-200/80 hover:bg-slate-100'
+                            ? 'bg-slate-50 text-slate-600 border-slate-200/90 hover:bg-slate-100'
                             : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                         }`}
                         title={isActive ? '暂停' : '开启'}
+                        aria-label={isActive ? '暂停任务' : '开启任务'}
                       >
                         {isActive ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                       </button>
@@ -291,26 +294,27 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200/80 rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl animate-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 sticky top-0 z-10">
-              <h3 className="font-bold text-slate-900 text-base">新建持续增长程序</h3>
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200/90 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl animate-in zoom-in-95 duration-150">
+            <div className="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60 sticky top-0 z-10">
+              <h3 className="font-bold text-slate-950 text-base">新建持续增长程序</h3>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded-xl transition"
+                className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                aria-label="关闭窗口"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateSubmit} className="p-4 sm:p-6 space-y-4 text-sm">
+            <form onSubmit={handleCreateSubmit} className="p-5 sm:p-6 space-y-4 text-sm">
               <div className="space-y-1.5">
-                <label className="font-bold text-slate-800">目标站点</label>
+                <label className="text-xs font-bold text-slate-700">目标站点</label>
                 <select
                   value={siteId}
                   onChange={(e) => setSiteId(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400"
+                  className="w-full px-3.5 py-2.5 bg-slate-50/80 border border-slate-200/90 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400 text-sm font-medium text-slate-800 transition-colors"
                 >
                   {eligibleSites.map(s => (
                     <option key={s.id} value={s.id}>{s.name}</option>
@@ -320,36 +324,36 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
 
               <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <label className="font-bold text-slate-800">关键词或主题</label>
-                  <textarea value={keywordInputs} onChange={(event) => setKeywordInputs(event.target.value)} rows={2} placeholder="每行一个，可输入多个" className="w-full resize-none px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400" />
+                  <label className="text-xs font-bold text-slate-700">关键词或主题</label>
+                  <textarea value={keywordInputs} onChange={(event) => setKeywordInputs(event.target.value)} rows={2} placeholder="每行一个，可输入多个" className="w-full resize-none px-3.5 py-2.5 bg-slate-50/80 border border-slate-200/90 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400 text-sm text-slate-800 placeholder:text-slate-400 transition-colors" />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="font-bold text-slate-800">参考文章链接</label>
-                  <textarea value={referenceInputs} onChange={(event) => setReferenceInputs(event.target.value)} rows={2} placeholder="每行一个完整 HTTPS 地址，可不填" className="w-full resize-none px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400" />
+                  <label className="text-xs font-bold text-slate-700">参考文章链接</label>
+                  <textarea value={referenceInputs} onChange={(event) => setReferenceInputs(event.target.value)} rows={2} placeholder="每行一个完整 HTTPS 地址，可不填" className="w-full resize-none px-3.5 py-2.5 bg-slate-50/80 border border-slate-200/90 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400 text-sm text-slate-800 placeholder:text-slate-400 transition-colors" />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="font-bold text-slate-800">竞品站点</label>
-                  <textarea value={competitorInputs} onChange={(event) => setCompetitorInputs(event.target.value)} rows={2} placeholder="每行一个完整 HTTPS 地址，可不填" className="w-full resize-none px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400" />
+                  <label className="text-xs font-bold text-slate-700">竞品站点</label>
+                  <textarea value={competitorInputs} onChange={(event) => setCompetitorInputs(event.target.value)} rows={2} placeholder="每行一个完整 HTTPS 地址，可不填" className="w-full resize-none px-3.5 py-2.5 bg-slate-50/80 border border-slate-200/90 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400 text-sm text-slate-800 placeholder:text-slate-400 transition-colors" />
                 </div>
-                <p className="text-xs text-slate-500">三类线索可任意组合，至少填写一种。系统自动扩展主题、判断市场和选择安全动作。</p>
+                <p className="text-xs text-slate-500 leading-relaxed">三类线索可任意组合，至少填写一种。系统自动扩展主题、判断市场和选择安全动作。</p>
               </div>
 
-              <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-xs leading-5 text-indigo-900">
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3.5 text-xs leading-5 text-indigo-950 font-medium">
                 无需设置执行时间。系统只在发现新的、可验证的机会时安排动作；没有合格机会会跳过本轮且不扣费。
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                  className="px-4 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-100 active:bg-slate-200 rounded-xl transition min-h-[44px] cursor-pointer"
                 >
                   取消
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition"
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs sm:text-sm rounded-xl font-bold transition shadow-2xs min-h-[44px] cursor-pointer disabled:opacity-50"
                 >
                   {isSubmitting ? '启动中...' : '启动持续增长'}
                 </button>

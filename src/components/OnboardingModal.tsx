@@ -73,11 +73,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full my-8 max-h-[90vh] flex flex-col shadow-xl animate-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-white border border-slate-200/90 rounded-2xl max-w-lg w-full my-auto max-h-[92dvh] flex flex-col shadow-xl animate-in zoom-in-95 duration-150">
 
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10 bg-white rounded-t-2xl">
+        <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10 bg-white rounded-t-2xl">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-800 flex items-center justify-center">
               <Globe className="w-4 h-4 text-slate-700" />
@@ -90,7 +90,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition"
+            className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition min-h-[44px] min-w-[44px] flex items-center justify-center"
+            aria-label="关闭"
           >
             <X className="w-4 h-4" />
           </button>
@@ -107,7 +108,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 <Layers className="w-3.5 h-3.5 text-slate-500" />
                 <span>站点类型</span>
               </label>
-              <div className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium">WordPress</div>
+              <div className="w-full px-3 py-2.5 sm:py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium min-h-[44px] sm:min-h-[38px] flex items-center">WordPress</div>
               <p className="text-[10px] leading-4 text-slate-500">正式版本仅支持 WordPress HTTPS REST API。</p>
             </div>
 
@@ -119,7 +120,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <select
                 value={siteLanguage}
                 onChange={e => setSiteLanguage(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:bg-white focus:border-slate-400 transition"
+                className="select-field"
               >
                 <option value="zh-CN">简体中文 (zh-CN)</option>
                 <option value="en-US">英语 - 美国 (en-US)</option>
@@ -138,7 +139,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               placeholder="例如 example.com"
               value={domain}
               onChange={e => setDomain(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:bg-white focus:border-slate-400 transition"
+              className="input-field"
             />
           </div>
 
@@ -151,7 +152,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 placeholder="默认使用域名"
                 value={name}
                 onChange={e => setName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:bg-white focus:border-slate-400 transition"
+                className="input-field"
               />
             </div>
             <div className="space-y-1.5">
@@ -161,7 +162,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 value={niche}
                 onChange={e => setNiche(e.target.value)}
                 placeholder="例如：企业 SaaS、跨境电商"
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:bg-white focus:border-slate-400 transition"
+                className="input-field"
               />
             </div>
           </div>
@@ -188,14 +189,14 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-medium transition"
+              className="btn-secondary"
             >
               取消
             </button>
             <button
               type="submit"
               disabled={!domain.trim() || submitting}
-              className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-semibold transition disabled:opacity-50"
+              className="btn-primary"
             >
               {submitting ? '正在连接...' : '连接 WordPress'}
             </button>

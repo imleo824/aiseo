@@ -164,7 +164,7 @@ export default function LegacyApp() {
 
             <div className="flex items-center space-x-2 sm:space-x-3 text-sm truncate">
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg text-slate-700 font-medium border border-slate-200/80 shadow-xs">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"></span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                 <span className="truncate max-w-[150px]">{account?.username || '未登录'}</span>
               </div>
               <ChevronRight className="w-3.5 h-3.5 text-slate-300 hidden sm:inline" />

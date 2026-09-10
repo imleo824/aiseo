@@ -90,17 +90,17 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           onClick={onOpenMobileDrawer}
           className={`flex-1 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all duration-150 relative cursor-pointer min-h-[50px] active:scale-95 ${
             isOtherActive
-              ? 'text-indigo-600 font-bold'
+              ? 'text-slate-950 font-bold'
               : 'text-slate-500 hover:text-slate-800'
           }`}
         >
           <div className={`p-1.5 rounded-xl transition-all ${
-            isOtherActive ? 'bg-indigo-600 text-white shadow-xs scale-105' : 'text-slate-600'
+            isOtherActive ? 'bg-slate-900 text-white shadow-xs scale-105' : 'text-slate-600'
           }`}>
             <Menu className="w-5 h-5" />
           </div>
           <span className={`text-[10px] tracking-tight mt-0.5 whitespace-nowrap ${
-            isOtherActive ? 'font-bold text-indigo-600' : 'font-medium text-slate-500'
+            isOtherActive ? 'font-bold text-slate-950' : 'font-medium text-slate-500'
           }`}>
             {isOtherActive ? (account?.role === 'ADMIN' ? '管理' : '账单') : '更多'}
           </span>

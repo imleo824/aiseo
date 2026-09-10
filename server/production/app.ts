@@ -23,12 +23,11 @@ export const buildContentSecurityPolicy = (input: {
   // Vite's React Refresh preamble is an inline module in development/test.
   // Production assets remain protected by the stricter no-inline policy.
   const scriptSources = ["'self'", ...(input.runtime === 'production' ? [] : ["'unsafe-inline'"]), 'https://challenges.cloudflare.com'].join(' ');
-  return `default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src ${scriptSources}; frame-src https://challenges.cloudflare.com; connect-src ${connectSources}`;
+  return `default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors *; form-action 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src ${scriptSources}; frame-src https://challenges.cloudflare.com; connect-src ${connectSources}`;
 };
 
 const securityHeaders = (_request: Request, response: Response, next: NextFunction): void => {
   response.setHeader('X-Content-Type-Options', 'nosniff');
-  response.setHeader('X-Frame-Options', 'DENY');
   response.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');

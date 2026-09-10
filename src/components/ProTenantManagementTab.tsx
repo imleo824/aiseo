@@ -121,65 +121,71 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
 
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white border border-slate-200/80 rounded-lg p-5 shadow-sm space-y-1">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-2">
+          <div className="flex items-center justify-between text-slate-600 text-xs font-bold">
             <span>总租户规模</span>
-            <Users className="w-4 h-4 text-blue-500" />
+            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shadow-2xs">
+              <Users className="w-4 h-4" />
+            </div>
           </div>
-          <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            {stats.totalCount} <span className="text-xs font-normal text-slate-500">家</span>
+          <div className="text-3xl font-black text-slate-950 tracking-tight">
+            {stats.totalCount} <span className="text-xs font-medium text-slate-500">家</span>
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200/80 rounded-lg p-5 shadow-sm space-y-1">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-2">
+          <div className="flex items-center justify-between text-slate-600 text-xs font-bold">
             <span>平台积分可用池</span>
-            <Coins className="w-4 h-4 text-amber-500" />
+            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shadow-2xs">
+              <Coins className="w-4 h-4" />
+            </div>
           </div>
-          <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            {stats.totalCredits.toLocaleString()} <span className="text-xs font-normal text-slate-500">积分</span>
+          <div className="text-3xl font-black text-slate-950 tracking-tight">
+            {stats.totalCredits.toLocaleString()} <span className="text-xs font-medium text-slate-500">积分</span>
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200/80 rounded-lg p-5 shadow-sm space-y-1">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-2">
+          <div className="flex items-center justify-between text-slate-600 text-xs font-bold">
             <span>累计充值 (USDT)</span>
-            <CreditCard className="w-4 h-4 text-emerald-500" />
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-2xs">
+              <CreditCard className="w-4 h-4" />
+            </div>
           </div>
-          <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            ${stats.totalUsdt.toLocaleString()} <span className="text-xs font-normal text-slate-500">USDT</span>
+          <div className="text-3xl font-black text-slate-950 tracking-tight">
+            ${stats.totalUsdt.toLocaleString()} <span className="text-xs font-medium text-slate-500">USDT</span>
           </div>
         </div>
       </div>
 
       {/* Main Table Card */}
-      <div className="bg-white border border-slate-200/80 rounded-lg shadow-sm overflow-hidden">
+      <div className="bg-white border border-slate-200/90 rounded-2xl shadow-2xs overflow-hidden">
 
         {/* Header */}
-        <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="text-xs font-bold text-slate-900">
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
+          <div className="text-xs font-bold text-slate-950">
             全部租户列表 ({filteredTenants.length})
           </div>
 
           <div className="flex items-center gap-3">
             {/* Search Input */}
             <div className="relative w-full sm:w-64">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
                 type="text"
                 placeholder="搜索租户名、Email或ID..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 pr-3 py-1.5 text-xs border border-slate-200/80 rounded-md bg-slate-50 focus:bg-white focus:outline-none focus:border-slate-400 w-full transition"
+                className="pl-9 pr-3.5 py-2 text-xs sm:text-sm border border-slate-200/90 rounded-xl bg-slate-50/80 hover:bg-slate-100/60 focus:bg-white focus:outline-none focus:border-slate-400 w-full transition-colors min-h-[38px]"
               />
             </div>
           </div>
         </div>
 
         {/* Tenants Mobile View (Visible on mobile, hidden on md+) */}
-        <div className="block md:hidden space-y-4 px-1 pb-4">
+        <div className="block md:hidden space-y-3 p-3.5">
           {filteredTenants.length === 0 ? (
-            <div className="py-12 text-center text-slate-400 text-xs">
+            <div className="py-12 text-center text-slate-500 text-xs">
               未查找到匹配的租户记录
             </div>
           ) : (
@@ -188,16 +194,16 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
               return (
                 <div
                   key={t.id}
-                  className={`p-4 rounded-xl border space-y-3.5 transition ${isActive ? 'bg-blue-50/20 border-blue-200 shadow-xs' : 'bg-slate-50/60 border-slate-100 hover:border-slate-200'}`}
+                  className={`p-4 rounded-xl border space-y-3 transition ${isActive ? 'bg-blue-50/30 border-blue-200 shadow-2xs' : 'bg-slate-50/70 border-slate-200/80 hover:bg-slate-100/60'}`}
                 >
                   {/* Title & Role */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2.5">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shrink-0 ${t.role === 'ADMIN' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shrink-0 ${t.role === 'ADMIN' ? 'bg-slate-950 text-white' : 'bg-slate-200 text-slate-700'}`}>
                         {t.username.substring(0, 1).toUpperCase()}
                       </div>
                       <div>
-                        <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5 flex-wrap">
+                        <div className="font-bold text-slate-950 text-sm flex items-center gap-1.5 flex-wrap">
                           <span>{t.companyName || t.username}</span>
                           {isActive && (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] bg-blue-100 text-blue-800 rounded font-black uppercase">
@@ -205,7 +211,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                             </span>
                           )}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">
                           ID: {t.id} · {t.email}
                         </div>
                       </div>
@@ -213,11 +219,11 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
 
                     <div className="shrink-0">
                       {t.role === 'ADMIN' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-black bg-indigo-100 text-indigo-800 rounded border border-indigo-200">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-black bg-slate-950 text-white rounded-lg">
                           管理员
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded border border-slate-200/80">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded-lg border border-slate-200/80">
                           租户
                         </span>
                       )}
@@ -225,30 +231,30 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                   </div>
 
                   {/* Metrics details */}
-                  <div className="grid grid-cols-3 gap-2 bg-white p-2.5 rounded-lg border border-slate-100 text-center text-xs">
+                  <div className="grid grid-cols-3 gap-2 bg-white p-3 rounded-xl border border-slate-200/80 text-center text-xs">
                     <div>
-                      <span className="text-slate-400 text-[9px] block">可用积分</span>
+                      <span className="text-slate-500 text-[9px] block font-semibold">可用积分</span>
                       <span className={`font-mono font-black text-[13px] block mt-0.5 ${t.credits < 100 ? 'text-amber-600' : 'text-emerald-600'}`}>
                         {t.credits.toLocaleString()}
                       </span>
                     </div>
                     <div>
-                      <span className="text-slate-400 text-[9px] block">累计充值</span>
-                      <span className="font-mono font-extrabold text-slate-700 text-[13px] block mt-0.5">
+                      <span className="text-slate-500 text-[9px] block font-semibold">累计充值</span>
+                      <span className="font-mono font-extrabold text-slate-800 text-[13px] block mt-0.5">
                         ${t.totalRechargedUsdt || 0}
                       </span>
                     </div>
                     <div>
-                      <span className="text-slate-400 text-[9px] block">已消耗</span>
-                      <span className="font-mono font-semibold text-slate-500 text-[13px] block mt-0.5">
+                      <span className="text-slate-500 text-[9px] block font-semibold">已消耗</span>
+                      <span className="font-mono font-semibold text-slate-600 text-[13px] block mt-0.5">
                         {(t.totalConsumedCredits || 0).toLocaleString()}
                       </span>
                     </div>
                   </div>
 
                   {/* Actions & Created Date */}
-                  <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-3 text-xs flex-wrap">
-                    <span className="text-slate-400 text-[10px] font-mono">
+                  <div className="pt-2.5 border-t border-slate-200/60 flex items-center justify-between gap-3 text-xs flex-wrap">
+                    <span className="text-slate-500 text-[10px] font-mono">
                       注册: {t.createdAt ? new Date(t.createdAt).toLocaleDateString('zh-CN') : '2026-08-24'}
                     </span>
 
@@ -256,9 +262,9 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                       <button
                         type="button"
                         onClick={() => handleOpenAdjustModal(t)}
-                        className="px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-white hover:bg-indigo-50 border border-slate-200/80 rounded-md transition flex items-center gap-1 cursor-pointer"
+                        className="px-3 py-1.5 text-xs font-bold text-slate-900 bg-white hover:bg-slate-50 border border-slate-200/90 rounded-xl transition flex items-center gap-1 cursor-pointer min-h-[36px] shadow-2xs"
                       >
-                        <Coins className="w-3 h-3 text-indigo-600" /> 上下分
+                        <Coins className="w-3 h-3 text-amber-600" /> 上下分
                       </button>
 
                     </div>
@@ -273,21 +279,21 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-100 text-xs font-semibold select-none">
-                <th className="py-3 px-4">租户标识 / 名称</th>
-                <th className="py-3 px-4">账号类型</th>
-                <th className="py-3 px-4">可用积分</th>
-                <th className="py-3 px-4">累计充值 USDT</th>
-                <th className="py-3 px-4">已消耗积分</th>
-                <th className="py-3 px-4">注册时间</th>
-                <th className="py-3 px-4 text-center">上下分</th>
-                <th className="py-3 px-4 text-right">当前会话</th>
+              <tr className="bg-slate-50/80 text-slate-600 border-b border-slate-100 text-xs font-semibold select-none">
+                <th className="py-3.5 px-4">租户标识 / 名称</th>
+                <th className="py-3.5 px-4">账号类型</th>
+                <th className="py-3.5 px-4">可用积分</th>
+                <th className="py-3.5 px-4">累计充值 USDT</th>
+                <th className="py-3.5 px-4">已消耗积分</th>
+                <th className="py-3.5 px-4">注册时间</th>
+                <th className="py-3.5 px-4 text-center">上下分</th>
+                <th className="py-3.5 px-4 text-right">当前会话</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredTenants.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-500">
                     未查找到匹配的租户记录
                   </td>
                 </tr>
@@ -301,11 +307,11 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                     >
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2.5">
-                          <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${t.role === 'ADMIN' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${t.role === 'ADMIN' ? 'bg-slate-950 text-white' : 'bg-slate-200 text-slate-700'}`}>
                             {t.username.substring(0, 1).toUpperCase()}
                           </div>
                           <div>
-                            <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                            <div className="font-semibold text-slate-950 flex items-center gap-1.5">
                               <span>{t.companyName || t.username}</span>
                               {isActive && (
                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 text-[10px] bg-blue-100 text-blue-800 rounded font-bold">
@@ -313,7 +319,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                                 </span>
                               )}
                             </div>
-                            <div className="text-[11px] text-slate-400 font-mono">
+                            <div className="text-[11px] text-slate-500 font-mono">
                               ID: {t.id} · {t.email}
                             </div>
                           </div>
@@ -322,31 +328,31 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
 
                       <td className="py-3.5 px-4">
                         {t.role === 'ADMIN' ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold bg-indigo-100 text-indigo-800 rounded border border-indigo-200">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-slate-950 text-white rounded-lg">
                             <Shield className="w-3 h-3" /> 管理员
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium bg-slate-100 text-slate-700 rounded border border-slate-200/80">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium bg-slate-100 text-slate-700 rounded-lg border border-slate-200/80">
                             租户
                           </span>
                         )}
                       </td>
 
-                      <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
-                        <span className={`px-2 py-0.5 rounded ${t.credits < 100 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-50 text-emerald-700'}`}>
+                      <td className="py-3.5 px-4 font-mono font-bold text-slate-950">
+                        <span className={`px-2.5 py-1 rounded-lg ${t.credits < 100 ? 'bg-amber-50 text-amber-800 border border-amber-200/80' : 'bg-emerald-50 text-emerald-800 border border-emerald-200/80'}`}>
                           {t.credits.toLocaleString()}
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-4 font-mono font-medium text-slate-700">
-                        {t.totalRechargedUsdt || 0}
+                      <td className="py-3.5 px-4 font-mono font-bold text-slate-800">
+                        ${t.totalRechargedUsdt || 0}
                       </td>
 
-                      <td className="py-3.5 px-4 font-mono text-slate-500">
+                      <td className="py-3.5 px-4 font-mono text-slate-600">
                         {(t.totalConsumedCredits || 0).toLocaleString()}
                       </td>
 
-                      <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
+                      <td className="py-3.5 px-4 text-slate-500 font-mono text-[11px]">
                         {t.createdAt ? new Date(t.createdAt).toLocaleDateString('zh-CN') : '2026-08-01'}
                       </td>
 
@@ -355,17 +361,17 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                         <button
                           type="button"
                           onClick={() => handleOpenAdjustModal(t)}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded transition cursor-pointer"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-900 bg-white hover:bg-slate-50 border border-slate-200/90 rounded-xl transition cursor-pointer min-h-[34px] shadow-2xs"
                           title="手动上分/下扣积分"
                         >
-                          <Coins className="w-3 h-3 text-indigo-600" />
+                          <Coins className="w-3 h-3 text-amber-600" />
                           上下分
                         </button>
                       </td>
 
                       {/* Perspective Switch */}
                       <td className="py-3.5 px-4 text-right">
-                        <span className={`text-[11px] font-semibold flex items-center justify-end gap-1 ${isActive ? 'text-blue-600' : 'text-slate-400'}`}>
+                        <span className={`text-[11px] font-semibold flex items-center justify-end gap-1 ${isActive ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
                           {isActive ? '当前会话' : '不可切换'}
                         </span>
                       </td>
@@ -381,24 +387,25 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
 
       {/* Credit Adjustment Modal */}
       {adjustTarget && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-xl max-w-md w-full p-4 sm:p-6 shadow-xl space-y-5 border border-slate-200/80">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-xl space-y-5 border border-slate-200/90">
 
             {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="w-8 h-8 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
-                  <Coins className="w-4 h-4" />
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <span className="w-8 h-8 rounded-xl bg-slate-950 text-white flex items-center justify-center font-bold shadow-2xs">
+                  <Coins className="w-4 h-4 text-amber-400" />
                 </span>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-base">手动算力上下分</h3>
-                  <p className="text-xs text-slate-500">目标租户: <span className="font-semibold text-slate-800">{adjustTarget.companyName || adjustTarget.username}</span> ({adjustTarget.id})</p>
+                  <h3 className="font-bold text-slate-950 text-base">手动算力上下分</h3>
+                  <p className="text-xs text-slate-500">目标: <span className="font-semibold text-slate-800">{adjustTarget.companyName || adjustTarget.username}</span> ({adjustTarget.id})</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setAdjustTarget(null)}
-                className="text-slate-400 hover:text-slate-600 transition"
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center"
+                aria-label="关闭窗口"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -409,22 +416,22 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
 
               {/* Type Switcher */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">操作类型</label>
-                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-lg">
+                <label className="block text-xs font-bold text-slate-800 mb-1.5">操作类型</label>
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
                   <button
                     type="button"
                     onClick={() => setAdjustType('TOPUP')}
-                    className={`flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-md transition ${adjustType === 'TOPUP' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-lg transition min-h-[40px] cursor-pointer ${adjustType === 'TOPUP' ? 'bg-slate-950 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-950'}`}
                   >
-                    <PlusCircle className="w-4 h-4" />
+                    <PlusCircle className="w-4 h-4 text-emerald-400" />
                     上分 (+ 充值积分)
                   </button>
                   <button
                     type="button"
                     onClick={() => setAdjustType('DEDUCT')}
-                    className={`flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-md transition ${adjustType === 'DEDUCT' ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-lg transition min-h-[40px] cursor-pointer ${adjustType === 'DEDUCT' ? 'bg-slate-950 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-950'}`}
                   >
-                    <MinusCircle className="w-4 h-4" />
+                    <MinusCircle className="w-4 h-4 text-rose-400" />
                     下分 (- 扣减积分)
                   </button>
                 </div>
@@ -432,14 +439,14 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
 
               {/* Quick Preset Pills & Amount Input */}
               <div className="space-y-2">
-                <label className="block text-xs font-semibold text-slate-700">变动积分数</label>
-                <div className="flex items-center gap-2">
+                <label className="block text-xs font-bold text-slate-800">变动积分数</label>
+                <div className="flex items-center gap-2 flex-wrap">
                   {[200, 500, 1000, 5000].map((amt) => (
                     <button
                       key={amt}
                       type="button"
                       onClick={() => setAdjustAmount(amt)}
-                      className={`px-2.5 py-1 text-xs rounded border transition font-mono ${adjustAmount === amt ? 'bg-indigo-50 border-indigo-400 text-indigo-700 font-bold' : 'bg-slate-50 border-slate-200/80 text-slate-600 hover:bg-slate-100'}`}
+                      className={`px-3 py-1.5 text-xs rounded-xl border transition font-mono min-h-[34px] cursor-pointer ${adjustAmount === amt ? 'bg-slate-950 border-slate-950 text-white font-bold shadow-2xs' : 'bg-slate-50 border-slate-200/90 text-slate-700 hover:bg-slate-100'}`}
                     >
                       {amt} 积分
                     </button>
@@ -451,40 +458,40 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                   step="1"
                   value={adjustAmount}
                   onChange={(e) => setAdjustAmount(Math.max(1, parseInt(e.target.value) || 0))}
-                  className="w-full px-3 py-2 text-sm border border-slate-200/80 rounded-md focus:outline-none focus:border-indigo-500 font-mono font-bold"
+                  className="w-full px-3.5 py-2.5 text-sm border border-slate-200/90 rounded-xl focus:outline-none focus:border-slate-400 font-mono font-bold bg-slate-50/80 hover:bg-slate-100/60 focus:bg-white transition-colors min-h-[40px]"
                   placeholder="请输入积分数量"
                   required
                 />
               </div>
 
               {/* Adjustment Reason */}
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-slate-700">调整原因 / 变动备注</label>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-800">调整原因 / 变动备注</label>
                 <input
                   type="text"
                   value={adjustReason}
                   onChange={(e) => setAdjustReason(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs border border-slate-200/80 rounded-md focus:outline-none focus:border-indigo-500"
-                  placeholder="例如: 客服赠送体验包、任务异常补偿、违规退回等"
+                  className="w-full px-3.5 py-2 text-xs sm:text-sm border border-slate-200/90 rounded-xl focus:outline-none focus:border-slate-400 bg-slate-50/80 hover:bg-slate-100/60 focus:bg-white transition-colors min-h-[40px]"
+                  placeholder="例如: 充值补单、异常补偿、退单等"
                   required
                 />
               </div>
 
               {/* Preview Box */}
-              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-lg text-xs space-y-1">
-                <div className="flex justify-between text-slate-500">
+              <div className="p-3.5 bg-slate-50/80 border border-slate-200/90 rounded-xl text-xs space-y-1.5">
+                <div className="flex justify-between text-slate-600">
                   <span>当前可用积分:</span>
-                  <span className="font-mono font-bold text-slate-800">{adjustTarget.credits.toLocaleString()} 积分</span>
+                  <span className="font-mono font-bold text-slate-950">{adjustTarget.credits.toLocaleString()} 积分</span>
                 </div>
-                <div className="flex justify-between text-slate-500">
+                <div className="flex justify-between text-slate-600">
                   <span>本次变动:</span>
-                  <span className={`font-mono font-bold ${adjustType === 'TOPUP' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  <span className={`font-mono font-black ${adjustType === 'TOPUP' ? 'text-emerald-600' : 'text-rose-600'}`}>
                     {adjustType === 'TOPUP' ? '+' : '-'}{adjustAmount.toLocaleString()} 积分
                   </span>
                 </div>
-                <div className="pt-1 border-t border-slate-200/80 flex justify-between font-semibold text-slate-900">
+                <div className="pt-2 border-t border-slate-200/70 flex justify-between font-bold text-slate-950">
                   <span>调整后预计余额:</span>
-                  <span className="font-mono font-extrabold text-indigo-600">
+                  <span className="font-mono font-black text-slate-950 text-sm">
                     {Math.max(0, adjustTarget.credits + (adjustType === 'TOPUP' ? adjustAmount : -adjustAmount)).toLocaleString()} 积分
                   </span>
                 </div>
@@ -492,25 +499,25 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
 
               {/* Alert message */}
               {adjustMessage && (
-                <div className={`p-3 rounded-lg text-xs flex items-center gap-2 ${adjustMessage.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
+                <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${adjustMessage.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{adjustMessage.text}</span>
                 </div>
               )}
 
               {/* Submit Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-2">
+              <div className="flex items-center justify-end gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={() => setAdjustTarget(null)}
-                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-md transition cursor-pointer"
+                  className="px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 border border-slate-200/90 rounded-xl transition cursor-pointer min-h-[40px]"
                 >
                   取消
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition cursor-pointer shadow-sm disabled:opacity-50"
+                  className="px-5 py-2.5 text-xs font-bold text-white bg-slate-950 hover:bg-slate-800 rounded-xl transition cursor-pointer shadow-2xs disabled:opacity-50 min-h-[40px]"
                 >
                   {submitting ? '提交中...' : '确认调账提交'}
                 </button>

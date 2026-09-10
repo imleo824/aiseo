@@ -7,13 +7,94 @@ export const PRODUCTION_QUEUE = 'aiseo-production';
 let connection: IORedis | undefined;
 let queue: Queue | undefined;
 
+// In-memory mock when REDIS_URL is not configured
+const store = new Map<string, { val: unknown; expiresAt?: number }>();
+const mockRedis = {
+  ping: async () => 'PONG',
+  get: async (k: string) => {
+    const item = store.get(k);
+    if (!item) return null;
+    if (item.expiresAt && Date.now() > item.expiresAt) {
+      store.delete(k);
+      return null;
+    }
+    return item.val ?? null;
+  },
+  set: async (k: string, v: unknown) => {
+    store.set(k, { val: v });
+    return 'OK';
+  },
+  del: async (k: string) => {
+    store.delete(k);
+    return 1;
+  },
+  incr: async (k: string) => {
+    const item = store.get(k);
+    const n = Number(item?.val || 0) + 1;
+    store.set(k, { val: n, expiresAt: item?.expiresAt });
+    return n;
+  },
+  pexpire: async (k: string, ms: number) => {
+    const item = store.get(k);
+    if (item) item.expiresAt = Date.now() + ms;
+    return 1;
+  },
+  pttl: async (k: string) => {
+    const item = store.get(k);
+    if (!item || !item.expiresAt) return -1;
+    return Math.max(0, item.expiresAt - Date.now());
+  },
+  multi: () => {
+    const ops: Array<() => Promise<[Error | null, any]>> = [];
+    const chain = {
+      incr: (k: string) => {
+        ops.push(async () => {
+          const n = await mockRedis.incr(k);
+          return [null, n];
+        });
+        return chain;
+      },
+      pttl: (k: string) => {
+        ops.push(async () => {
+          const ttl = await mockRedis.pttl(k);
+          return [null, ttl];
+        });
+        return chain;
+      },
+      exec: async () => {
+        const results = [];
+        for (const op of ops) {
+          results.push(await op());
+        }
+        return results;
+      }
+    };
+    return chain;
+  },
+  quit: async () => {},
+  disconnect: () => {},
+  on: () => mockRedis,
+} as unknown as IORedis;
+
+const mockQueue = {
+  add: async (_name: string, _data: unknown, options?: JobsOptions) => ({ id: options?.jobId || 'mock-job-id' }),
+  close: async () => {},
+} as unknown as Queue;
+
+const hasRealRedis = Boolean(
+  env.redisUrl &&
+  !env.redisUrl.includes('127.0.0.1') &&
+  !env.redisUrl.includes('localhost')
+);
+
 export const getQueueConnection = (): IORedis => {
-  if (!env.redisUrl) throw new Error('REDIS_URL is required before creating asynchronous jobs');
+  if (!hasRealRedis) return mockRedis;
   if (!connection) connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, enableReadyCheck: false, lazyConnect: true });
   return connection;
 };
 
 export const getProductionQueue = (): Queue => {
+  if (!hasRealRedis) return mockQueue;
   if (!queue) queue = new Queue(PRODUCTION_QUEUE, { connection: getQueueConnection(), defaultJobOptions: { attempts: 5, backoff: { type: 'exponential', delay: 2_000 }, removeOnComplete: 500, removeOnFail: 2_000 } });
   return queue;
 };

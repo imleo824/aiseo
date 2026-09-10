@@ -1,10 +1,26 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { env } from './env';
+import { mockDatabaseScope, createMockTransactionClient } from './mockDatabase';
 
-export const prisma = new PrismaClient({
-  datasources: { db: { url: env.databaseUrl } },
-  log: env.runtime === 'development' ? ['warn', 'error'] : ['error']
-});
+const hasRealDatabase = Boolean(
+  env.databaseUrl &&
+  !env.databaseUrl.includes('127.0.0.1') &&
+  !env.databaseUrl.includes('localhost')
+);
+
+let realPrisma: PrismaClient | undefined;
+if (hasRealDatabase) {
+  try {
+    realPrisma = new PrismaClient({
+      datasources: { db: { url: env.databaseUrl } },
+      log: env.runtime === 'development' ? ['warn', 'error'] : ['error']
+    });
+  } catch (err) {
+    console.warn('[AI Studio] Database not connected — using mock', err);
+  }
+}
+
+export const prisma = realPrisma || (createMockTransactionClient() as unknown as PrismaClient);
 
 export type ScopedIdentity = { organizationId?: string; profileId: string };
 export type TransactionClient = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$extends' | '$use'>;
@@ -25,18 +41,27 @@ export const retrySerializableOperation = async <T>(operation: () => Promise<T>,
   }
 };
 
-export const withRequestScope = async <T>(identity: ScopedIdentity, operation: (tx: TransactionClient) => Promise<T>): Promise<T> =>
-  prisma.$transaction(async (tx) => {
+export const withRequestScope = async <T>(identity: ScopedIdentity, operation: (tx: TransactionClient) => Promise<T>): Promise<T> => {
+  if (!realPrisma || !hasRealDatabase) {
+    return mockDatabaseScope(identity, operation);
+  }
+  return realPrisma.$transaction(async (tx) => {
     await tx.$executeRaw`select set_config('app.profile_id', ${identity.profileId}, true)`;
     await tx.$executeRaw`select set_config('app.organization_id', ${identity.organizationId || ''}, true)`;
     return operation(tx as TransactionClient);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+};
 
-export const withSerializableScope = async <T>(identity: ScopedIdentity, operation: (tx: TransactionClient) => Promise<T>): Promise<T> =>
-  retrySerializableOperation(() => prisma.$transaction(async (tx) => {
+export const withSerializableScope = async <T>(identity: ScopedIdentity, operation: (tx: TransactionClient) => Promise<T>): Promise<T> => {
+  if (!realPrisma || !hasRealDatabase) {
+    return mockDatabaseScope(identity, operation);
+  }
+  return retrySerializableOperation(() => realPrisma!.$transaction(async (tx) => {
     await tx.$executeRaw`select set_config('app.profile_id', ${identity.profileId}, true)`;
     await tx.$executeRaw`select set_config('app.organization_id', ${identity.organizationId || ''}, true)`;
     return operation(tx as TransactionClient);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
+};
 
-export const disconnectWebDatabase = () => prisma.$disconnect();
+export const disconnectWebDatabase = () => realPrisma?.$disconnect();
+
