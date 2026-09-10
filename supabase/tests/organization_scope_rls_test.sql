@@ -174,11 +174,11 @@ insert into public.knowledge_content_blobs (id, organization_id, checksum, conte
 values ('00000000-0000-0000-0000-0000000000a9', (select organization_id from rls_context where label = 'a'), repeat('c', 64), 'Verified organization-scoped source bytes');
 insert into public.knowledge_sources (
   id, organization_id, site_id, content_blob_id, role, identity_fingerprint,
-  title, source_url, normalized_url
+  title, source_url, normalized_url, updated_at
 ) values (
   '00000000-0000-0000-0000-0000000000aa', (select organization_id from rls_context where label = 'a'),
   '00000000-0000-0000-0000-0000000000a3', '00000000-0000-0000-0000-0000000000a9',
-  'TARGET_SITE', repeat('d', 64), 'Verified target site', 'https://org-a.example.test/', 'https://org-a.example.test/'
+  'TARGET_SITE', repeat('d', 64), 'Verified target site', 'https://org-a.example.test/', 'https://org-a.example.test/', now()
 );
 select ok(
   (select count(*) from public.knowledge_content_blobs) = 1
