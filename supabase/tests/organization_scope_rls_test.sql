@@ -374,11 +374,11 @@ insert into public.knowledge_content_blobs (id, organization_id, checksum, conte
 values ('00000000-0000-0000-0000-0000000000da', (select organization_id from rls_context where label = 'd'), repeat('e', 64), 'Customer content that must be erased');
 insert into public.knowledge_sources (
   id, organization_id, site_id, content_blob_id, role, identity_fingerprint,
-  title, source_url, normalized_url
+  title, source_url, normalized_url, updated_at
 ) values (
   '00000000-0000-0000-0000-0000000000db', (select organization_id from rls_context where label = 'd'),
   '00000000-0000-0000-0000-0000000000d5', '00000000-0000-0000-0000-0000000000da',
-  'TARGET_SITE', repeat('f', 64), 'Erasure evidence', 'https://erase.example.test/', 'https://erase.example.test/'
+  'TARGET_SITE', repeat('f', 64), 'Erasure evidence', 'https://erase.example.test/', 'https://erase.example.test/', now()
 );
 insert into public.growth_programs (id, organization_id, site_id, mode, input_fingerprint)
 values ('00000000-0000-0000-0000-0000000000d6', (select organization_id from rls_context where label = 'd'), '00000000-0000-0000-0000-0000000000d5', 'ONCE', 'erasure-program');
