@@ -78,14 +78,15 @@ const mockRedis = {
 
 const mockQueue = {
   add: async (_name: string, _data: unknown, options?: JobsOptions) => ({ id: options?.jobId || 'mock-job-id' }),
+  upsertJobScheduler: async (id: string) => ({ id }),
   close: async () => {},
 } as unknown as Queue;
 
-const hasRealRedis = Boolean(
-  env.redisUrl &&
-  !env.redisUrl.includes('127.0.0.1') &&
-  !env.redisUrl.includes('localhost')
-);
+// A configured local Redis is still a real queue. Treating it as an in-memory
+// mock makes the Worker behave differently in CI and prevents BullMQ's
+// scheduler from running. The mock is reserved strictly for configurations
+// without Redis at all.
+const hasRealRedis = Boolean(env.redisUrl);
 
 export const getQueueConnection = (): IORedis => {
   if (!hasRealRedis) return mockRedis;
