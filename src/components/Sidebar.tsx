@@ -12,7 +12,8 @@ import {
   LogIn,
   Cpu,
   ShieldCheck,
-  Bot
+  Bot,
+  Coins
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -25,6 +26,7 @@ interface SidebarProps {
   account?: TenantAccount | null;
   onOpenAuth?: () => void;
   onLogout?: () => void;
+  onOpenRecharge?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -35,7 +37,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
   account,
   onOpenAuth,
-  onLogout
+  onLogout,
+  onOpenRecharge
 }) => {
   const safeSites = sites || [];
 
@@ -128,16 +131,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Brand Header */}
         <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-sm z-10">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-xl bg-slate-950 text-white flex items-center justify-center font-bold text-sm shadow-xs ring-1 ring-slate-900/15">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <div className="w-8 h-8 rounded-xl bg-slate-950 text-white flex items-center justify-center font-black text-xs shadow-xs ring-1 ring-slate-900/15">
+              <span className="font-mono tracking-tighter text-emerald-400">TT</span>
             </div>
             <div>
               <div className="font-extrabold text-sm text-slate-950 tracking-tight flex items-center gap-1.5">
-                <span>AI XEO</span>
+                <span>TuiTui 推推</span>
                 <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200">PRO</span>
               </div>
               <div className="text-[11px] text-slate-500 font-medium">
-                真实数据驱动的搜索增长系统
+                自动 SEO 流量增长系统
               </div>
             </div>
           </div>
@@ -228,7 +231,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Tenant Account & Credit Quick Panel in Sidebar Footer */}
-      <div className="p-3.5 sm:p-4 border-t border-slate-100 bg-slate-50/60 shrink-0 space-y-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="p-3.5 sm:p-4 border-t border-slate-100 bg-slate-50/60 shrink-0 space-y-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {/* Quick Credit Balance & Recharge Pill */}
+        {account && (
+          <div className="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                <Coins className="w-3.5 h-3.5" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] text-slate-500 font-medium leading-none">积分余额</div>
+                <div className="text-xs font-mono font-bold text-slate-950 mt-0.5 truncate">{account.credits ?? 0} 积分</div>
+              </div>
+            </div>
+            {onOpenRecharge && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenRecharge();
+                  if (onCloseMobile) onCloseMobile();
+                }}
+                className="px-2.5 py-1 bg-slate-950 hover:bg-slate-800 text-white text-[11px] font-bold rounded-lg transition cursor-pointer shadow-2xs flex items-center gap-1 active:scale-95 shrink-0 min-h-[28px]"
+              >
+                <span>充值</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Tenant Profile info */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">

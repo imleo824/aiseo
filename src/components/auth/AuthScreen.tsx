@@ -87,7 +87,7 @@ export function AuthScreen() {
       <div className="w-full max-w-md bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold tracking-wider uppercase text-slate-500">AI XEO</span>
+            <span className="text-xs font-bold tracking-wider uppercase text-slate-500">TuiTui 推推</span>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200/80">PRODUCTION</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-950 mt-2">

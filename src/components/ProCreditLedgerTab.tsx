@@ -23,12 +23,14 @@ interface ProCreditLedgerTabProps {
   account: TenantAccount | null;
   transactions: CreditTransaction[];
   tenantId: string;
+  onOpenRecharge?: () => void;
 }
 
 export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
   account,
   transactions = [],
   tenantId,
+  onOpenRecharge,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<CreditTransactionType | 'ALL'>('ALL');
@@ -39,8 +41,8 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
   // 动态计费标准与业务价格
   const [systemRate, setSystemRate] = useState<string>('1 USDT = 100 基础积分');
   const [actionPricing, setActionPricing] = useState<ActionPricingItem[]>([
-    { action: 'CRUISE_PIPELINE', name: '文章生成与发布 (按篇计费)', credits: 100, desc: '单篇标准定价 ($1.00/篇)：选题、长文、质量门禁、内链、站点发布与收录监测；普通文章不伪称 Google 实时收录', enabled: true },
-    { action: 'COMPETITOR_ANALYSIS', name: '我的词库 智能挖掘与拓词分析 (按次计费)', credits: 50, desc: '单次标准定价 ($0.50/次)：母词裂变拓词、高意图长尾挖掘、竞品词库逆向穿透与搜索意图聚类', enabled: true }
+    { action: 'CRUISE_PIPELINE', name: '文章生成与发布 (按篇计费)', credits: 100, desc: '单篇标准价 ($1.00/篇)：包含热词分析、长文撰写、质量检测、内链优化与自动发布。', enabled: true },
+    { action: 'COMPETITOR_ANALYSIS', name: '智能挖掘与拓词分析 (按次计费)', credits: 50, desc: '单次标准价 ($0.50/次)：包含核心词拓展、高意图长尾词挖掘、竞品词库分析与搜索量估算。', enabled: true }
   ]);
 
   useEffect(() => {
@@ -137,7 +139,7 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `aiseo-billing-ledger-${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `tuitui-billing-ledger-${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -209,8 +211,20 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
           <div>
             <div className="flex items-center justify-between text-slate-500 mb-2">
               <span className="text-xs font-bold text-slate-600">当前可用积分</span>
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-2xs">
-                <Coins className="w-4 h-4" />
+              <div className="flex items-center gap-2">
+                {onOpenRecharge && (
+                  <button
+                    type="button"
+                    onClick={onOpenRecharge}
+                    className="px-2.5 py-1 bg-slate-950 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-2xs active:scale-95 min-h-[30px]"
+                  >
+                    <Coins className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>立即充值</span>
+                  </button>
+                )}
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-2xs">
+                  <Coins className="w-4 h-4" />
+                </div>
               </div>
             </div>
             <div className="text-3xl font-black text-slate-950 tracking-tight">

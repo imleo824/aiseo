@@ -4,6 +4,34 @@ import { createApiService } from '../services/api';
 
 type ProviderStatus = Record<string, boolean | string | number | null | undefined>;
 
+const PROVIDER_METADATA: Record<string, { title: string; desc: string; category: string }> = {
+  workerOnline: {
+    title: '后台异步任务工作节点 (Worker Engine)',
+    desc: '负责长任务执行、SERP 关键词数据拉取、自动文章生成与 WordPress 队列发布',
+    category: '核心运行时'
+  },
+  contentAi: {
+    title: 'AI 创作与 SEO 润色引擎 (Gemini / OpenAI)',
+    desc: '负责深度长文生成、EEAT 专业维度对齐、Schema 结构化标记与内链锚点建议',
+    category: '内容智能'
+  },
+  dataForSeo: {
+    title: 'SEO 真实检索数据源 (DataForSEO)',
+    desc: '负责 Google SERP 排名监测、真实搜索量预估、CPC 与关键词竞品分析',
+    category: 'SEO 数据'
+  },
+  gsc: {
+    title: 'Google Search Console (GSC)',
+    desc: '负责官方站长平台数据集成、收录索引状态追踪与搜索流量回读',
+    category: 'Google 站长'
+  },
+  trc20Payments: {
+    title: 'USDT (TRC-20) 链上自动化充值网关',
+    desc: '负责区块链交易哈希自动核验、防重放保护与积分实时入账',
+    category: '支付网关'
+  }
+};
+
 export const ProSystemServicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [providers, setProviders] = useState<ProviderStatus>({});
   const [requireManualConfirmation, setRequireManualConfirmation] = useState<boolean | null>(null);
@@ -58,7 +86,7 @@ export const ProSystemServicesTab: React.FC<{ tenantId: string }> = ({ tenantId 
             </h3>
             <p className="text-xs text-slate-500">这是全平台唯一开关，对全部客户站点与手动、定时任务同时生效。</p>
             <p className="text-xs font-semibold text-slate-700 pt-0.5">
-              {requireManualConfirmation ? '开启：内容通过质量门禁后，等待人工确认再发布。' : '关闭：内容通过全部质量与安全门禁后，自动发布到 WordPress。'}
+              {requireManualConfirmation ? '已开启：文章生成后，需在「内容审核」中手动确认才发布。' : '已关闭：文章生成后，将自动发布到您的 WordPress 网站。'}
             </p>
           </div>
           <button
@@ -106,23 +134,35 @@ export const ProSystemServicesTab: React.FC<{ tenantId: string }> = ({ tenantId 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {entries.map(([name, value]) => {
               const configured = value === true || value === 'configured' || value === 'CONNECTED';
+              const meta = PROVIDER_METADATA[name] || {
+                title: name,
+                desc: configured ? '部署环境变量与密钥已生效' : '尚未配置，相关功能将失败关闭',
+                category: '系统模块'
+              };
               return (
                 <div
                   key={name}
-                  className="rounded-xl border border-slate-200/90 p-4 flex items-center justify-between gap-3 bg-slate-50/60 shadow-2xs hover:border-slate-300 transition"
+                  className="rounded-xl border border-slate-200/90 p-4.5 flex flex-col justify-between gap-3 bg-slate-50/60 shadow-2xs hover:border-slate-300 transition"
                 >
-                  <div>
-                    <div className="text-xs font-bold text-slate-950">{name}</div>
-                    <div className="text-[11px] text-slate-500 mt-1 font-medium">
-                      {configured ? '部署密钥已配置' : '尚未配置，相关功能将失败关闭'}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-950">{meta.title}</span>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-200/70 text-slate-700">
+                          {meta.category}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-medium leading-relaxed">
+                        {meta.desc}
+                      </div>
                     </div>
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 shrink-0 ${
+                      configured ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80' : 'bg-rose-50 text-rose-800 border-rose-200/80'
+                    }`}>
+                      {configured ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> : <XCircle className="w-3.5 h-3.5 text-rose-600" />}
+                      <span>{configured ? '可用' : '未就绪'}</span>
+                    </span>
                   </div>
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 shrink-0 ${
-                    configured ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80' : 'bg-rose-50 text-rose-800 border-rose-200/80'
-                  }`}>
-                    {configured ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> : <XCircle className="w-3.5 h-3.5 text-rose-600" />}
-                    <span>{configured ? '可用' : '缺失'}</span>
-                  </span>
                 </div>
               );
             })}

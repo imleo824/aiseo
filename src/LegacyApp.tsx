@@ -60,55 +60,58 @@ export default function LegacyApp() {
     switch (activeNav) {
       case 'DASHBOARD':
         return {
-          title: '手动执行',
-          desc: '选择站点与目标，剩余流程由系统自动完成'
+          title: '一键手动增长',
+          desc: '输入关键词、参考文章或竞品站点，快速生成并发布优质 SEO 文章到您的站点'
         };
       case 'SITE_MANAGEMENT':
         return {
-          title: '我的站点',
-          desc: 'WordPress 官方授权、可选 GSC 与发布策略管理'
+          title: '我的增长站点',
+          desc: '绑定和管理您的网站，配置语言、发布设置与连接状态（首期已支持 WordPress）'
         };
       case 'AUTOPILOT_TASKS':
-        return { title: '自动执行', desc: '同一条增长链路按真实新证据自动选择、执行和观察' };
+        return {
+          title: '自动定时增长',
+          desc: '配置自动巡航任务，让系统每天定时自动挖掘热词、撰写长文并自动推送到网站'
+        };
       case 'AUDIT_LEDGER':
         return {
-          title: '我的内容',
-          desc: '交付内容、发布状态与真实观察记录'
+          title: '内容列表与审核',
+          desc: '查看所有已生成文章的标题、内容、发布状态，支持一键下线或手动审核发布'
         };
       case 'CREDIT_LEDGER':
         return {
-          title: '我的账单',
-          desc: '积分余额与全链路消费明细'
+          title: '我的账单与积分',
+          desc: '查看您的积分余额、充值记录以及全流程生成、发布的扣费明细'
         };
       case 'PRICING_CONFIG':
         return {
-          title: '付费配置',
-          desc: '系统扣费单价、汇率与充值套餐包可视化管理'
+          title: '付费价格配置',
+          desc: '管理系统各项 AI 操作 and 发布动作的积分扣费单价与套餐包'
         };
       case 'SYSTEM_SERVICES_CONFIG':
         return {
-          title: '全局设置',
-          desc: '控制发布确认策略并查看生产服务集成状态'
+          title: '全局系统设置',
+          desc: '配置发布确认模式、审查策略，and 查看底层大模型与第三方服务的集成状态'
         };
       case 'TENANT_MANAGEMENT':
         return {
-          title: '租户管理',
-          desc: '多租户账号、角色权限与积分配额全局调配'
+          title: '租户与用户管理',
+          desc: '管理多租户子账号的分配、角色权限和积分配额'
         };
       case 'SYSTEM_PAYMENT_MANAGEMENT':
         return {
-          title: '付费管理',
-          desc: 'USDT 充值订单与链上交易哈希核销对账'
+          title: '充值订单核销',
+          desc: '查看并核销租户通过 USDT 等方式提交的链上充值申请'
         };
       case 'SYSTEM_BILLING_MANAGEMENT':
         return {
-          title: '消耗管理',
-          desc: '全平台各项 AI 操作扣费与流水明细审计'
+          title: '全平台消耗审计',
+          desc: '审计所有租户在生成、分析、检测等环节消耗的具体账单流水'
         };
       default:
         return {
-          title: 'AI XEO',
-          desc: '内容自动化系统'
+          title: 'TuiTui 推推 (TT)',
+          desc: '简单、高效的自动 SEO 流量增长系统（首期已支持 WordPress）'
         };
     }
   };
@@ -158,6 +161,7 @@ export default function LegacyApp() {
         onCloseMobile={() => setIsMobileMenuOpen(false)}
         account={account}
         onLogout={actions.handleLogout}
+        onOpenRecharge={() => setIsRechargeOpen(true)}
       />
 
       {/* RIGHT WORKSPACE AREA */}
@@ -268,6 +272,7 @@ export default function LegacyApp() {
               account={account}
               transactions={transactions}
               tenantId={activeTenantId}
+              onOpenRecharge={() => setIsRechargeOpen(true)}
             />
           )}
 

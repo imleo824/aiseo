@@ -15,7 +15,7 @@ const setCommonProductionEnvironment = (encryptionKey = Buffer.alloc(32, 7).toSt
   process.env.APP_BASE_URL = 'https://app.example.com';
   process.env.SUPABASE_URL = 'https://project.supabase.co';
   process.env.SENTRY_DSN = 'https://public@example.ingest.sentry.io/1';
-  for (const name of ['DATABASE_URL', 'DATABASE_ADMIN_URL', 'DATABASE_APP_URL', 'DATABASE_WORKER_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'TURNSTILE_SECRET_KEY', 'SMTP_PASSWORD']) delete process.env[name];
+  for (const name of ['DATABASE_URL', 'DATABASE_ADMIN_URL', 'DATABASE_APP_URL', 'DATABASE_WORKER_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'TURNSTILE_SECRET_KEY', 'SMTP_PASSWORD', 'OPENAI_API_KEY', 'GEMINI_API_KEY']) delete process.env[name];
 };
 
 const setWebEnvironment = () => {

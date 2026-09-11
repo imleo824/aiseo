@@ -1,6 +1,6 @@
 {
-  "name": "AI XEO",
-  "description": "WordPress 站点 SEO 内容自动生成、发布与收录系统",
+  "name": "推推 TuiTui (TT)",
+  "description": "自动化 SEO 流量增长系统，多平台支持（首期支持 WordPress）",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

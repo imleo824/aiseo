@@ -108,8 +108,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 <Layers className="w-3.5 h-3.5 text-slate-500" />
                 <span>站点类型</span>
               </label>
-              <div className="w-full px-3 py-2.5 sm:py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium min-h-[44px] sm:min-h-[38px] flex items-center">WordPress</div>
-              <p className="text-[10px] leading-4 text-slate-500">正式版本仅支持 WordPress HTTPS REST API。</p>
+              <div className="w-full px-3 py-2.5 sm:py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium min-h-[44px] sm:min-h-[38px] flex items-center">WordPress (首期支持)</div>
+              <p className="text-[10px] leading-4 text-slate-500">首期正式版支持 WordPress HTTPS REST API，后续将支持更多 CMS 平台。</p>
             </div>
 
             <div className="space-y-1.5">

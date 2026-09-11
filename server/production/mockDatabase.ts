@@ -60,19 +60,20 @@ class InMemoryStore {
       domain: 'https://example.com',
       language: 'zh-CN',
       niche: 'AI 营销与 SaaS',
-      wordpressStatus: 'CONNECTED',
-      wordpressUser: 'admin',
-      wordpressCompatibilityMode: 'REST_API',
-      wordpressVerifiedAt: new Date(),
+      wordpressStatus: 'DISCONNECTED',
+      wordpressUser: null,
+      wordpressCompatibilityMode: 'RECHECK_REQUIRED',
+      wordpressVerifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       integrations: []
     }]);
 
     this.tables.set('paymentPackage', [
-      { id: 'pkg-1', name: '初创版 (Starter)', priceUsdt: '50', creditMicros: 50000000n, active: true, sortOrder: 1 },
-      { id: 'pkg-2', name: '成长版 (Growth)', priceUsdt: '200', creditMicros: 220000000n, active: true, sortOrder: 2 },
-      { id: 'pkg-3', name: '旗舰版 (Scale)', priceUsdt: '500', creditMicros: 600000000n, active: true, sortOrder: 3 }
+      { id: 'pkg-1', name: '入门体验包', baseAmountMicros: 10000000n, creditMicros: 1000000000n, active: true, sortOrder: 1 },
+      { id: 'pkg-2', name: '初创版 (Starter)', baseAmountMicros: 50000000n, creditMicros: 5500000000n, active: true, sortOrder: 2 },
+      { id: 'pkg-3', name: '成长版 (Growth)', baseAmountMicros: 200000000n, creditMicros: 24000000000n, active: true, sortOrder: 3 },
+      { id: 'pkg-4', name: '旗舰版 (Scale)', baseAmountMicros: 500000000n, creditMicros: 65000000000n, active: true, sortOrder: 4 }
     ]);
 
     this.tables.set('actionPrice', [
@@ -87,7 +88,7 @@ class InMemoryStore {
     ]);
 
     this.tables.set('workerHeartbeat', [
-      { id: 'worker-1', heartbeatAt: new Date(), capabilities: { dataForSeo: true, contentAi: true } }
+      { id: 'worker-1', heartbeatAt: new Date(), capabilities: { dataForSeo: true, contentAi: true, trc20Payments: true, gsc: true } }
     ]);
 
     this.tables.set('contentDraft', []);
@@ -139,6 +140,9 @@ class InMemoryStore {
       },
       findFirst: async (args?: any) => {
         const rows = self.getTable(tableName);
+        if (tableName === 'workerHeartbeat' && rows.length > 0) {
+          rows[0].heartbeatAt = new Date();
+        }
         if (!args?.where) return rows[0] || null;
         return rows.find((row) => self.matchWhere(row, args.where)) || null;
       },
@@ -179,23 +183,26 @@ class InMemoryStore {
       update: async (args: any) => {
         const rows = self.getTable(tableName);
         const index = args?.where ? rows.findIndex((row) => self.matchWhere(row, args.where)) : -1;
+        const cleanData = Object.fromEntries(Object.entries(args?.data || {}).filter(([, val]) => val !== undefined));
         if (index === -1) {
-          const created = { id: args?.where?.id || randomUUID(), ...args?.data, updatedAt: new Date() };
+          const created = { id: args?.where?.id || randomUUID(), ...cleanData, updatedAt: new Date() };
           rows.push(created);
           return created;
         }
-        rows[index] = { ...rows[index], ...args.data, updatedAt: new Date() };
+        rows[index] = { ...rows[index], ...cleanData, updatedAt: new Date() };
         return rows[index];
       },
       upsert: async (args: any) => {
         const rows = self.getTable(tableName);
         const index = args?.where ? rows.findIndex((row) => self.matchWhere(row, args.where)) : -1;
         if (index === -1) {
-          const created = { id: `id-${Date.now()}`, ...args.create, createdAt: new Date(), updatedAt: new Date() };
+          const cleanCreate = Object.fromEntries(Object.entries(args?.create || {}).filter(([, val]) => val !== undefined));
+          const created = { id: `id-${Date.now()}`, ...cleanCreate, createdAt: new Date(), updatedAt: new Date() };
           rows.push(created);
           return created;
         }
-        rows[index] = { ...rows[index], ...args.update, updatedAt: new Date() };
+        const cleanUpdate = Object.fromEntries(Object.entries(args?.update || {}).filter(([, val]) => val !== undefined));
+        rows[index] = { ...rows[index], ...cleanUpdate, updatedAt: new Date() };
         return rows[index];
       },
       delete: async (args: any) => {

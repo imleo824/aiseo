@@ -19,7 +19,7 @@ import {
 
 interface ProSiteManagementTabProps {
   sites: WordPressSite[];
-  onUpdateSite: (siteId: string, updated: Partial<WordPressSite>) => Promise<void>;
+  onUpdateSite: (siteId: string, updated: Partial<WordPressSite>) => Promise<unknown>;
   onDeleteSite?: (siteId: string) => Promise<void>;
   onTestSiteConnection?: (siteId: string) => Promise<unknown>;
   onAuthorizeWordPress?: (siteId: string) => Promise<{ authorizationUrl: string }>;
@@ -56,7 +56,9 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
   });
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<'success' | 'error'>('success');
   const [connectionTesting, setConnectionTesting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const compatibilityLabel = (site: WordPressSite) => {
     switch (site.wordpressCompatibilityMode) {
@@ -68,9 +70,10 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
     }
   };
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
+    setToastType(type);
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
   const handleStartEdit = (site: WordPressSite) => {
@@ -86,36 +89,44 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
 
   const handleSaveEdit = async (siteId: string) => {
     const trimmedName = editForm.name.trim();
-    const trimmedDomain = editForm.domain.trim();
+    const rawDomain = editForm.domain.trim();
 
     if (!trimmedName) {
-      showToast('站点名称不能为空');
+      showToast('站点名称不能为空', 'error');
       return;
     }
-    if (!trimmedDomain) {
-      showToast('绑定域名不能为空');
+    if (!rawDomain) {
+      showToast('绑定域名不能为空', 'error');
       return;
     }
 
-    // Standard RFC-1035 domain check with optional port
+    // Clean up domain: strip http/https protocol, trailing slashes, whitespace
+    let cleanDomain = rawDomain.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim().toLowerCase();
+
+    // Standard RFC-1035 domain check
     const domainRegex = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,12}$/;
-    const cleanDomain = trimmedDomain.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-
     if (!domainRegex.test(cleanDomain)) {
-      showToast('域名格式不正确，请不要包含 http(s):// 或路径 (如: mydomain.com)');
+      showToast('域名格式不正确，请输入合法域名 (如: example.com)', 'error');
       return;
     }
 
-    await onUpdateSite(siteId, {
-      name: trimmedName,
-      domain: cleanDomain,
-      niche: editForm.niche.trim() || '通用行业',
-      siteType: editForm.siteType,
-      siteLanguage: editForm.siteLanguage,
-    });
+    setIsSaving(true);
+    try {
+      await onUpdateSite(siteId, {
+        name: trimmedName,
+        domain: cleanDomain,
+        niche: editForm.niche.trim() || '通用行业',
+        siteType: editForm.siteType,
+        siteLanguage: editForm.siteLanguage,
+      });
 
-    setEditingSiteId(null);
-    showToast('站点配置已保存成功');
+      setEditingSiteId(null);
+      showToast('站点配置已保存成功', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '保存失败，请检查网络或权限', 'error');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleTestWordPress = async () => {
@@ -141,9 +152,13 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
   const handleDelete = async (siteId: string) => {
     if (confirmDeleteSiteId !== siteId) { setConfirmDeleteSiteId(siteId); showToast('再次点击“确认解绑”才会删除空站点'); return; }
     if (onDeleteSite) {
-      await onDeleteSite(siteId);
-      setConfirmDeleteSiteId(null);
-      showToast('已解绑站点');
+      try {
+        await onDeleteSite(siteId);
+        setConfirmDeleteSiteId(null);
+        showToast('已解绑站点', 'success');
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : '解绑失败，请重试', 'error');
+      }
     }
   };
 
@@ -168,12 +183,29 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
     return 'WordPress';
   };
 
+  const getDomainUrl = (domain: string): string => {
+    if (!domain) return '#';
+    const trimmed = domain.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+    return `https://${trimmed}`;
+  };
+
+  const getDisplayDomain = (domain: string): string => {
+    return (domain || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  };
+
   return (
     <div className="w-full space-y-6 sm:space-y-8 animate-in fade-in duration-200">
 
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-950 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center space-x-2.5 text-xs sm:text-sm font-semibold animate-in fade-in slide-in-from-bottom-2 border border-slate-800">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div className={`fixed bottom-6 right-6 z-50 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center space-x-2.5 text-xs sm:text-sm font-semibold animate-in fade-in slide-in-from-bottom-2 border ${
+          toastType === 'error' ? 'bg-rose-950 border-rose-800 text-rose-100' : 'bg-slate-950 border-slate-800'
+        }`}>
+          {toastType === 'error' ? (
+            <X className="w-4 h-4 text-rose-400 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          )}
           <span>{toastMessage}</span>
         </div>
       )}
@@ -205,7 +237,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
               <div className="space-y-1">
                 <h4 className="text-sm font-bold text-slate-900">暂未接入任何站点</h4>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  接入您的 WordPress 站点后，系统即可开始自动化 SEO 词库拓展、质量审计与安全发布。
+                  接入您的网站后，系统即可开始自动化 SEO 词库拓展、质量审计与安全发布（首期支持 WordPress）。
                 </p>
               </div>
               <div className="pt-2">
@@ -241,12 +273,12 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                           </span>
 
                           <a
-                            href={`https://${site.domain}`}
+                            href={getDomainUrl(site.domain)}
                             target="_blank"
                             rel="noreferrer"
                             className="text-xs font-mono text-slate-600 hover:text-slate-950 hover:bg-slate-100 flex items-center gap-1 bg-slate-50 border border-slate-200/70 px-2.5 py-1 rounded-lg transition"
                           >
-                            <span>https://{site.domain}</span>
+                            <span>{getDisplayDomain(site.domain)}</span>
                             <ExternalLink className="w-3 h-3 text-slate-400" />
                           </a>
                         </div>
@@ -468,18 +500,24 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
             <div className="p-4 px-6 border-t border-slate-100 bg-slate-50/80 flex items-center justify-end gap-3 sticky bottom-0 rounded-b-2xl">
               <button
                 type="button"
+                disabled={isSaving}
                 onClick={() => setEditingSiteId(null)}
-                className="px-4 py-2.5 rounded-xl border border-slate-200/90 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100 text-xs sm:text-sm font-semibold transition min-h-[40px] cursor-pointer"
+                className="px-4 py-2.5 rounded-xl border border-slate-200/90 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100 text-xs sm:text-sm font-semibold transition min-h-[40px] cursor-pointer disabled:opacity-50"
               >
                 取消
               </button>
               <button
                 type="button"
+                disabled={isSaving}
                 onClick={() => handleSaveEdit(editingSiteId)}
-                className="px-6 py-2.5 rounded-xl bg-slate-950 text-white hover:bg-slate-800 active:bg-slate-900 text-xs sm:text-sm font-bold transition flex items-center gap-1.5 shadow-xs min-h-[40px] cursor-pointer"
+                className="px-6 py-2.5 rounded-xl bg-slate-950 text-white hover:bg-slate-800 active:bg-slate-900 text-xs sm:text-sm font-bold transition flex items-center gap-1.5 shadow-xs min-h-[40px] cursor-pointer disabled:opacity-50"
               >
-                <Check className="w-4 h-4 text-emerald-400" />
-                <span>保存配置</span>
+                {isSaving ? (
+                  <RefreshCw className="w-4 h-4 text-emerald-400 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4 text-emerald-400" />
+                )}
+                <span>{isSaving ? '正在保存…' : '保存配置'}</span>
               </button>
             </div>
 

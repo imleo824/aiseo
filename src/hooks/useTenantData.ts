@@ -134,8 +134,9 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
   };
 
   const handleUpdateSiteById = async (siteId: string, updated: Partial<WordPressSite>) => {
-    await api.updateSite(siteId, updated);
-    await queryClient.invalidateQueries({ queryKey: ['tenant', workspaceKey, 'sites'] });
+    const result = await api.updateSite(siteId, updated);
+    await invalidateTenantResources();
+    return result.site;
   };
 
   const handleDeleteSite = async (siteId: string) => {

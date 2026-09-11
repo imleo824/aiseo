@@ -112,7 +112,7 @@ const askModel = async (prompt: string, temperature: number): Promise<string> =>
     if (raw) return raw;
   } else if (process.env.GEMINI_API_KEY) {
     const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const completion = await client.models.generateContent({ model: process.env.GEMINI_MODEL || 'gemini-2.5-pro', contents: prompt, config: { responseMimeType: 'application/json', temperature } });
+    const completion = await client.models.generateContent({ model: process.env.GEMINI_MODEL || 'gemini-3.8-flash', contents: prompt, config: { responseMimeType: 'application/json', temperature } });
     if (completion.text) return completion.text;
   } else {
     throw new ExternalServiceError('OpenAI/Gemini 均未配置，AI 任务已失败关闭');

@@ -21,8 +21,8 @@ import { compatibilityProfileResponse, persistWordPressCompatibility, scanWordPr
 const roleRank: Record<OrganizationRole, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2, OWNER: 3 };
 const idSchema = z.string().uuid();
 const languageSchema = z.enum(['zh-CN', 'en-US']);
-const siteSchema = z.object({ name: z.string().trim().min(1).max(120), domain: z.string().trim().min(3).max(253), language: languageSchema.default('zh-CN') });
-const siteUpdateSchema = z.object({ name: z.string().trim().min(1).max(120).optional(), domain: z.string().trim().min(3).max(253).optional(), language: languageSchema.optional() }).refine((value) => Object.keys(value).length > 0, '至少提供一个站点字段');
+const siteSchema = z.object({ name: z.string().trim().min(1).max(120), domain: z.string().trim().min(3).max(253), language: languageSchema.default('zh-CN'), niche: z.string().trim().max(120).optional() });
+const siteUpdateSchema = z.object({ name: z.string().trim().min(1).max(120).optional(), domain: z.string().trim().min(3).max(253).optional(), language: languageSchema.optional(), niche: z.string().trim().max(120).optional() }).refine((value) => Object.keys(value).length > 0, '至少提供一个站点字段');
 const memberSchema = z.object({ profileId: z.string().uuid(), role: z.enum(['ADMIN', 'EDITOR', 'VIEWER']) });
 const growthInputSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('KEYWORD'), value: z.string().trim().min(2).max(200) }),
@@ -219,7 +219,7 @@ apiRouter.get('/me/export', asyncRoute(async (request, response) => {
     ]);
     return { exportedAt: new Date().toISOString(), profile: request.authUser, organizations: memberships, sites, wordpressCompatibilityProfiles, knowledgeSources, snapshots, siteSnapshots, opportunities, growthPrograms, growthRuns, growthActions, measurementSamples, drafts, ledger, payments, auditEvents };
   });
-  response.setHeader('Content-Disposition', `attachment; filename="aiseo-export-${new Date().toISOString().slice(0, 10)}.json"`);
+  response.setHeader('Content-Disposition', `attachment; filename="tuitui-export-${new Date().toISOString().slice(0, 10)}.json"`);
   sendData(response, data);
 }));
 
@@ -282,7 +282,7 @@ apiRouter.get('/organizations/:organizationId/sites', asyncRoute(async (request,
   const profileId = userId(request), orgId = organizationId(request);
   const sites = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    return tx.site.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' }, select: { id: true, name: true, domain: true, language: true, wordpressStatus: true, wordpressUser: true, wordpressVerifiedAt: true, wordpressCompatibilityMode: true, wordpressCompatibilityCheckedAt: true, createdAt: true, integrations: { select: { id: true, provider: true, propertyId: true, status: true, lastSyncedAt: true, lastErrorCode: true, lastErrorMessage: true } } } });
+    return tx.site.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' }, select: { id: true, name: true, domain: true, language: true, niche: true, wordpressStatus: true, wordpressUser: true, wordpressVerifiedAt: true, wordpressCompatibilityMode: true, wordpressCompatibilityCheckedAt: true, createdAt: true, integrations: { select: { id: true, provider: true, propertyId: true, status: true, lastSyncedAt: true, lastErrorCode: true, lastErrorMessage: true } } } });
   });
   sendData(response, sites);
 }));
@@ -295,7 +295,7 @@ apiRouter.post('/organizations/:organizationId/sites', asyncRoute(async (request
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { ...input, domain }, execute: async () => {
-      const site = await tx.site.create({ data: { organizationId: orgId, name: input.name, domain, language: input.language } });
+      const site = await tx.site.create({ data: { organizationId: orgId, name: input.name, domain, language: input.language, niche: input.niche || '通用行业' } });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_CREATED', targetType: 'site', targetId: site.id } });
       return { statusCode: 201, data: { site } };
     } });
@@ -312,12 +312,21 @@ apiRouter.put('/organizations/:organizationId/sites/:siteId', asyncRoute(async (
     domain = domainUrl.hostname.toLowerCase();
   }
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
+    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { ...input, domain }, execute: async () => {
       const existing = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } });
       if (!existing) throw new NotFoundError('站点不存在');
       const domainChanged = Boolean(domain && domain !== existing.domain);
-      const site = await tx.site.update({ where: { id: siteId }, data: { name: input.name, domain, language: input.language, ...(domainChanged ? { wordpressStatus: SiteConnectionStatus.VERIFYING, wordpressVerifiedAt: null, wordpressCompatibilityMode: 'RECHECK_REQUIRED', wordpressCompatibilityCheckedAt: null, latestWordpressCompatibilityProfileId: null } : {}) } });
+      const updateData = Object.fromEntries(
+        Object.entries({
+          name: input.name,
+          domain,
+          language: input.language,
+          niche: input.niche,
+          ...(domainChanged ? { wordpressStatus: SiteConnectionStatus.VERIFYING, wordpressVerifiedAt: null, wordpressCompatibilityMode: 'RECHECK_REQUIRED', wordpressCompatibilityCheckedAt: null, latestWordpressCompatibilityProfileId: null } : {})
+        }).filter(([, val]) => val !== undefined)
+      );
+      const site = await tx.site.update({ where: { id: siteId }, data: updateData });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_UPDATED', targetType: 'site', targetId: siteId, metadata: { fields: Object.keys(input), domainChanged } } });
       return { statusCode: 200, data: { site } };
     } });
@@ -360,7 +369,7 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/wordpress/authorize
   const nonce = randomUUID();
   const state = signWordPressState({ organizationId: orgId, profileId, siteId, nonce, expiresAt: Date.now() + 10 * 60_000 });
   const authorizationUrl = new URL(endpoint);
-  authorizationUrl.searchParams.set('app_name', 'AISEO');
+  authorizationUrl.searchParams.set('app_name', 'TuiTui');
   authorizationUrl.searchParams.set('app_id', site.id);
   authorizationUrl.searchParams.set('success_url', `${env.appBaseUrl}/api/v1/integrations/wordpress/callback?state=${encodeURIComponent(state)}`);
   authorizationUrl.searchParams.set('reject_url', `${env.appBaseUrl}/?wordpress=cancelled&siteId=${encodeURIComponent(siteId)}`);

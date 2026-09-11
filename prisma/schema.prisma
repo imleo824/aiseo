@@ -371,6 +371,7 @@ model Site {
   organizationId                        String                          @map("organization_id") @db.Uuid
   domain                                String
   name                                  String
+  niche                                 String?                         @default("通用行业")
   language                              String                          @default("zh-CN")
   wordpressCredentials                  Bytes?                          @map("wordpress_credentials")
   wordpressCredentialKeyVersion         Int?                            @map("wordpress_credential_key_version")

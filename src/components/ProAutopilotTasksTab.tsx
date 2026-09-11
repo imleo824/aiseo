@@ -20,10 +20,28 @@ const splitKeywords = (value: string): string[] => value
   .map((item) => item.trim())
   .filter(Boolean);
 
+const normalizeInputUrl = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed.replace(/^http:\/\//i, 'https://');
+  }
+  return `https://${trimmed}`;
+};
+
 const splitUrls = (value: string): string[] => value
-  .split(/[\s,，;；]+/)
+  .split(/[\s,，;；\n]+/)
   .map((item) => item.trim())
-  .filter(Boolean);
+  .filter(Boolean)
+  .map(normalizeInputUrl)
+  .filter((url) => {
+    try {
+      new URL(url);
+      return true;
+    } catch {
+      return false;
+    }
+  });
 
 interface ProAutopilotTasksTabProps {
   sites: WordPressSite[];

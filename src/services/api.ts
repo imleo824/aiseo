@@ -20,28 +20,38 @@ type ProductionTask = {
 
 const microsToCredits = (value: string | bigint | number | undefined): number => Number(BigInt(value || 0)) / 1_000_000;
 
-const toLegacySite = (site: ProductionSite): WordPressSite => ({
-  id: site.id,
-  name: site.name,
-  domain: site.domain,
-  niche: '未设置',
-  siteType: 'WORDPRESS',
-  siteLanguage: site.language,
-  pagesCount: 0,
-  connectorStatus: site.wordpressStatus === 'CONNECTED' ? 'CONNECTED' : site.wordpressStatus === 'VERIFYING' ? 'CHECKING' : site.wordpressStatus === 'FAILED' ? 'ERROR' : 'DISCONNECTED',
-  wpUsername: site.wordpressUser,
-  pluginInstalled: false,
-  wordpressCompatibilityMode: site.wordpressCompatibilityMode,
-  wordpressCompatibilityCheckedAt: site.wordpressCompatibilityCheckedAt,
-  whitelistedCategories: [],
-  gscConnected: site.integrations.some((item) => item.provider === 'GSC' && item.status === 'CONNECTED'),
-  gscPropertyId: site.integrations.find((item) => item.provider === 'GSC')?.propertyId,
-  gscStatus: site.integrations.find((item) => item.provider === 'GSC')?.status,
-  gscLastSyncedAt: site.integrations.find((item) => item.provider === 'GSC')?.lastSyncedAt,
-  gscLastErrorMessage: site.integrations.find((item) => item.provider === 'GSC')?.lastErrorMessage,
-  ga4Connected: false,
-  createdAt: site.createdAt
-});
+const toLegacySite = (site: ProductionSite): WordPressSite => {
+  let localNiche = '通用行业';
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localNiche = localStorage.getItem(`site_niche_${site.id}`) || '通用行业';
+    }
+  } catch {
+    // ignore
+  }
+  return {
+    id: site.id,
+    name: site.name,
+    domain: site.domain,
+    niche: (site as unknown as { niche?: string }).niche || localNiche,
+    siteType: 'WORDPRESS',
+    siteLanguage: site.language,
+    pagesCount: 0,
+    connectorStatus: site.wordpressStatus === 'CONNECTED' ? 'CONNECTED' : site.wordpressStatus === 'VERIFYING' ? 'CHECKING' : site.wordpressStatus === 'FAILED' ? 'ERROR' : 'DISCONNECTED',
+    wpUsername: site.wordpressUser,
+    pluginInstalled: false,
+    wordpressCompatibilityMode: site.wordpressCompatibilityMode,
+    wordpressCompatibilityCheckedAt: site.wordpressCompatibilityCheckedAt,
+    whitelistedCategories: [],
+    gscConnected: site.integrations.some((item) => item.provider === 'GSC' && item.status === 'CONNECTED'),
+    gscPropertyId: site.integrations.find((item) => item.provider === 'GSC')?.propertyId,
+    gscStatus: site.integrations.find((item) => item.provider === 'GSC')?.status,
+    gscLastSyncedAt: site.integrations.find((item) => item.provider === 'GSC')?.lastSyncedAt,
+    gscLastErrorMessage: site.integrations.find((item) => item.provider === 'GSC')?.lastErrorMessage,
+    ga4Connected: false,
+    createdAt: site.createdAt
+  };
+};
 
 const toLegacyDraft = (draft: Draft): ArticleDraft => ({
   id: draft.id,
@@ -295,13 +305,19 @@ export class ApiService {
   }) {
     const { organizationId } = await this.resolveWorkspace();
     if (data.siteType && data.siteType !== 'WORDPRESS') throw new Error('当前正式版本仅支持 WordPress');
-    const created = (await productionApi.post<{ site: ProductionSite }>(`/organizations/${organizationId}/sites`, { name: data.name, domain: data.domain, language: data.siteLanguage === 'en' ? 'en-US' : data.siteLanguage })).data.site;
+    const created = (await productionApi.post<{ site: ProductionSite }>(`/organizations/${organizationId}/sites`, { name: data.name, domain: data.domain, language: data.siteLanguage === 'en' ? 'en-US' : data.siteLanguage, niche: data.niche })).data.site;
+    if (typeof localStorage !== 'undefined' && data.niche) {
+      try { localStorage.setItem(`site_niche_${created.id}`, data.niche); } catch { /* ignore */ }
+    }
     return { site: toLegacySite(created) };
   }
 
   public async updateSite(siteId: string, updated: Partial<WordPressSite>) {
     const { organizationId } = await this.resolveWorkspace();
-    const payload = { name: updated.name, domain: updated.domain, language: updated.siteLanguage }.valueOf();
+    if (typeof localStorage !== 'undefined' && updated.niche) {
+      try { localStorage.setItem(`site_niche_${siteId}`, updated.niche); } catch { /* ignore */ }
+    }
+    const payload = { name: updated.name, domain: updated.domain, language: updated.siteLanguage, niche: updated.niche }.valueOf();
     const cleanPayload = Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
     await productionApi.put(`/organizations/${organizationId}/sites/${siteId}`, cleanPayload);
     const site = (await productionApi.get<ProductionSite[]>(`/organizations/${organizationId}/sites`)).data.find((item) => item.id === siteId);
