@@ -12,15 +12,6 @@ export type DatabaseSecurityStatus = {
 };
 
 export const inspectDatabaseSecurity = async (database: PrismaClient): Promise<DatabaseSecurityStatus> => {
-  if (!env.databaseUrl || env.databaseUrl.includes('127.0.0.1') || env.databaseUrl.includes('localhost')) {
-    return {
-      role: 'app_backend',
-      bypassRls: false,
-      ownedBusinessTables: 0,
-      migrationVersion: EXPECTED_MIGRATION_VERSION,
-      requiredMigrationPresent: true
-    };
-  }
   const [roles, owners, migrations] = await Promise.all([
     database.$queryRaw<Array<{ role: string; bypass_rls: boolean }>>`
       SELECT current_user::text AS role, rolbypassrls AS bypass_rls
