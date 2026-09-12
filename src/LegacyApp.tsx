@@ -161,7 +161,6 @@ export default function LegacyApp() {
         onCloseMobile={() => setIsMobileMenuOpen(false)}
         account={account}
         onLogout={actions.handleLogout}
-        onOpenRecharge={() => setIsRechargeOpen(true)}
       />
 
       {/* RIGHT WORKSPACE AREA */}

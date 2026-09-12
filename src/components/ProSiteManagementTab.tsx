@@ -293,11 +293,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                               <Key className="w-3 h-3" />
                               WordPress {site.connectorStatus === 'CONNECTED' ? '连接已验证' : '凭证待验证'}
                             </span>
-                          ) : (
-                            <span className="text-amber-800 bg-amber-50 border border-amber-200/80 px-2.5 py-1 rounded-lg font-semibold">
-                              未配置 WordPress 发布凭证
-                            </span>
-                          )}
+                          ) : null}
                           {site.connectorStatus === 'CONNECTED' && (
                             <span className={`${compatibilityLabel(site).className} px-2.5 py-1 rounded-lg font-medium`}>
                               {compatibilityLabel(site).text}
@@ -317,7 +313,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                               : 'bg-slate-950 hover:bg-slate-800 active:bg-slate-900 text-white border-slate-950'
                           }`}
                         >
-                          {site.connectorStatus === 'CONNECTED' ? '重新授权 WordPress' : '授权 WordPress'}
+                          去授权 WordPress
                         </button>
 
                         <button
@@ -329,7 +325,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                               : 'bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 border-slate-200/90'
                           }`}
                         >
-                          GSC: {site.gscConnected ? '已连接' : '未连接'}
+                          {site.gscConnected ? 'GSC：已连接' : '去授权 GSC'}
                         </button>
 
                         <button

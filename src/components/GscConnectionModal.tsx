@@ -140,7 +140,11 @@ export const GscConnectionModal: React.FC<{
             <>
               <div className="rounded-xl border border-blue-200/90 bg-blue-50/80 p-4 text-blue-950 flex gap-2.5 leading-relaxed">
                 <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                <span>授权后系统会自动选择与 <strong>{site.domain}</strong> 匹配的已验证属性。OAuth 令牌加密保存，浏览器不会读取令牌。</span>
+                <div className="space-y-1.5">
+                  <p>连接后，系统会读取 <strong>{site.domain}</strong> 的真实搜索曝光、点击、查询和排名变化，用来优先发现已有机会，并在发布后验证效果。</p>
+                  <p><strong>不是开始自动增长的必需条件。</strong>未连接时系统仍可完成站点分析、内容与 WordPress 发布；只是不会将结果表述为已验证的自然流量变化。</p>
+                  <p>系统会自动选择匹配的已验证属性；OAuth 令牌加密保存，浏览器不会读取令牌。</p>
+                </div>
               </div>
               <button
                 type="button"
