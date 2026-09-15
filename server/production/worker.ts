@@ -25,6 +25,7 @@ import {
 } from '@prisma/client';
 import { Job, Worker } from 'bullmq';
 import * as Sentry from '@sentry/node';
+import { TerminalPaymentVerificationError } from '../domain/errors';
 import { billingService } from './billingService';
 import { contentAi } from './contentAi';
 import { decryptSecret } from './crypto';
@@ -332,7 +333,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
   if (!growthRunId) throw new Error('增长任务缺少 growthRunId');
   let run = await workerPrisma.growthRun.findFirst({
     where: { id: growthRunId, organizationId: job.organizationId },
-    include: { program: { include: { inputs: { orderBy: { position: 'asc' } } } }, site: true, actions: true }
+    include: { program: { include: { inputs: { orderBy: { position: 'asc' } } } }, site: true }
   });
   if (!run) throw new Error('增长执行不存在');
   if (run.status === GrowthRunStatus.DELIVERED || run.status === GrowthRunStatus.SKIPPED || run.status === GrowthRunStatus.CANCELLED) return run.id;
@@ -524,7 +525,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
     .map((input) => input.value.trim());
   const derivedKeywords = keyword ? [] : await Promise.all(externalSources.map(async (external) => (
     await contentAi.deriveKeyword({
-        language: run.site.language,
+        language: market.languageCode,
         sourceType: external.type,
         title: external.source.title,
         content: external.source.content
@@ -533,7 +534,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
   const siteDerivedKeywords = keyword || explicitKeywords.length || derivedKeywords.length
     ? []
     : [(await contentAi.deriveKeyword({
-      language: run.site.language,
+      language: market.languageCode,
       sourceType: 'SITE',
       title: targetContext.site.name,
       content: targetContext.content
@@ -948,7 +949,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
   const targetEvidence = selectRelevantSiteEvidence(keyword, targetContext.pages);
   const siteProfileEvidence = {
     title: '[TARGET_SITE] Verified site profile',
-    content: `Name: ${targetContext.site.name}\nDescription: ${targetContext.site.description}\nLocale: ${targetContext.site.locale || run.site.language}`,
+    content: `Name: ${targetContext.site.name}\nDescription: ${targetContext.site.description}\nLocale: ${targetContext.site.locale || market.languageCode}`,
     url: targetContext.normalizedUrl
   };
   const pageEvidence = targetEvidence.map((page) => ({
@@ -963,7 +964,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
   const opportunityEvidence = opportunity.evidence as { discovery?: { intent?: string | null } };
   const brief = await contentAi.createBrief({
     keyword,
-    language: run.site.language,
+    language: market.languageCode,
     searchIntent: opportunityEvidence.discovery?.intent || null,
     seoSnapshot: opportunity.snapshot.payload,
     knowledge: knowledgeInput,
@@ -984,7 +985,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
     .sort((left, right) => right.overlapRatio - left.overlapRatio)[0];
   let generated: { title: string; slug: string; html: string; qualityReport: ReturnType<typeof deterministicActionQualityGate> & Record<string, unknown> };
   if (action.type === GrowthActionType.UPDATE_TITLE) {
-    const optimized = await contentAi.optimizeTitle({ keyword, language: run.site.language, currentTitle: beforeSnapshot!.title, pageText: beforeSnapshot!.content, seoSnapshot: opportunity.snapshot.payload });
+    const optimized = await contentAi.optimizeTitle({ keyword, language: market.languageCode, currentTitle: beforeSnapshot!.title, pageText: beforeSnapshot!.content, seoSnapshot: opportunity.snapshot.payload });
     generated = {
       title: optimized.title,
       slug: beforeSnapshot!.slug,
@@ -1000,7 +1001,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       qualityReport: { ...deterministicActionQualityGate({ actionType: 'ADD_INTERNAL_LINKS', title: beforeSnapshot!.title, html: linked.html, beforeHtml: beforeSnapshot!.content, insertedInternalLinks: linked.inserted.length, allowedLinkUrls }), internalLinks: { inserted: linked.inserted.length, items: linked.inserted } }
     };
   } else if (action.type === GrowthActionType.ADD_CONTENT_SECTION) {
-    const section = await contentAi.generateSection({ keyword, language: run.site.language, currentTitle: beforeSnapshot!.title, currentHtml: beforeSnapshot!.content, seoSnapshot: opportunity.snapshot.payload, knowledge: knowledgeInput, brief });
+    const section = await contentAi.generateSection({ keyword, language: market.languageCode, currentTitle: beforeSnapshot!.title, currentHtml: beforeSnapshot!.content, seoSnapshot: opportunity.snapshot.payload, knowledge: knowledgeInput, brief });
     const addition = beforeSnapshot!.editorKind === 'GUTENBERG'
       ? `\n<!-- wp:html -->\n${section.html}\n<!-- /wp:html -->`
       : section.html;
@@ -1013,7 +1014,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       qualityReport: { ...deterministicActionQualityGate({ actionType: 'ADD_CONTENT_SECTION', title: beforeSnapshot!.title, html, beforeHtml: beforeSnapshot!.content, originality, claimSources: section.claimSources, allowedSourceTitles, sourceDocuments, allowedLinkUrls, forbiddenClaims: brief.forbiddenClaims }), addedSection: section.heading, brief, coverageTopics: section.coverageTopics, claimSources: section.claimSources }
     };
   } else if (action.type === GrowthActionType.CONTENT_REFRESH) {
-    const refreshed = await contentAi.refreshContent({ keyword, language: run.site.language, currentTitle: beforeSnapshot!.title, currentHtml: beforeSnapshot!.content, seoSnapshot: opportunity.snapshot.payload, knowledge: knowledgeInput, brief });
+    const refreshed = await contentAi.refreshContent({ keyword, language: market.languageCode, currentTitle: beforeSnapshot!.title, currentHtml: beforeSnapshot!.content, seoSnapshot: opportunity.snapshot.payload, knowledge: knowledgeInput, brief });
     const patch = applyVerifiedLocalHtmlPatch(beforeSnapshot!.content, refreshed.targetHtml, refreshed.replacementHtml);
     const originality = closestExternalOverlap(refreshed.replacementHtml);
     generated = {
@@ -1032,7 +1033,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
   } else {
     const article = await contentAi.generate({
       keyword,
-      language: run.site.language,
+      language: market.languageCode,
       seoSnapshot: opportunity.snapshot.payload,
       knowledge: knowledgeInput,
       brief,
@@ -1118,16 +1119,19 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
       status: automatic ? GrowthRunStatus.RUNNING : GrowthRunStatus.NEEDS_REVIEW,
       delivery: { draftId: draft.id, actionId: action!.id, manualReviewRequired: !automatic, qualityScore: generated.qualityReport.score }
     } });
-    await completeStage(tx, {
-      runId: run!.id,
-      stage: GrowthRunStageCode.EXECUTE,
-      summary: automatic ? '内容通过质量门禁，已进入 WordPress 发布队列。' : '内容通过质量门禁，等待客户批准后写入 WordPress。',
-      processedCount: 1,
-      totalCount: 1,
-      evidence: [{ type: 'CONTENT_DRAFT', draftId: draft.id, qualityScore: generated.qualityReport.score, actionId: action!.id, automatic }]
+    await tx.growthRunStage.update({
+      where: { runId_stage: { runId: run!.id, stage: GrowthRunStageCode.EXECUTE } },
+      data: {
+        status: GrowthRunStageStatus.RUNNING,
+        summary: automatic ? '内容通过质量门禁，已进入 WordPress 发布队列。' : '内容通过质量门禁，等待客户批准后写入 WordPress。',
+        processedCount: 1,
+        totalCount: 1,
+        evidence: [{ type: 'CONTENT_DRAFT', draftId: draft.id, qualityScore: generated.qualityReport.score, actionId: action!.id, automatic }] as Prisma.InputJsonValue,
+        finishedAt: null
+      }
     });
     if (automatic) {
-      const publish = await jobService.create(tx, { organizationId: run!.organizationId, type: JobType.WORDPRESS_PUBLISH, idempotencyKey: `growth-action-publish:${action!.id}`, payload: { draftId: draft.id, growthRunId: run!.id, actionId: action!.id, automated: true } });
+      const publish = await jobService.create(tx, { organizationId: run!.organizationId, type: JobType.WORDPRESS_PUBLISH, idempotencyKey: `growth-action-publish:${action!.id}:attempt:1`, payload: { draftId: draft.id, growthRunId: run!.id, actionId: action!.id, automated: true } });
       await tx.publishAttempt.create({ data: { organizationId: run!.organizationId, draftId: draft.id, jobRunId: publish.id, attemptNumber: 1 } });
     }
     await tx.auditEvent.create({ data: { organizationId: run!.organizationId, action: 'GROWTH_DELIVERABLE_CREATED', targetType: 'growth_run', targetId: run!.id, metadata: { draftId: draft.id, actionId: action!.id, automatic } } });
@@ -1148,13 +1152,17 @@ const processWordPressPublish = async (jobRunId: string): Promise<string> => {
   if (action.type === GrowthActionType.DIAGNOSE_ONLY) throw new Error('只读诊断动作不得进入 WordPress 发布队列');
   if (draft.status === DraftStatus.PUBLISHED && draft.remotePostId && draft.publishedUrl) return draft.id;
   if (draft.status !== DraftStatus.PUBLISHING) throw new Error('草稿不处于可发布状态');
+  await workerPrisma.publishAttempt.updateMany({
+    where: { jobRunId, status: PublishAttemptStatus.QUEUED },
+    data: { status: PublishAttemptStatus.RUNNING, startedAt: new Date(), errorCode: null, errorMessage: null }
+  });
   if (!approved && automaticRequested && manualConfirmationRequired) {
     await workerPrisma.$transaction(async (tx) => {
       const now = new Date();
       await tx.contentDraft.update({ where: { id: draft.id }, data: { status: DraftStatus.PENDING_REVIEW } });
       await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.REVIEW_REQUIRED } });
       await tx.growthRun.update({ where: { id: action.runId }, data: { status: GrowthRunStatus.NEEDS_REVIEW, delivery: { draftId: draft.id, actionId: action.id, manualReviewRequired: true, reason: 'GLOBAL_PUBLISH_CONFIRMATION_ENABLED' } } });
-      await tx.publishAttempt.updateMany({ where: { jobRunId }, data: { status: PublishAttemptStatus.FAILED, errorCode: 'GLOBAL_PUBLISH_CONFIRMATION_ENABLED', errorMessage: '全局发布确认已开启，自动发布改为等待人工确认。', finishedAt: now } });
+      await tx.publishAttempt.updateMany({ where: { jobRunId }, data: { status: PublishAttemptStatus.SKIPPED, errorCode: 'GLOBAL_PUBLISH_CONFIRMATION_ENABLED', errorMessage: '全局发布确认已开启，自动发布改为等待人工确认。', finishedAt: now } });
       await tx.auditEvent.create({ data: { organizationId: job.organizationId, action: 'AUTO_PUBLISH_CONVERTED_TO_REVIEW', targetType: 'growth_action', targetId: action.id, metadata: { policy: 'publishing.confirmation' } } });
     });
     return action.id;
@@ -1231,6 +1239,14 @@ const processWordPressPublish = async (jobRunId: string): Promise<string> => {
       remoteRevisionId: published.remoteRevisionId,
       publicVerification: published.verification as unknown as Prisma.InputJsonValue
     } });
+    await completeStage(tx, {
+      runId: action.runId,
+      stage: GrowthRunStageCode.EXECUTE,
+      summary: publiclyVerified ? 'WordPress 写入、REST 回读与公开页面验证已完成。' : 'WordPress 写入与 REST 回读已完成；公开页面受缓存影响，继续延迟验证。',
+      processedCount: 1,
+      totalCount: 1,
+      evidence: [{ type: 'WORDPRESS_DELIVERY', postId: published.postId, url: published.url, changedFields: published.changedFields, remoteMutationState }]
+    });
     await tx.growthRun.update({ where: { id: action.runId }, data: { status: GrowthRunStatus.DELIVERED, currentStage: GrowthRunStageCode.LEARN, targetUrl: published.url, deliveredAt: now, finishedAt: now, delivery: { draftId: draft.id, actionId: action.id, publishedUrl: published.url, remotePostId: published.postId, deliveredAt: now.toISOString() } } });
     await tx.growthRunStage.update({ where: { runId_stage: { runId: action.runId, stage: GrowthRunStageCode.LEARN } }, data: { status: GrowthRunStageStatus.RUNNING, startedAt: now, summary: publiclyVerified ? (gscConnection ? '已交付；等待 14/28/56 天真实 GSC 观察窗口。' : '已交付；等待 14/28/56 天 DataForSEO 精确页面排名观察，不宣称流量变化。') : 'WordPress 已提交并通过 REST 回读，公开页面仍受缓存影响，正在延迟验证。', evidence: [{ type: 'WORDPRESS_DELIVERY', url: published.url, deliveredAt: now.toISOString(), compatibilityProfileId: compatibilityProfile.id, remoteMutationState, publicVerification: published.verification }] } });
     await tx.growthProgram.update({ where: { id: action.run.programId }, data: { status: action.run.program.mode === GrowthProgramMode.ONCE ? GrowthProgramStatus.COMPLETED : GrowthProgramStatus.ACTIVE, deliveredRunCount: { increment: 1 }, lastRunAt: now, lastError: null } });
@@ -1469,7 +1485,7 @@ const processGrowthMeasure = async (jobRunId: string): Promise<string> => {
 
 const processWordPressRollback = async (jobRunId: string): Promise<string> => {
   const job = await workerPrisma.jobRun.findUniqueOrThrow({ where: { id: jobRunId } });
-  const payload = job.payload as { draftId?: string; actionId?: string };
+  const payload = job.payload as { draftId?: string; actionId?: string; previousActionStatus?: GrowthActionStatus };
   if (!payload.draftId) throw new Error('回滚任务缺少 draftId');
   const draft = await workerPrisma.contentDraft.findFirst({ where: { id: payload.draftId, organizationId: job.organizationId }, include: { site: true } });
   const action = payload.actionId ? await workerPrisma.growthAction.findFirst({ where: { id: payload.actionId, organizationId: job.organizationId }, include: { pageVersions: true, wordpressCompatibilityProfile: true } }) : null;
@@ -1563,17 +1579,54 @@ const processPayment = async (jobRunId: string): Promise<{ deferred: boolean; re
   const paymentIntentId = (job.payload as { paymentIntentId?: string }).paymentIntentId;
   if (!paymentIntentId) throw new Error('支付核验任务缺少 paymentIntentId');
   const payment = await workerPrisma.paymentIntent.findUniqueOrThrow({ where: { id: paymentIntentId } });
+  if (payment.status === PaymentStatus.CREDITED || payment.status === PaymentStatus.REJECTED || payment.status === PaymentStatus.EXPIRED) {
+    return { deferred: false, resultId: payment.id };
+  }
+  if (payment.status === PaymentStatus.CONFIRMED) {
+    await billingService.creditConfirmedPayment(
+      workerPrisma,
+      payment.id,
+      (payment.verification || { recoveredFromConfirmedState: true }) as Prisma.InputJsonValue
+    );
+    return { deferred: false, resultId: payment.id };
+  }
   if (!payment.txHash) throw new Error('支付意图尚未提交交易哈希');
   if (payment.expiresAt <= new Date()) {
-    await workerPrisma.paymentIntent.update({ where: { id: payment.id }, data: { status: PaymentStatus.EXPIRED } });
-    throw new Error('支付意图已过期');
+    await workerPrisma.paymentIntent.updateMany({
+      where: { id: payment.id, status: { in: [PaymentStatus.AWAITING_TRANSFER, PaymentStatus.VERIFYING] } },
+      data: { status: PaymentStatus.EXPIRED }
+    });
+    return { deferred: false, resultId: payment.id };
   }
   try {
     const verification = await tronGridProvider.verifyTransfer({ txHash: payment.txHash, recipientAddress: payment.recipientAddress, expectedAmountMicros: payment.expectedAmountMicros, notBefore: payment.createdAt, notAfter: payment.expiresAt });
-    await workerPrisma.paymentIntent.update({ where: { id: payment.id }, data: { status: PaymentStatus.CONFIRMED, confirmedAt: new Date(), verification } });
+    const confirmed = await workerPrisma.paymentIntent.updateMany({
+      where: { id: payment.id, status: PaymentStatus.VERIFYING, txHash: payment.txHash },
+      data: { status: PaymentStatus.CONFIRMED, confirmedAt: new Date(), verification }
+    });
+    if (confirmed.count !== 1) {
+      const concurrent = await workerPrisma.paymentIntent.findUniqueOrThrow({ where: { id: payment.id } });
+      if (concurrent.status === PaymentStatus.CREDITED) return { deferred: false, resultId: payment.id };
+      if (concurrent.status !== PaymentStatus.CONFIRMED) throw new Error('充值意图状态已在核验期间改变');
+    }
     await billingService.creditConfirmedPayment(workerPrisma, payment.id, verification as Prisma.InputJsonValue);
     return { deferred: false, resultId: payment.id };
   } catch (error) {
+    if (error instanceof TerminalPaymentVerificationError) {
+      const rejection = { code: error.errorCode, message: error.message, rejectedAt: new Date().toISOString() };
+      await workerPrisma.$transaction(async (tx) => {
+        const rejected = await tx.paymentIntent.updateMany({
+          where: { id: payment.id, status: PaymentStatus.VERIFYING, txHash: payment.txHash },
+          data: { status: PaymentStatus.REJECTED, verification: rejection }
+        });
+        if (rejected.count === 1) {
+          await tx.auditEvent.create({
+            data: { organizationId: payment.organizationId, action: 'PAYMENT_REJECTED', targetType: 'payment_intent', targetId: payment.id, metadata: rejection }
+          });
+        }
+      });
+      return { deferred: false, resultId: payment.id };
+    }
     if (new Date(Date.now() + 30_000) < payment.expiresAt) {
       const bucket = Math.floor(Date.now() / 30_000);
       await getProductionQueue().add(JobType.PAYMENT_VERIFY, { jobRunId }, productionJobOptions(`${jobRunId}:verify:${bucket}`, { delay: 30_000 }));
@@ -1612,9 +1665,17 @@ const markFailed = async (jobRunId: string, error: unknown): Promise<void> => {
     if (!job) return;
     const finalAttempt = job.attempts >= 5;
     await tx.jobRun.update({ where: { id: jobRunId }, data: { status: finalAttempt ? JobStatus.DEAD_LETTER : JobStatus.QUEUED, queueJobId: finalAttempt ? job.queueJobId : null, errorCode: 'JOB_EXECUTION_FAILED', errorMessage: message.slice(0, 2_000), finishedAt: finalAttempt ? new Date() : null } });
-    if (!finalAttempt) return;
+    if (!finalAttempt) {
+      if (job.type === JobType.WORDPRESS_PUBLISH) {
+        await tx.publishAttempt.updateMany({
+          where: { jobRunId, status: PublishAttemptStatus.RUNNING },
+          data: { status: PublishAttemptStatus.QUEUED, errorCode: 'WORDPRESS_PUBLISH_RETRYING', errorMessage: message.slice(0, 2_000), finishedAt: null }
+        });
+      }
+      return;
+    }
     await billingService.releaseCreditHold(tx, jobRunId);
-    const payload = job.payload as { growthRunId?: string; actionId?: string; draftId?: string; connectionId?: string; windowDays?: number };
+    const payload = job.payload as { growthRunId?: string; actionId?: string; draftId?: string; connectionId?: string; windowDays?: number; previousActionStatus?: GrowthActionStatus };
     if (job.type === JobType.GROWTH_MEASURE) {
       if (payload.actionId) {
         const finalWindow = payload.windowDays === 56;
@@ -1648,7 +1709,44 @@ const markFailed = async (jobRunId: string, error: unknown): Promise<void> => {
       }
       return;
     }
-    if (payload.growthRunId) {
+    if (job.type === JobType.INDEXING_MONITOR) {
+      await tx.auditEvent.create({
+        data: { organizationId: job.organizationId, action: 'INDEXING_MONITOR_FAILED', targetType: 'job_run', targetId: job.id, metadata: { growthRunId: payload.growthRunId || null, actionId: payload.actionId || null, error: message.slice(0, 2_000) } }
+      });
+      return;
+    }
+    if (job.type === JobType.WORDPRESS_ROLLBACK) {
+      if (payload.draftId) await tx.contentDraft.updateMany({ where: { id: payload.draftId, status: DraftStatus.ROLLING_BACK }, data: { status: DraftStatus.PUBLISHED } });
+      if (payload.actionId && payload.previousActionStatus && Object.values(GrowthActionStatus).includes(payload.previousActionStatus)) {
+        await tx.growthAction.updateMany({ where: { id: payload.actionId, status: GrowthActionStatus.EXECUTING }, data: { status: payload.previousActionStatus } });
+      }
+      await tx.auditEvent.create({
+        data: { organizationId: job.organizationId, action: 'WORDPRESS_ROLLBACK_FAILED', targetType: 'content_draft', targetId: payload.draftId || null, metadata: { actionId: payload.actionId || null, error: message.slice(0, 2_000) } }
+      });
+      return;
+    }
+    if (job.type === JobType.WORDPRESS_PUBLISH) {
+      if (payload.growthRunId) {
+        const run = await tx.growthRun.findUnique({ where: { id: payload.growthRunId } });
+        if (run) {
+          await tx.growthRunStage.updateMany({ where: { runId: run.id, stage: GrowthRunStageCode.EXECUTE }, data: { status: GrowthRunStageStatus.FAILED, errorCode: 'WORDPRESS_PUBLISH_FAILED', errorMessage: message.slice(0, 2_000), finishedAt: new Date() } });
+          await tx.growthRun.update({ where: { id: run.id }, data: { status: GrowthRunStatus.FAILED, currentStage: GrowthRunStageCode.EXECUTE, errorCode: 'WORDPRESS_PUBLISH_FAILED', errorMessage: message.slice(0, 2_000), finishedAt: new Date() } });
+          await tx.growthProgram.update({ where: { id: run.programId }, data: { status: GrowthProgramStatus.BLOCKED, lockedUntil: null, lastError: message.slice(0, 1_000) } });
+        }
+      }
+      if (payload.actionId) await tx.growthAction.updateMany({ where: { id: payload.actionId }, data: { status: GrowthActionStatus.FAILED } });
+      if (payload.draftId) await tx.contentDraft.updateMany({ where: { id: payload.draftId }, data: { status: DraftStatus.PUBLISH_FAILED } });
+      await tx.publishAttempt.updateMany({ where: { jobRunId }, data: { status: PublishAttemptStatus.FAILED, errorCode: 'WORDPRESS_PUBLISH_FAILED', errorMessage: message.slice(0, 2_000), finishedAt: new Date() } });
+      await tx.auditEvent.create({
+        data: { organizationId: job.organizationId, action: 'WORDPRESS_PUBLISH_FAILED', targetType: 'content_draft', targetId: payload.draftId || null, metadata: { growthRunId: payload.growthRunId || null, actionId: payload.actionId || null, error: message.slice(0, 2_000) } }
+      });
+      return;
+    }
+    if (job.type === JobType.GSC_SYNC) {
+      if (payload.connectionId) await tx.integrationConnection.updateMany({ where: { id: payload.connectionId }, data: { status: SiteConnectionStatus.FAILED, lastErrorCode: 'GSC_SYNC_FAILED', lastErrorMessage: message } });
+      return;
+    }
+    if (job.type === JobType.GROWTH_RUN && payload.growthRunId) {
       const run = await tx.growthRun.findUnique({ where: { id: payload.growthRunId } });
       if (run) {
         await tx.growthRunStage.updateMany({ where: { runId: run.id, stage: run.currentStage }, data: { status: GrowthRunStageStatus.FAILED, errorCode: 'STAGE_EXECUTION_FAILED', errorMessage: message.slice(0, 2_000), finishedAt: new Date() } });
@@ -1656,12 +1754,7 @@ const markFailed = async (jobRunId: string, error: unknown): Promise<void> => {
         if (run.programId) await tx.growthProgram.update({ where: { id: run.programId }, data: { status: GrowthProgramStatus.BLOCKED, lockedUntil: null, lastError: message.slice(0, 1_000) } });
       }
     }
-    if (payload.actionId) await tx.growthAction.updateMany({ where: { id: payload.actionId }, data: { status: GrowthActionStatus.FAILED, afterSnapshot: { error: message } } });
-    if (payload.draftId) {
-      await tx.contentDraft.updateMany({ where: { id: payload.draftId }, data: { status: DraftStatus.PUBLISH_FAILED } });
-      await tx.publishAttempt.updateMany({ where: { jobRunId }, data: { status: PublishAttemptStatus.FAILED, errorCode: 'WORDPRESS_PUBLISH_FAILED', errorMessage: message, finishedAt: new Date() } });
-    }
-    if (payload.connectionId) await tx.integrationConnection.updateMany({ where: { id: payload.connectionId }, data: { status: SiteConnectionStatus.FAILED, lastErrorCode: 'GSC_SYNC_FAILED', lastErrorMessage: message } });
+    if (job.type === JobType.GROWTH_RUN && payload.actionId) await tx.growthAction.updateMany({ where: { id: payload.actionId }, data: { status: GrowthActionStatus.FAILED } });
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 };
 

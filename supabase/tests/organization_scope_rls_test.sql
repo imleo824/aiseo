@@ -7,7 +7,7 @@ set local search_path = public, extensions;
 -- can continue to execute while SET ROLE is exercising the real RLS boundary.
 grant usage on schema extensions to app_backend, app_worker;
 grant execute on all functions in schema extensions to app_backend, app_worker;
-select plan(82);
+select plan(90);
 
 select is(
   (select count(*) from pg_class
@@ -121,6 +121,39 @@ select is(
   'UPDATE_TITLE,ADD_INTERNAL_LINKS,CONTENT_REFRESH,ADD_CONTENT_SECTION,CREATE_CONTENT,DIAGNOSE_ONLY',
   'growth action enum contains only fully implemented and reversible Worker actions'
 );
+select ok(
+  exists (
+    select 1 from pg_index
+    where indexrelid = 'public.growth_actions_run_id_key'::regclass and indisunique
+  ),
+  'each growth run can own at most one selected action'
+);
+select ok(
+  exists (
+    select 1 from pg_index
+    where indexrelid = 'public.growth_runs_draft_id_key'::regclass and indisunique
+  ),
+  'each deliverable draft can belong to at most one growth run'
+);
+select is(
+  (select string_agg(enumlabel, ',' order by enumsortorder) from pg_enum where enumtypid = 'public."DraftStatus"'::regtype),
+  'GENERATING,QUALITY_FAILED,PENDING_REVIEW,REJECTED,PUBLISHING,PUBLISHED,PUBLISH_FAILED,ROLLING_BACK,ROLLED_BACK',
+  'draft states contain only the current recoverable delivery lifecycle'
+);
+select is(
+  (select string_agg(enumlabel, ',' order by enumsortorder) from pg_enum where enumtypid = 'public."GrowthActionStatus"'::regtype),
+  'PLANNED,REVIEW_REQUIRED,EXECUTING,VERIFYING,OBSERVING,SUCCEEDED,FAILED,ROLLED_BACK,CANCELLED',
+  'growth-action states contain only the current execution lifecycle'
+);
+select is(
+  (select string_agg(enumlabel, ',' order by enumsortorder) from pg_enum where enumtypid = 'public."PublishAttemptStatus"'::regtype),
+  'QUEUED,RUNNING,SUCCEEDED,SKIPPED,FAILED,ROLLED_BACK',
+  'publish attempts distinguish policy skips from execution failures'
+);
+select ok(
+  (select qual like '%can_mutate_organization%ADMIN%' from pg_policies where schemaname = 'public' and tablename = 'audit_events' and policyname = 'audit_events_select'),
+  'organization audit details require administrator access unless the user is the actor'
+);
 select is(
   (select value ->> 'requireManualConfirmation' from public.system_settings where key = 'publishing.confirmation'),
   'false',
@@ -163,11 +196,20 @@ select 'b', organization_id from public.organization_members where profile_id = 
 grant select on rls_context to app_backend, app_worker;
 grant select, insert on rls_results to app_backend;
 
+insert into public.terms_acceptances (profile_id, organization_id, document, version)
+values ('00000000-0000-0000-0000-0000000000a1', null, 'PRIVACY', '2026-09-15');
+insert into public.notifications (organization_id, profile_id, type, title, message)
+values
+  ((select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000a1', 'ACCOUNT', 'A only', 'Visible to A'),
+  ((select organization_id from rls_context where label = 'a'), '00000000-0000-0000-0000-0000000000b2', 'ACCOUNT', 'B only', 'Must not be visible to A');
+
 select is((select credit_balance_micros from public.organizations where id = (select organization_id from rls_context where label = 'a')), 0::bigint, 'new organization starts with zero credits');
 
 select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000a1', true);
 select set_config('app.organization_id', (select organization_id::text from rls_context where label = 'a'), true);
 set local role app_backend;
+select is((select count(*) from public.terms_acceptances where profile_id = '00000000-0000-0000-0000-0000000000a1'), 1::bigint, 'user can export their own global terms acceptance');
+select is((select count(*) from public.notifications), 1::bigint, 'user cannot read another profile private notification in the same organization');
 insert into public.sites (id, organization_id, domain, name, updated_at)
 values ('00000000-0000-0000-0000-0000000000a3', (select organization_id from rls_context where label = 'a'), 'org-a.example.test', 'Org A site', now());
 insert into public.knowledge_content_blobs (id, organization_id, checksum, content)

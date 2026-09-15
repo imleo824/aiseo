@@ -23,7 +23,7 @@ export const buildContentSecurityPolicy = (input: {
   // Vite's React Refresh preamble is an inline module in development/test.
   // Production assets remain protected by the stricter no-inline policy.
   const scriptSources = ["'self'", ...(input.runtime === 'production' ? [] : ["'unsafe-inline'"]), 'https://challenges.cloudflare.com'].join(' ');
-  return `default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors *; form-action 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src ${scriptSources}; frame-src https://challenges.cloudflare.com; connect-src ${connectSources}`;
+  return `default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src ${scriptSources}; frame-src https://challenges.cloudflare.com; connect-src ${connectSources}`;
 };
 
 const securityHeaders = (_request: Request, response: Response, next: NextFunction): void => {
@@ -43,7 +43,9 @@ export const createApp = () => {
   const app = express();
   app.disable('x-powered-by');
   const configuredProxyHops = Number(process.env.TRUST_PROXY_HOPS);
-  app.set('trust proxy', Number.isInteger(configuredProxyHops) && configuredProxyHops > 0 ? configuredProxyHops : Boolean(process.env.RAILWAY_ENVIRONMENT));
+  // Railway places one managed edge proxy in front of the container. Trusting
+  // every hop would let a client-supplied X-Forwarded-For evade IP rate limits.
+  app.set('trust proxy', Number.isInteger(configuredProxyHops) && configuredProxyHops > 0 ? configuredProxyHops : process.env.RAILWAY_ENVIRONMENT ? 1 : false);
   app.use(securityHeaders);
   app.use(traceMiddleware);
   app.use((request, response, next) => {
@@ -106,6 +108,11 @@ export const createApp = () => {
     response.status(ready ? 200 : 503).json({ data: { status: ready ? 'READY' : 'NOT_READY', checks, traceId: request.traceId } });
   });
   app.use('/api/v1', createRateLimiter(60_000, 300));
+  app.use('/api/v1', (_request, response, next) => {
+    response.setHeader('Cache-Control', 'private, no-store, max-age=0');
+    response.setHeader('Pragma', 'no-cache');
+    next();
+  });
   app.use('/api/v1', apiRouter);
   app.use('/api/v1', (request, response) => response.status(404).json({ error: { code: 'API_NOT_FOUND', message: `Endpoint ${request.method} ${request.path} not found`, traceId: request.traceId } }));
   if (process.env.SENTRY_DSN) Sentry.setupExpressErrorHandler(app);

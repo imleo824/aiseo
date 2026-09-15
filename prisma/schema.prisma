@@ -199,11 +199,11 @@ enum DraftStatus {
   GENERATING
   QUALITY_FAILED
   PENDING_REVIEW
-  APPROVED
   REJECTED
   PUBLISHING
   PUBLISHED
   PUBLISH_FAILED
+  ROLLING_BACK
   ROLLED_BACK
 }
 
@@ -216,6 +216,7 @@ enum PublishAttemptStatus {
   QUEUED
   RUNNING
   SUCCEEDED
+  SKIPPED
   FAILED
   ROLLED_BACK
 }
@@ -246,7 +247,6 @@ enum GrowthActionType {
 enum GrowthActionStatus {
   PLANNED
   REVIEW_REQUIRED
-  APPROVED
   EXECUTING
   VERIFYING
   OBSERVING
@@ -371,7 +371,7 @@ model Site {
   organizationId                        String                          @map("organization_id") @db.Uuid
   domain                                String
   name                                  String
-  niche                                 String?                         @default("通用行业")
+  niche                                 String?
   language                              String                          @default("zh-CN")
   wordpressCredentials                  Bytes?                          @map("wordpress_credentials")
   wordpressCredentialKeyVersion         Int?                            @map("wordpress_credential_key_version")
@@ -633,7 +633,7 @@ model GrowthRun {
   programId          String             @map("program_id") @db.Uuid
   jobRunId           String?            @unique @map("job_run_id") @db.Uuid
   opportunityId      String?            @map("opportunity_id") @db.Uuid
-  draftId            String?            @map("draft_id") @db.Uuid
+  draftId            String?            @unique(map: "growth_runs_draft_id_key") @map("draft_id") @db.Uuid
   trigger            GrowthRunTrigger
   status             GrowthRunStatus    @default(QUEUED)
   currentStage       GrowthRunStageCode @default(UNDERSTAND) @map("current_stage")
@@ -659,7 +659,7 @@ model GrowthRun {
   draft              ContentDraft?      @relation(fields: [draftId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   stages             GrowthRunStage[]
   decisions          GrowthDecision[]
-  actions            GrowthAction[]
+  action             GrowthAction?
   siteSnapshot       SiteSnapshot?
   mutationLease      SiteMutationLease?
 
@@ -668,7 +668,6 @@ model GrowthRun {
   @@index([programId, status, createdAt(sort: Desc)], map: "growth_runs_program_status_created_idx")
   @@index([siteId, status, updatedAt], map: "growth_runs_site_status_updated_idx")
   @@index([opportunityId], map: "growth_runs_opportunity_idx")
-  @@index([draftId], map: "growth_runs_draft_idx")
   @@map("growth_runs")
 }
 
@@ -730,7 +729,7 @@ model GrowthAction {
   id                              String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId                  String                         @map("organization_id") @db.Uuid
   siteId                          String                         @map("site_id") @db.Uuid
-  runId                           String                         @map("run_id") @db.Uuid
+  runId                           String                         @unique(map: "growth_actions_run_id_key") @map("run_id") @db.Uuid
   decisionId                      String                         @unique @map("decision_id") @db.Uuid
   opportunityId                   String                         @map("opportunity_id") @db.Uuid
   type                            GrowthActionType
@@ -767,7 +766,6 @@ model GrowthAction {
 
   @@index([organizationId, siteId, status, observeUntil], map: "growth_actions_org_site_status_observe_idx")
   @@index([siteId, targetUrl, cooldownUntil], map: "growth_actions_site_url_cooldown_idx")
-  @@index([runId])
   @@index([opportunityId])
   @@index([wordpressCompatibilityProfileId], map: "growth_actions_wordpress_compatibility_idx")
   @@map("growth_actions")
@@ -1020,7 +1018,7 @@ model ContentDraft {
   reviews              DraftReview[]
   publishAttempts      PublishAttempt[]
   indexingObservations IndexingObservation[]
-  growthRuns           GrowthRun[]
+  growthRun            GrowthRun?
 
   @@index([organizationId, siteId, status, createdAt])
   @@index([siteId])

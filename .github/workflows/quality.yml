@@ -25,6 +25,7 @@ jobs:
       - run: npm run lint
       - run: npm run test:coverage
       - run: npm run build
+      - run: npm run verify:production-bundle
       - name: Audit production dependencies
         run: |
           for attempt in 1 2 3; do

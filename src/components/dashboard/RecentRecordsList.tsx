@@ -5,10 +5,10 @@ import {
   Search,
   Check,
   Eye,
-  Share2,
   CheckCircle2,
   ExternalLink,
-  X
+  X,
+  RotateCcw
 } from 'lucide-react';
 import { SafeArticleContent } from '../SafeArticleContent';
 
@@ -17,21 +17,41 @@ interface RecentRecordsListProps {
   sites?: WordPressSite[];
   onPreviewDraft?: (draft: ArticleDraft) => void;
   onApprovePublish?: (draftId: string) => Promise<void>;
-  onRePushIndexing?: (draftId: string) => Promise<void>;
+  onRejectDraft?: (draftId: string, comment: string) => Promise<void>;
+  onRetryPublish?: (draftId: string) => Promise<void>;
+  onStartGrowth?: () => void;
 }
+
+const statusPresentation: Record<ArticleDraft['status'], { label: string; className: string }> = {
+  DRAFT: { label: '生成中', className: 'bg-slate-100 text-slate-600 border-slate-200' },
+  QUALITY_PASSED: { label: '质检通过', className: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  QUALITY_FAILED: { label: '质检未通过', className: 'bg-rose-50 text-rose-700 border-rose-200' },
+  PENDING_APPROVAL: { label: '待人工确认', className: 'bg-amber-50 text-amber-800 border-amber-200' },
+  PUBLISHING: { label: '发布中', className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  PUBLISH_FAILED: { label: '发布失败', className: 'bg-rose-50 text-rose-700 border-rose-200' },
+  REJECTED: { label: '已拒绝', className: 'bg-slate-100 text-slate-600 border-slate-200' },
+  PUBLISHED: { label: '已上线', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  ROLLING_BACK: { label: '回滚中', className: 'bg-amber-50 text-amber-800 border-amber-200' },
+  ROLLED_BACK: { label: '已回滚', className: 'bg-slate-100 text-slate-600 border-slate-200' }
+};
 
 export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
   drafts = [],
   sites = [],
   onPreviewDraft,
   onApprovePublish,
-  onRePushIndexing
+  onRejectDraft,
+  onRetryPublish,
+  onStartGrowth
 }) => {
   const safeDrafts = drafts || [];
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PUBLISHED' | 'DRAFT'>('ALL');
-  const [pushingDraftId, setPushingDraftId] = useState<string | null>(null);
   const [publishingDraftId, setPublishingDraftId] = useState<string | null>(null);
+  const [retryingDraftId, setRetryingDraftId] = useState<string | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<ArticleDraft | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [isRejecting, setIsRejecting] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [activeDraftModal, setActiveDraftModal] = useState<ArticleDraft | null>(null);
 
@@ -45,34 +65,52 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
     return s?.name || '默认站点';
   };
 
-  const handlePush = async (draftId: string) => {
-    setPushingDraftId(draftId);
-    try {
-      if (onRePushIndexing) {
-        await onRePushIndexing(draftId);
-      } else {
-        showLocalToast('收录推送执行器未连接，未提交任何请求。');
-        return;
-      }
-      showLocalToast('已创建收录监测请求；普通文章将通过站点地图与 GSC 跟踪发现状态');
-    } catch {
-      showLocalToast('收录推送失败，未确认提交成功。');
-    } finally {
-      setPushingDraftId(null);
-    }
-  };
-
   const handleApprovePublish = async (draftId: string) => {
     if (!onApprovePublish) return;
     setPublishingDraftId(draftId);
     try {
       await onApprovePublish(draftId);
       setActiveDraftModal(null);
-      showLocalToast('审核通过，文章已发布到 WordPress');
+      showLocalToast('审核通过，WordPress 发布任务已进入后台队列');
     } catch (error) {
       showLocalToast(error instanceof Error ? error.message : '审核发布失败');
     } finally {
       setPublishingDraftId(null);
+    }
+  };
+
+  const handleRetryPublish = async (draftId: string) => {
+    if (!onRetryPublish) return;
+    setRetryingDraftId(draftId);
+    try {
+      await onRetryPublish(draftId);
+      setActiveDraftModal(null);
+      showLocalToast('重新发布任务已进入后台队列');
+    } catch (error) {
+      showLocalToast(error instanceof Error ? error.message : '重新发布失败');
+    } finally {
+      setRetryingDraftId(null);
+    }
+  };
+
+  const handleRejectDraft = async () => {
+    if (!rejectTarget || !onRejectDraft) return;
+    const comment = rejectionReason.trim();
+    if (!comment) {
+      showLocalToast('请填写拒绝原因');
+      return;
+    }
+    setIsRejecting(true);
+    try {
+      await onRejectDraft(rejectTarget.id, comment);
+      setRejectTarget(null);
+      setRejectionReason('');
+      setActiveDraftModal(null);
+      showLocalToast('交付已拒绝；已生成的可交付内容不会退还积分');
+    } catch (error) {
+      showLocalToast(error instanceof Error ? error.message : '拒绝交付失败');
+    } finally {
+      setIsRejecting(false);
     }
   };
 
@@ -112,7 +150,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索文章标题或分类..."
+              placeholder="搜索交付标题或类型..."
               className="w-full pl-9 pr-8 py-2 bg-slate-50/80 hover:bg-slate-100/60 focus:bg-white border border-slate-200/90 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-400 transition-colors shadow-2xs min-h-[40px]"
             />
             {searchQuery && (
@@ -154,7 +192,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
                 statusFilter === 'DRAFT' ? 'bg-white text-slate-950 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-950'
               }`}
             >
-              草稿
+              未上线
             </button>
           </div>
         </div>
@@ -171,9 +209,14 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
             </h4>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
               {safeDrafts.length === 0
-                ? '在上方启动增长任务或自动执行程序，生成的文章草稿与上线记录将实时呈现在此处。'
+                ? '启动一次增长任务后，真实草稿、站点修改和发布记录会显示在这里。'
                 : '请尝试更换搜索关键词或清除状态筛选条件。'}
             </p>
+            {safeDrafts.length === 0 && onStartGrowth && (
+              <button type="button" onClick={onStartGrowth} className="btn-primary min-h-[40px] px-4 text-xs mt-2">
+                开始第一次增长
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -184,7 +227,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
               const siteName = getSiteName(draft.siteId);
               const isPublished = draft.status === 'PUBLISHED';
               const score = draft.qualityGate?.overallScore;
-              const isPushing = pushingDraftId === draft.id;
+              const status = statusPresentation[draft.status];
 
               return (
                 <div
@@ -217,15 +260,9 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
                       <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md border font-bold text-[10px] ${score === undefined ? 'bg-slate-50 text-slate-600 border-slate-200/90' : 'bg-emerald-50 text-emerald-700 border-emerald-200/90'}`}>
                         {score === undefined ? '未质检' : `${score}分`}
                       </span>
-                      {isPublished ? (
-                        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-[10px] font-bold">
-                          已上线
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-semibold">
-                          草稿
-                        </span>
-                      )}
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[10px] font-bold ${status.className}`}>
+                        {status.label}
+                      </span>
                     </div>
                   </div>
 
@@ -253,6 +290,27 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
                       </button>
                     )}
 
+                    {draft.status === 'PENDING_APPROVAL' && onRejectDraft && (
+                      <button
+                        type="button"
+                        onClick={() => { setRejectTarget(draft); setRejectionReason(''); }}
+                        className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-semibold transition min-h-[38px] cursor-pointer"
+                      >
+                        拒绝
+                      </button>
+                    )}
+
+                    {draft.status === 'PUBLISH_FAILED' && onRetryPublish && (
+                      <button
+                        type="button"
+                        onClick={() => void handleRetryPublish(draft.id)}
+                        disabled={retryingDraftId === draft.id}
+                        className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-xs font-bold transition disabled:opacity-50 min-h-[38px] cursor-pointer"
+                      >
+                        {retryingDraftId === draft.id ? '提交中…' : '重新发布'}
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => {
@@ -265,17 +323,6 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
                       <span>预览</span>
                     </button>
 
-                    {isPublished && (
-                      <button
-                        type="button"
-                        onClick={() => handlePush(draft.id)}
-                        disabled={isPushing}
-                        className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 border border-emerald-200/90 rounded-xl text-xs font-semibold transition flex items-center gap-1 disabled:opacity-50 min-h-[38px] cursor-pointer"
-                      >
-                        <Share2 className={`w-3.5 h-3.5 text-emerald-600 ${isPushing ? 'animate-spin' : ''}`} />
-                        <span>推送</span>
-                      </button>
-                    )}
                   </div>
                 </div>
               );
@@ -300,7 +347,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
                   const siteName = getSiteName(draft.siteId);
                   const isPublished = draft.status === 'PUBLISHED';
                   const score = draft.qualityGate?.overallScore;
-                  const isPushing = pushingDraftId === draft.id;
+                  const status = statusPresentation[draft.status];
 
                   return (
                     <tr key={draft.id} className="hover:bg-slate-50/60 transition-colors">
@@ -338,16 +385,10 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
 
                       {/* Status */}
                       <td className="px-4 py-4 text-center whitespace-nowrap">
-                        {isPublished ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-xs font-bold">
-                            <Check className="w-3 h-3" />
-                            已上线
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-medium">
-                            草稿
-                          </span>
-                        )}
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg border text-xs font-bold ${status.className}`}>
+                          {isPublished && <Check className="w-3 h-3" />}
+                          {status.label}
+                        </span>
                       </td>
 
                       {/* Date */}
@@ -381,6 +422,27 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
                             </button>
                           )}
 
+                          {draft.status === 'PENDING_APPROVAL' && onRejectDraft && (
+                            <button
+                              type="button"
+                              onClick={() => { setRejectTarget(draft); setRejectionReason(''); }}
+                              className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-semibold transition min-h-[38px] cursor-pointer"
+                            >
+                              拒绝
+                            </button>
+                          )}
+
+                          {draft.status === 'PUBLISH_FAILED' && onRetryPublish && (
+                            <button
+                              type="button"
+                              onClick={() => void handleRetryPublish(draft.id)}
+                              disabled={retryingDraftId === draft.id}
+                              className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-xs font-bold transition disabled:opacity-50 min-h-[38px] cursor-pointer"
+                            >
+                              {retryingDraftId === draft.id ? '提交中…' : '重新发布'}
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => {
@@ -393,17 +455,6 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
                             <span>预览</span>
                           </button>
 
-                          {isPublished && (
-                            <button
-                              type="button"
-                              onClick={() => handlePush(draft.id)}
-                              disabled={isPushing}
-                              className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 border border-emerald-200/90 rounded-xl text-xs font-semibold transition flex items-center gap-1 disabled:opacity-50 min-h-[38px] cursor-pointer"
-                            >
-                              <Share2 className={`w-3.5 h-3.5 text-emerald-600 ${isPushing ? 'animate-spin' : ''}`} />
-                              <span>推送</span>
-                            </button>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -450,6 +501,15 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
             </div>
 
             <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-2.5 bg-slate-50/50">
+              {activeDraftModal.status === 'PENDING_APPROVAL' && onRejectDraft && (
+                <button
+                  type="button"
+                  onClick={() => { setRejectTarget(activeDraftModal); setRejectionReason(''); }}
+                  className="px-4 py-2.5 bg-white text-rose-700 border border-rose-200 rounded-xl text-xs sm:text-sm font-semibold hover:bg-rose-50 transition min-h-[40px] cursor-pointer"
+                >
+                  拒绝交付
+                </button>
+              )}
               {activeDraftModal.status === 'PENDING_APPROVAL' && onApprovePublish && (
                 <button
                   type="button"
@@ -460,12 +520,57 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
                   {publishingDraftId === activeDraftModal.id ? '正在发布…' : '审核通过并发布'}
                 </button>
               )}
+              {activeDraftModal.status === 'PUBLISH_FAILED' && onRetryPublish && (
+                <button
+                  type="button"
+                  onClick={() => void handleRetryPublish(activeDraftModal.id)}
+                  disabled={retryingDraftId === activeDraftModal.id}
+                  className="px-5 py-2.5 bg-amber-600 text-white rounded-xl text-xs sm:text-sm font-bold hover:bg-amber-700 transition disabled:opacity-50 min-h-[40px] shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  {retryingDraftId === activeDraftModal.id ? '提交中…' : '重新发布'}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setActiveDraftModal(null)}
                 className="px-5 py-2.5 bg-slate-950 text-white rounded-xl text-xs sm:text-sm font-bold hover:bg-slate-800 active:bg-slate-900 transition min-h-[40px] shadow-xs cursor-pointer"
               >
                 关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {rejectTarget && (
+        <div className="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="reject-draft-title" className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 id="reject-draft-title" className="font-bold text-slate-950">拒绝本次交付</h3>
+                <p className="mt-1 text-xs text-slate-500">拒绝后不会写入 WordPress；已生成的可交付内容不退还积分。</p>
+              </div>
+              <button type="button" onClick={() => setRejectTarget(null)} aria-label="关闭拒绝确认" className="w-9 h-9 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-2">
+              <label htmlFor="rejection-reason" className="text-xs font-bold text-slate-700">拒绝原因</label>
+              <textarea
+                id="rejection-reason"
+                value={rejectionReason}
+                onChange={(event) => setRejectionReason(event.target.value)}
+                maxLength={2_000}
+                rows={4}
+                placeholder="请说明不接受本次交付的原因"
+                className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-slate-400"
+              />
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-2.5">
+              <button type="button" onClick={() => setRejectTarget(null)} disabled={isRejecting} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50 cursor-pointer">取消</button>
+              <button type="button" onClick={() => void handleRejectDraft()} disabled={isRejecting || !rejectionReason.trim()} className="px-4 py-2.5 rounded-xl bg-rose-600 text-white text-sm font-bold hover:bg-rose-700 disabled:opacity-50 cursor-pointer">
+                {isRejecting ? '处理中…' : '确认拒绝'}
               </button>
             </div>
           </div>

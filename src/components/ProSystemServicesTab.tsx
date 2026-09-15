@@ -7,22 +7,22 @@ type ProviderStatus = Record<string, boolean | string | number | null | undefine
 const PROVIDER_METADATA: Record<string, { title: string; desc: string; category: string }> = {
   workerOnline: {
     title: '后台异步任务工作节点 (Worker Engine)',
-    desc: '负责长任务执行、SERP 关键词数据拉取、自动文章生成与 WordPress 队列发布',
+    desc: '负责可恢复任务、搜索数据采集、内容动作、WordPress 写入与观察任务',
     category: '核心运行时'
   },
   contentAi: {
     title: 'AI 创作与 SEO 润色引擎 (Gemini / OpenAI)',
-    desc: '负责深度长文生成、EEAT 专业维度对齐、Schema 结构化标记与内链锚点建议',
+    desc: '负责结构化 brief、来源约束内容、局部内容动作与内链建议；确定性质量门禁独立执行',
     category: '内容智能'
   },
   dataForSeo: {
     title: 'SEO 真实检索数据源 (DataForSEO)',
-    desc: '负责 Google SERP 排名监测、真实搜索量预估、CPC 与关键词竞品分析',
+    desc: '负责搜索量、关键词难度、搜索意图、SERP、站点排名词与竞品内容缺口数据',
     category: 'SEO 数据'
   },
   gsc: {
     title: 'Google Search Console (GSC)',
-    desc: '负责官方站长平台数据集成、收录索引状态追踪与搜索流量回读',
+    desc: '负责查询和页面维度的点击、曝光、CTR 与平均排名回读，用于效果观察',
     category: 'Google 站长'
   },
   trc20Payments: {
@@ -86,7 +86,7 @@ export const ProSystemServicesTab: React.FC<{ tenantId: string }> = ({ tenantId 
             </h3>
             <p className="text-xs text-slate-500">这是全平台唯一开关，对全部客户站点与手动、定时任务同时生效。</p>
             <p className="text-xs font-semibold text-slate-700 pt-0.5">
-              {requireManualConfirmation ? '已开启：文章生成后，需在「内容审核」中手动确认才发布。' : '已关闭：文章生成后，将自动发布到您的 WordPress 网站。'}
+              {requireManualConfirmation ? '已开启：可交付结果生成后，需在「内容审核」中手动确认才写入站点。' : '已关闭：通过全部安全门禁后，系统会自动写入 WordPress。'}
             </p>
           </div>
           <button

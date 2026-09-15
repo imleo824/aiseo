@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectPaginatedRows, keywordCandidateFromItem, selectGscProperty, targetRankFromSerp } from './providers';
+import { collectPaginatedRows, keywordCandidateFromItem, selectGscProperty, targetRankFromSerp, validateTrc20TransferRecord } from './providers';
 
 describe('DataForSEO response contracts', () => {
   it('parses top-level keyword suggestion metrics', () => {
@@ -81,5 +81,48 @@ describe('SERP target evidence', () => {
     ] };
     expect(targetRankFromSerp(serp, 'https://example.com/guide')).toBe(7);
     expect(targetRankFromSerp(serp, 'https://example.com/other')).toBeNull();
+  });
+});
+
+describe('TRC20 payment evidence', () => {
+  const input = {
+    recipientAddress: 'TRecipient',
+    expectedAmountMicros: 10_000_001n,
+    notBefore: new Date('2026-09-13T00:00:00.000Z'),
+    notAfter: new Date('2026-09-13T00:30:00.000Z')
+  };
+  const transfer = {
+    transaction_id: 'a'.repeat(64),
+    from: 'TSender',
+    to: input.recipientAddress,
+    value: input.expectedAmountMicros.toString(),
+    block_timestamp: input.notBefore.getTime() + 1_000,
+    token_info: { address: 'TContract' }
+  };
+
+  it('accepts only the exact recipient, contract, amount and time window', () => {
+    expect(validateTrc20TransferRecord(transfer, input, 'TContract')).toMatchObject({
+      transactionId: transfer.transaction_id,
+      valueMicros: '10000001',
+      confirmed: true
+    });
+  });
+
+  it('classifies a wrong amount as a terminal customer transfer mismatch', () => {
+    try {
+      validateTrc20TransferRecord({ ...transfer, value: '10000002' }, input, 'TContract');
+      throw new Error('expected validation to fail');
+    } catch (error) {
+      expect(error).toMatchObject({ errorCode: 'PAYMENT_VERIFICATION_REJECTED' });
+    }
+  });
+
+  it('treats malformed provider data as a retriable provider failure', () => {
+    try {
+      validateTrc20TransferRecord({ ...transfer, block_timestamp: 'invalid' }, input, 'TContract');
+      throw new Error('expected validation to fail');
+    } catch (error) {
+      expect(error).toMatchObject({ errorCode: 'EXTERNAL_SERVICE_ERROR' });
+    }
   });
 });

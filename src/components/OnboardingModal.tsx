@@ -1,11 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Language, SiteType, WordPressSite } from '../types/seo';
 import {
   X,
   Globe,
-  Key,
-  Layers,
-  Languages
+  Key
 } from 'lucide-react';
 
 interface OnboardingModalProps {
@@ -15,34 +13,33 @@ interface OnboardingModalProps {
     domain: string;
     name: string;
     siteType?: SiteType;
-    siteLanguage?: Language | string;
+    siteLanguage?: Language;
     niche?: string;
   }) => Promise<WordPressSite | void>;
   onAuthorizeWordPress: (siteId: string) => Promise<{ authorizationUrl: string }>;
+  defaultLanguage: Language;
 }
-
-const getDefaultLanguage = (): string => {
-  if (typeof navigator !== 'undefined' && navigator.language) {
-    const lang = navigator.language.toLowerCase();
-    if (lang.startsWith('zh')) return 'zh-CN';
-    if (lang.startsWith('en')) return 'en-US';
-  }
-  return 'zh-CN';
-};
 
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   isOpen,
   onClose,
   onAddSite,
-  onAuthorizeWordPress
+  onAuthorizeWordPress,
+  defaultLanguage
 }) => {
   const [domain, setDomain] = useState('');
-  const [name, setName] = useState('');
   const siteType: SiteType = 'WORDPRESS';
-  const [siteLanguage, setSiteLanguage] = useState<string>(getDefaultLanguage());
-  const [niche, setNiche] = useState('企业出海与技术服务');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const domainInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    domainInput.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape' && !submitting) onClose(); };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [isOpen, onClose, submitting]);
 
   if (!isOpen) return null;
 
@@ -57,10 +54,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     try {
       const site = await onAddSite({
         domain: cleanDomain,
-        name: name.trim() || cleanDomain,
+        name: cleanDomain,
         siteType,
-        siteLanguage,
-        niche: niche.trim() || undefined
+        siteLanguage: defaultLanguage,
+        niche: undefined
       });
       if (!site) throw new Error('站点创建后未返回记录');
       const authorization = await onAuthorizeWordPress(site.id);
@@ -74,7 +71,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white border border-slate-200/90 rounded-2xl max-w-lg w-full my-auto max-h-[92dvh] flex flex-col shadow-xl animate-in zoom-in-95 duration-150">
+      <div role="dialog" aria-modal="true" aria-labelledby="add-site-dialog-title" className="bg-white border border-slate-200/90 rounded-2xl max-w-lg w-full my-auto max-h-[92dvh] flex flex-col shadow-xl animate-in zoom-in-95 duration-150">
 
         {/* Header */}
         <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10 bg-white rounded-t-2xl">
@@ -83,7 +80,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <Globe className="w-4 h-4 text-slate-700" />
             </div>
             <div>
-              <h3 className="font-bold text-base text-slate-900">添加新站点</h3>
+              <h3 id="add-site-dialog-title" className="font-bold text-base text-slate-900">添加新站点</h3>
             </div>
           </div>
 
@@ -101,70 +98,23 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 text-xs overflow-y-auto flex-1">
           {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 leading-5 text-rose-800">{error}</div>}
 
-          {/* Site Type & Language */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="font-semibold text-slate-700 flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5 text-slate-500" />
-                <span>站点类型</span>
-              </label>
-              <div className="w-full px-3 py-2.5 sm:py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium min-h-[44px] sm:min-h-[38px] flex items-center">WordPress (首期支持)</div>
-              <p className="text-[10px] leading-4 text-slate-500">首期正式版支持 WordPress HTTPS REST API，后续将支持更多 CMS 平台。</p>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="font-semibold text-slate-700 flex items-center gap-1.5">
-                <Languages className="w-3.5 h-3.5 text-slate-500" />
-                <span>站点语言</span>
-              </label>
-              <select
-                value={siteLanguage}
-                onChange={e => setSiteLanguage(e.target.value)}
-                className="select-field"
-              >
-                <option value="zh-CN">简体中文 (zh-CN)</option>
-                <option value="en-US">英语 - 美国 (en-US)</option>
-              </select>
-            </div>
-          </div>
-
           {/* Domain Input */}
           <div className="space-y-1.5">
-            <label className="font-semibold text-slate-700 flex items-center justify-between">
+            <label htmlFor="wordpress-domain" className="font-semibold text-slate-700 flex items-center justify-between">
               <span>站点域名 <span className="text-rose-500">*</span></span>
             </label>
             <input
+              ref={domainInput}
+              id="wordpress-domain"
               type="text"
+              inputMode="url"
+              autoComplete="url"
               required
               placeholder="例如 example.com"
               value={domain}
               onChange={e => setDomain(e.target.value)}
               className="input-field"
             />
-          </div>
-
-          {/* Name & Niche */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="font-semibold text-slate-700">站点名称</label>
-              <input
-                type="text"
-                placeholder="默认使用域名"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                className="input-field"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="font-semibold text-slate-700">所属行业</label>
-              <input
-                type="text"
-                value={niche}
-                onChange={e => setNiche(e.target.value)}
-                placeholder="例如：企业 SaaS、跨境电商"
-                className="input-field"
-              />
-            </div>
           </div>
 
           {/* WordPress grants credentials on the customer site; secrets are never entered here. */}
@@ -180,7 +130,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             </div>
 
             <p className="text-[11px] leading-5 text-slate-600 font-medium">
-              点击下方按钮后会跳转到您的 WordPress 站点。批准后系统会自动识别版本、编辑器、插件公开能力及安全动作范围；凭证不会显示在浏览器中。
+              只需输入域名。系统会跳转到您的 WordPress 站点完成一次官方授权；授权完成后，首次执行会自动理解站点语言、内容结构、编辑器及安全动作范围。无需向 AISEO 输入 WordPress 账号或密码。
             </p>
           </div>
 

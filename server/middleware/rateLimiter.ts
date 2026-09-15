@@ -41,7 +41,8 @@ export function createRateLimiter(windowMs: number = 60000, maxMax: number = 300
         error: {
           code: 'TOO_MANY_REQUESTS',
           message: '请求过于频繁，触发系统防护阈值，请稍后再试。',
-          retryAfterSeconds
+          retryAfterSeconds,
+          traceId: req.traceId
         }
       });
     }

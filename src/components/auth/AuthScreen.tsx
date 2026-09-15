@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { supabase } from '../../lib/supabase';
+import { getSupabaseBrowserClient } from '../../lib/supabase';
 import { useAuth } from '../../auth/AuthProvider';
 import { LegalLinks } from '../LegalLinks';
 
@@ -33,11 +33,12 @@ function Turnstile({ onToken }: { onToken: (token: string | null) => void }) {
     }
     return () => { if (widgetId.current && window.turnstile) window.turnstile.remove(widgetId.current); };
   }, [onToken]);
-  if (!turnstileSiteKey) return <p className="text-xs text-slate-400 py-1">（当前环境无需人机验证）</p>;
+  if (!turnstileSiteKey) return null;
   return <div ref={container} />;
 }
 
 export function AuthScreen() {
+  const supabase = getSupabaseBrowserClient();
   const { recovery } = useAuth();
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot' | 'recovery'>(recovery ? 'recovery' : 'login');
   const [email, setEmail] = useState('');
@@ -66,7 +67,7 @@ export function AuthScreen() {
           }
         });
         if (error) throw error;
-        setMessage('验证邮件已发送。完成邮箱验证后才能创建组织。');
+        setMessage('验证邮件已发送。完成邮箱验证后即可登录并连接站点。');
       } else if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
         if (error) throw error;
@@ -101,9 +102,11 @@ export function AuthScreen() {
         <form onSubmit={submit} className="space-y-4">
           {mode === 'signup' && (
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-700">姓名</label>
+              <label htmlFor="auth-display-name" className="block text-xs font-semibold text-slate-700">姓名</label>
               <input
+                id="auth-display-name"
                 className="input-field"
+                autoComplete="name"
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
                 placeholder="例如：张工"
@@ -114,10 +117,12 @@ export function AuthScreen() {
 
           {mode !== 'recovery' && (
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-700">工作邮箱</label>
+              <label htmlFor="auth-email" className="block text-xs font-semibold text-slate-700">工作邮箱</label>
               <input
+                id="auth-email"
                 className="input-field"
                 type="email"
+                autoComplete="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="name@company.com"
@@ -129,14 +134,16 @@ export function AuthScreen() {
           {mode !== 'forgot' && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="block text-xs font-semibold text-slate-700">密码</label>
+                <label htmlFor="auth-password" className="block text-xs font-semibold text-slate-700">密码</label>
                 {mode === 'signup' && (
                   <span className="text-[11px] text-slate-400">最少 10 个字符</span>
                 )}
               </div>
               <input
+                id="auth-password"
                 className="input-field"
                 type="password"
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 minLength={10}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}

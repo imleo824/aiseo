@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   Key,
   Layers,
-  Languages,
   Sliders,
   X,
   RefreshCw
@@ -44,15 +43,11 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
   const [editForm, setEditForm] = useState<{
     name: string;
     domain: string;
-    niche: string;
     siteType: SiteType;
-    siteLanguage: string;
   }>({
     name: '',
     domain: '',
-    niche: '',
     siteType: 'WORDPRESS',
-    siteLanguage: 'zh-CN',
   });
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -81,9 +76,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
     setEditForm({
       name: site.name || '',
       domain: site.domain || '',
-      niche: site.niche || '',
       siteType: site.siteType || 'WORDPRESS',
-      siteLanguage: site.siteLanguage || 'zh-CN',
     });
   };
 
@@ -115,9 +108,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
       await onUpdateSite(siteId, {
         name: trimmedName,
         domain: cleanDomain,
-        niche: editForm.niche.trim() || '通用行业',
         siteType: editForm.siteType,
-        siteLanguage: editForm.siteLanguage,
       });
 
       setEditingSiteId(null);
@@ -163,20 +154,6 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
   };
 
   const filteredSites = safeSites;
-
-  const getLanguageLabel = (lang: string) => {
-    switch (lang) {
-      case 'zh-CN': return '简体中文 (zh-CN)';
-      case 'en-US': return '英语 / 美国 (en-US)';
-      case 'en': return '英语 / 通用 (en)';
-      case 'ja': return '日语 (ja)';
-      case 'ko': return '韩语 (ko)';
-      case 'de': return '德语 (de)';
-      case 'fr': return '法语 (fr)';
-      case 'es': return '西班牙语 (es)';
-      default: return lang || '默认语言';
-    }
-  };
 
   const getSiteTypeLabel = (type?: SiteType) => {
     void type;
@@ -269,7 +246,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                           </span>
 
                           <span className="text-xs text-slate-600 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-lg font-medium">
-                            {getLanguageLabel(site.siteLanguage)}
+                            执行时自动判断语言与目标市场
                           </span>
 
                           <a
@@ -284,10 +261,6 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                         </div>
 
                         <div className="flex items-center gap-2.5 text-xs text-slate-500 flex-wrap pt-0.5">
-                          <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg font-medium">
-                            行业: {site.niche || '通用'}
-                          </span>
-
                           {site.connectorStatus === 'CONNECTED' || site.connectorStatus === 'CHECKING' ? (
                             <span className="text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-lg flex items-center gap-1 font-semibold">
                               <Key className="w-3 h-3" />
@@ -422,7 +395,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <div className="grid grid-cols-1 gap-3 pt-1">
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
                       <Layers className="w-3.5 h-3.5 text-slate-500" />
@@ -432,32 +405,6 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                       <span className="w-2 h-2 rounded-full bg-blue-600" />
                       <span>{getSiteTypeLabel(editForm.siteType)}</span>
                     </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                      <Languages className="w-3.5 h-3.5 text-slate-500" />
-                      <span>站点语言</span>
-                    </label>
-                    <select
-                      value={editForm.siteLanguage}
-                      onChange={(e) => setEditForm({ ...editForm, siteLanguage: e.target.value })}
-                      className="w-full px-3 py-2.5 bg-slate-50/80 border border-slate-200/90 rounded-xl text-slate-900 text-xs sm:text-sm font-semibold focus:outline-none focus:bg-white focus:border-slate-400 transition-colors min-h-[40px] cursor-pointer"
-                    >
-                      <option value="zh-CN">🇨🇳 简体中文</option>
-                      <option value="en-US">🇺🇸 英语 (美国)</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700">所属行业</label>
-                    <input
-                      type="text"
-                      value={editForm.niche}
-                      onChange={(e) => setEditForm({ ...editForm, niche: e.target.value })}
-                      className="w-full px-3.5 py-2.5 bg-slate-50/80 border border-slate-200/90 rounded-xl text-slate-900 text-xs sm:text-sm font-medium focus:outline-none focus:bg-white focus:border-slate-400 transition-colors min-h-[40px]"
-                      placeholder="行业分类"
-                    />
                   </div>
                 </div>
               </div>

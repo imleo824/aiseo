@@ -136,7 +136,7 @@ test('持续增长与一次性执行使用同一套组合输入契约', async ({
   const fixture = await installBusinessApi(page);
   await page.goto('/');
   await page.getByRole('button', { name: '自动执行', exact: true }).click();
-  await page.getByRole('button', { name: '新建持续增长' }).click();
+  await page.getByRole('button', { name: '新建自动计划' }).click();
   await page.getByPlaceholder('每行一个，可输入多个').fill('wordpress seo\n内容增长');
   const urlInputs = page.getByPlaceholder('每行一个完整 HTTPS 地址，可不填');
   await urlInputs.nth(0).fill('https://reference.example.com/guide');

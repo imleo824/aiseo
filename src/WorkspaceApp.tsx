@@ -32,7 +32,7 @@ const getDefaultLanguage = (): Language => {
   return 'zh-CN';
 };
 
-export default function LegacyApp() {
+export default function WorkspaceApp() {
   const [activeTenantId, setActiveTenantId] = useState<string>('');
   const [activeNav, setActiveNav] = useState<NavItem>('DASHBOARD');
   const [globalLanguage, setGlobalLanguage] = useState<Language>(getDefaultLanguage());
@@ -51,6 +51,7 @@ export default function LegacyApp() {
     allTenants,
     growthStatuses,
     loading,
+    loadError,
     actions
   } = useTenantData(activeTenantId, globalLanguage, (newTid) => {
     setActiveTenantId(newTid);
@@ -61,22 +62,22 @@ export default function LegacyApp() {
       case 'DASHBOARD':
         return {
           title: '一键手动增长',
-          desc: '输入关键词、参考文章或竞品站点，快速生成并发布优质 SEO 文章到您的站点'
+          desc: '提供关键词、参考文章或竞品站点，系统自动选择并执行最值得做的安全 SEO 动作'
         };
       case 'SITE_MANAGEMENT':
         return {
           title: '我的增长站点',
-          desc: '绑定和管理您的网站，配置语言、发布设置与连接状态（首期已支持 WordPress）'
+          desc: '连接并管理 WordPress 站点，查看授权、兼容能力与效果验证状态'
         };
       case 'AUTOPILOT_TASKS':
         return {
           title: '自动定时增长',
-          desc: '配置自动巡航任务，让系统每天定时自动挖掘热词、撰写长文并自动推送到网站'
+          desc: '系统按真实新证据调度增长动作；没有合格机会时自动跳过且不扣费'
         };
       case 'AUDIT_LEDGER':
         return {
           title: '内容列表与审核',
-          desc: '查看所有已生成文章的标题、内容、发布状态，支持一键下线或手动审核发布'
+          desc: '查看增长动作、可交付内容、发布状态与需要人工确认的任务'
         };
       case 'CREDIT_LEDGER':
         return {
@@ -86,27 +87,27 @@ export default function LegacyApp() {
       case 'PRICING_CONFIG':
         return {
           title: '付费价格配置',
-          desc: '管理系统各项 AI 操作 and 发布动作的积分扣费单价与套餐包'
+          desc: '管理系统各项 AI 操作和发布动作的积分扣费单价与套餐包'
         };
       case 'SYSTEM_SERVICES_CONFIG':
         return {
           title: '全局系统设置',
-          desc: '配置发布确认模式、审查策略，and 查看底层大模型与第三方服务的集成状态'
+          desc: '配置发布确认模式与审查策略，并查看大模型和第三方服务的真实状态'
         };
       case 'TENANT_MANAGEMENT':
         return {
-          title: '租户与用户管理',
-          desc: '管理多租户子账号的分配、角色权限和积分配额'
+          title: '客户工作区管理',
+          desc: '查看客户工作区、账户状态和管理员积分调整记录'
         };
       case 'SYSTEM_PAYMENT_MANAGEMENT':
         return {
-          title: '充值订单核销',
-          desc: '查看并核销租户通过 USDT 等方式提交的链上充值申请'
+          title: '充值订单监控',
+          desc: '查看 TRC20 链上核验、确认与入账状态；结算仅由验证 Worker 执行'
         };
       case 'SYSTEM_BILLING_MANAGEMENT':
         return {
-          title: '全平台消耗审计',
-          desc: '审计所有租户在生成、分析、检测等环节消耗的具体账单流水'
+          title: '用量与扣费审计',
+          desc: '审计所有客户工作区在分析、生成和发布环节产生的真实账单流水'
         };
       default:
         return {
@@ -123,9 +124,25 @@ export default function LegacyApp() {
       <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
         <div className="text-center space-y-3 font-mono">
           <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <div className="text-xs text-slate-400 font-medium">正在同步租户与积分账户数据...</div>
+          <div className="text-xs text-slate-400 font-medium">正在同步客户工作区与积分账户数据...</div>
         </div>
       </div>
+    );
+  }
+
+  if (loadError && !loading) {
+    return (
+      <main className="min-h-screen grid place-items-center bg-slate-50/80 p-6">
+        <section className="bg-white border border-slate-200/90 rounded-2xl max-w-lg p-6 sm:p-8 space-y-4 shadow-2xs" role="alert">
+          <h1 className="text-xl font-bold text-slate-950">业务数据暂时无法加载</h1>
+          <p className="text-sm text-slate-600 leading-relaxed">
+            {loadError instanceof Error ? loadError.message : '服务器未返回可用数据。请稍后重试。'}
+          </p>
+          <button className="btn-primary min-h-[44px] w-full" onClick={() => void actions.loadTenantData()}>
+            重新加载
+          </button>
+        </section>
+      </main>
     );
   }
 
@@ -213,6 +230,8 @@ export default function LegacyApp() {
               <select
                 value={globalLanguage}
                 onChange={(e) => setGlobalLanguage(e.target.value as Language)}
+                aria-label="新站默认内容语言"
+                title="新站默认内容语言"
                 className="bg-transparent text-slate-800 focus:outline-none cursor-pointer font-semibold text-xs sm:text-sm"
               >
                 <option value="zh-CN">CH</option>
@@ -255,6 +274,7 @@ export default function LegacyApp() {
               onCreateTask={actions.handleCreateTask}
               onToggleTask={actions.handleToggleTask}
               onRunTaskNow={actions.handleRunTaskNow}
+              onOpenSiteManagement={() => setActiveNav('SITE_MANAGEMENT')}
             />
           )}
 
@@ -263,6 +283,9 @@ export default function LegacyApp() {
               sites={sites}
               drafts={drafts}
               onApprovePublish={actions.handleApprovePublish}
+              onRejectDraft={actions.handleRejectDraft}
+              onRetryPublish={actions.handleRetryPublish}
+              onStartGrowth={() => setActiveNav('DASHBOARD')}
             />
           )}
 
@@ -332,6 +355,7 @@ export default function LegacyApp() {
           onClose={() => setIsOnboardingOpen(false)}
           onAddSite={actions.handleAddSite}
           onAuthorizeWordPress={actions.handleAuthorizeWordPress}
+          defaultLanguage={globalLanguage}
         />
       )}
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Users, Shield, Search, RefreshCw, Coins, CreditCard, UserCheck, PlusCircle, MinusCircle, X, AlertCircle } from 'lucide-react';
 import { TenantAccount } from '../types/seo';
 import { createApiService } from '../services/api';
+import { canonicalDecimal, compareDecimals, formatDecimal, negateDecimal, sumDecimals } from '../lib/fixedDecimal';
 
 interface ProTenantManagementTabProps {
   account?: TenantAccount | null;
@@ -18,17 +19,19 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
   const [tenants, setTenants] = useState<TenantAccount[]>(initialTenants || []);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Modal State for Credit Adjustment
   const [adjustTarget, setAdjustTarget] = useState<TenantAccount | null>(null);
   const [adjustType, setAdjustType] = useState<'TOPUP' | 'DEDUCT'>('TOPUP');
-  const [adjustAmount, setAdjustAmount] = useState<number>(500);
+  const [adjustAmount, setAdjustAmount] = useState<string>('500');
   const [adjustReason, setAdjustReason] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [adjustMessage, setAdjustMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const fetchTenants = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const api = createApiService(activeTenantId);
       const res = await api.listTenants();
@@ -36,7 +39,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
         setTenants(res.tenants);
       }
     } catch (err) {
-      console.error('Failed to load tenants list', err);
+      setLoadError(err instanceof Error ? err.message : '客户工作区列表加载失败');
     } finally {
       setLoading(false);
     }
@@ -46,7 +49,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
     if (initialTenants && initialTenants.length > 0) {
       setTenants(initialTenants);
     } else {
-      fetchTenants();
+      void fetchTenants();
     }
   }, [initialTenants]);
 
@@ -71,15 +74,26 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
   const stats = useMemo(() => {
     const totalCount = tenants.length;
     const adminCount = tenants.filter(t => t.role === 'ADMIN').length;
-    const totalCredits = tenants.reduce((acc, t) => acc + (t.credits || 0), 0);
-    const totalUsdt = tenants.reduce((acc, t) => acc + (t.totalRechargedUsdt || 0), 0);
+    const totalCredits = sumDecimals(...tenants.map((tenant) => tenant.credits));
+    const totalUsdt = sumDecimals(...tenants.map((tenant) => tenant.totalRechargedUsdt));
     return { totalCount, adminCount, totalCredits, totalUsdt };
   }, [tenants]);
+
+  const adjustedBalancePreview = useMemo(() => {
+    if (!adjustTarget) return null;
+    try {
+      const amount = canonicalDecimal(adjustAmount);
+      const next = sumDecimals(adjustTarget.credits, adjustType === 'TOPUP' ? amount : negateDecimal(amount));
+      return compareDecimals(next, '0') < 0 ? '余额不足' : `${formatDecimal(next)} 积分`;
+    } catch {
+      return '请输入有效金额';
+    }
+  }, [adjustAmount, adjustTarget, adjustType]);
 
   const handleOpenAdjustModal = (tenant: TenantAccount) => {
     setAdjustTarget(tenant);
     setAdjustType('TOPUP');
-    setAdjustAmount(500);
+    setAdjustAmount('500');
     setAdjustReason('');
     setAdjustMessage(null);
   };
@@ -88,18 +102,33 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
     e.preventDefault();
     if (!adjustTarget) return;
 
-    if (!adjustAmount || adjustAmount <= 0) {
+    let normalizedAmount: string;
+    try {
+      normalizedAmount = canonicalDecimal(adjustAmount);
+    } catch {
       setAdjustMessage({ type: 'error', text: '请输入有效的变动积分数量' });
       return;
     }
+    if (compareDecimals(normalizedAmount, '0') <= 0) {
+      setAdjustMessage({ type: 'error', text: '变动积分必须大于 0' });
+      return;
+    }
+    if (adjustType === 'DEDUCT' && compareDecimals(normalizedAmount, adjustTarget.credits) > 0) {
+      setAdjustMessage({ type: 'error', text: '扣减金额不能超过当前可用积分' });
+      return;
+    }
+    if (adjustReason.trim().length < 10) {
+      setAdjustMessage({ type: 'error', text: '为满足审计要求，调整原因至少填写 10 个字符' });
+      return;
+    }
 
-    const delta = adjustType === 'TOPUP' ? Math.abs(adjustAmount) : -Math.abs(adjustAmount);
+    const delta = adjustType === 'TOPUP' ? normalizedAmount : negateDecimal(normalizedAmount);
     setSubmitting(true);
     setAdjustMessage(null);
 
     try {
       const api = createApiService(activeTenantId);
-      const res = await api.adjustTenantCredits(adjustTarget.id, delta, adjustReason);
+      const res = await api.adjustTenantCredits(adjustTarget.id, delta, adjustReason.trim());
       if (res.success) {
         setAdjustMessage({ type: 'success', text: res.message });
         setTimeout(() => {
@@ -123,7 +152,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-2">
           <div className="flex items-center justify-between text-slate-600 text-xs font-bold">
-            <span>总租户规模</span>
+            <span>客户工作区总数</span>
             <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shadow-2xs">
               <Users className="w-4 h-4" />
             </div>
@@ -135,13 +164,13 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
 
         <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-2">
           <div className="flex items-center justify-between text-slate-600 text-xs font-bold">
-            <span>平台积分可用池</span>
+            <span>客户可用积分合计</span>
             <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shadow-2xs">
               <Coins className="w-4 h-4" />
             </div>
           </div>
           <div className="text-3xl font-black text-slate-950 tracking-tight">
-            {stats.totalCredits.toLocaleString()} <span className="text-xs font-medium text-slate-500">积分</span>
+            {formatDecimal(stats.totalCredits)} <span className="text-xs font-medium text-slate-500">积分</span>
           </div>
         </div>
 
@@ -153,7 +182,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
             </div>
           </div>
           <div className="text-3xl font-black text-slate-950 tracking-tight">
-            ${stats.totalUsdt.toLocaleString()} <span className="text-xs font-medium text-slate-500">USDT</span>
+            {formatDecimal(stats.totalUsdt)} <span className="text-xs font-medium text-slate-500">USDT</span>
           </div>
         </div>
       </div>
@@ -164,29 +193,45 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
           <div className="text-xs font-bold text-slate-950">
-            全部租户列表 ({filteredTenants.length})
+            全部客户工作区 ({filteredTenants.length})
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {/* Search Input */}
             <div className="relative w-full sm:w-64">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
                 type="text"
-                placeholder="搜索租户名、Email或ID..."
+                placeholder="搜索客户名称、Email 或 ID..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 pr-3.5 py-2 text-xs sm:text-sm border border-slate-200/90 rounded-xl bg-slate-50/80 hover:bg-slate-100/60 focus:bg-white focus:outline-none focus:border-slate-400 w-full transition-colors min-h-[38px]"
               />
             </div>
+            <button
+              type="button"
+              onClick={() => void handleRefresh()}
+              disabled={loading}
+              className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl border border-slate-200/90 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-800 transition hover:bg-slate-200 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+              刷新
+            </button>
           </div>
         </div>
+
+        {loadError && (
+          <div className="m-4 flex items-start gap-2 rounded-xl border border-rose-200/90 bg-rose-50 p-3.5 text-xs font-medium text-rose-800" role="alert">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>客户工作区列表暂时无法加载：{loadError}</span>
+          </div>
+        )}
 
         {/* Tenants Mobile View (Visible on mobile, hidden on md+) */}
         <div className="block md:hidden space-y-3 p-3.5">
           {filteredTenants.length === 0 ? (
             <div className="py-12 text-center text-slate-500 text-xs">
-              未查找到匹配的租户记录
+              {loading ? '正在加载客户工作区…' : '未查找到匹配的客户工作区'}
             </div>
           ) : (
             filteredTenants.map((t) => {
@@ -224,7 +269,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded-lg border border-slate-200/80">
-                          租户
+                          客户
                         </span>
                       )}
                     </div>
@@ -234,20 +279,20 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                   <div className="grid grid-cols-3 gap-2 bg-white p-3 rounded-xl border border-slate-200/80 text-center text-xs">
                     <div>
                       <span className="text-slate-500 text-[9px] block font-semibold">可用积分</span>
-                      <span className={`font-mono font-black text-[13px] block mt-0.5 ${t.credits < 100 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                        {t.credits.toLocaleString()}
+                      <span className={`font-mono font-black text-[13px] block mt-0.5 ${compareDecimals(t.credits, '100') < 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {formatDecimal(t.credits)}
                       </span>
                     </div>
                     <div>
                       <span className="text-slate-500 text-[9px] block font-semibold">累计充值</span>
                       <span className="font-mono font-extrabold text-slate-800 text-[13px] block mt-0.5">
-                        ${t.totalRechargedUsdt || 0}
+                        {formatDecimal(t.totalRechargedUsdt)}
                       </span>
                     </div>
                     <div>
                       <span className="text-slate-500 text-[9px] block font-semibold">已消耗</span>
                       <span className="font-mono font-semibold text-slate-600 text-[13px] block mt-0.5">
-                        {(t.totalConsumedCredits || 0).toLocaleString()}
+                        {formatDecimal(t.totalConsumedCredits)}
                       </span>
                     </div>
                   </div>
@@ -255,7 +300,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                   {/* Actions & Created Date */}
                   <div className="pt-2.5 border-t border-slate-200/60 flex items-center justify-between gap-3 text-xs flex-wrap">
                     <span className="text-slate-500 text-[10px] font-mono">
-                      注册: {t.createdAt ? new Date(t.createdAt).toLocaleDateString('zh-CN') : '2026-08-24'}
+                      注册: {t.createdAt ? new Date(t.createdAt).toLocaleDateString('zh-CN') : '时间未记录'}
                     </span>
 
                     <div className="flex items-center gap-1.5 ml-auto">
@@ -264,7 +309,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                         onClick={() => handleOpenAdjustModal(t)}
                         className="px-3 py-1.5 text-xs font-bold text-slate-900 bg-white hover:bg-slate-50 border border-slate-200/90 rounded-xl transition flex items-center gap-1 cursor-pointer min-h-[36px] shadow-2xs"
                       >
-                        <Coins className="w-3 h-3 text-amber-600" /> 上下分
+                        <Coins className="w-3 h-3 text-amber-600" /> 调整积分
                       </button>
 
                     </div>
@@ -280,13 +325,13 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/80 text-slate-600 border-b border-slate-100 text-xs font-semibold select-none">
-                <th className="py-3.5 px-4">租户标识 / 名称</th>
+                <th className="py-3.5 px-4">客户工作区 / 名称</th>
                 <th className="py-3.5 px-4">账号类型</th>
                 <th className="py-3.5 px-4">可用积分</th>
                 <th className="py-3.5 px-4">累计充值 USDT</th>
                 <th className="py-3.5 px-4">已消耗积分</th>
                 <th className="py-3.5 px-4">注册时间</th>
-                <th className="py-3.5 px-4 text-center">上下分</th>
+                <th className="py-3.5 px-4 text-center">积分调整</th>
                 <th className="py-3.5 px-4 text-right">当前会话</th>
               </tr>
             </thead>
@@ -294,7 +339,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
               {filteredTenants.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-500">
-                    未查找到匹配的租户记录
+                    {loading ? '正在加载客户工作区…' : '未查找到匹配的客户工作区'}
                   </td>
                 </tr>
               ) : (
@@ -333,27 +378,27 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium bg-slate-100 text-slate-700 rounded-lg border border-slate-200/80">
-                            租户
+                            客户
                           </span>
                         )}
                       </td>
 
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-950">
-                        <span className={`px-2.5 py-1 rounded-lg ${t.credits < 100 ? 'bg-amber-50 text-amber-800 border border-amber-200/80' : 'bg-emerald-50 text-emerald-800 border border-emerald-200/80'}`}>
-                          {t.credits.toLocaleString()}
+                        <span className={`px-2.5 py-1 rounded-lg ${compareDecimals(t.credits, '100') < 0 ? 'bg-amber-50 text-amber-800 border border-amber-200/80' : 'bg-emerald-50 text-emerald-800 border border-emerald-200/80'}`}>
+                          {formatDecimal(t.credits)}
                         </span>
                       </td>
 
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-800">
-                        ${t.totalRechargedUsdt || 0}
+                        {formatDecimal(t.totalRechargedUsdt)}
                       </td>
 
                       <td className="py-3.5 px-4 font-mono text-slate-600">
-                        {(t.totalConsumedCredits || 0).toLocaleString()}
+                        {formatDecimal(t.totalConsumedCredits)}
                       </td>
 
                       <td className="py-3.5 px-4 text-slate-500 font-mono text-[11px]">
-                        {t.createdAt ? new Date(t.createdAt).toLocaleDateString('zh-CN') : '2026-08-01'}
+                        {t.createdAt ? new Date(t.createdAt).toLocaleDateString('zh-CN') : '时间未记录'}
                       </td>
 
                       {/* Manual Credit Adjustment Trigger */}
@@ -362,10 +407,10 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                           type="button"
                           onClick={() => handleOpenAdjustModal(t)}
                           className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-900 bg-white hover:bg-slate-50 border border-slate-200/90 rounded-xl transition cursor-pointer min-h-[34px] shadow-2xs"
-                          title="手动上分/下扣积分"
+                          title="管理员积分调整"
                         >
                           <Coins className="w-3 h-3 text-amber-600" />
-                          上下分
+                          调整积分
                         </button>
                       </td>
 
@@ -397,7 +442,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                   <Coins className="w-4 h-4 text-amber-400" />
                 </span>
                 <div>
-                  <h3 className="font-bold text-slate-950 text-base">手动算力上下分</h3>
+                  <h3 className="font-bold text-slate-950 text-base">管理员积分调整</h3>
                   <p className="text-xs text-slate-500">目标: <span className="font-semibold text-slate-800">{adjustTarget.companyName || adjustTarget.username}</span> ({adjustTarget.id})</p>
                 </div>
               </div>
@@ -424,7 +469,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                     className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-lg transition min-h-[40px] cursor-pointer ${adjustType === 'TOPUP' ? 'bg-slate-950 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-950'}`}
                   >
                     <PlusCircle className="w-4 h-4 text-emerald-400" />
-                    上分 (+ 充值积分)
+                    增加积分
                   </button>
                   <button
                     type="button"
@@ -432,7 +477,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                     className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-lg transition min-h-[40px] cursor-pointer ${adjustType === 'DEDUCT' ? 'bg-slate-950 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-950'}`}
                   >
                     <MinusCircle className="w-4 h-4 text-rose-400" />
-                    下分 (- 扣减积分)
+                    扣减积分
                   </button>
                 </div>
               </div>
@@ -441,7 +486,7 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
               <div className="space-y-2">
                 <label className="block text-xs font-bold text-slate-800">变动积分数</label>
                 <div className="flex items-center gap-2 flex-wrap">
-                  {[200, 500, 1000, 5000].map((amt) => (
+                  {['200', '500', '1000', '5000'].map((amt) => (
                     <button
                       key={amt}
                       type="button"
@@ -453,11 +498,11 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                   ))}
                 </div>
                 <input
-                  type="number"
-                  min="1"
-                  step="1"
+                  type="text"
+                  inputMode="decimal"
+                  pattern="[0-9]+([.][0-9]{1,6})?"
                   value={adjustAmount}
-                  onChange={(e) => setAdjustAmount(Math.max(1, parseInt(e.target.value) || 0))}
+                  onChange={(e) => setAdjustAmount(e.target.value)}
                   className="w-full px-3.5 py-2.5 text-sm border border-slate-200/90 rounded-xl focus:outline-none focus:border-slate-400 font-mono font-bold bg-slate-50/80 hover:bg-slate-100/60 focus:bg-white transition-colors min-h-[40px]"
                   placeholder="请输入积分数量"
                   required
@@ -473,6 +518,8 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
                   onChange={(e) => setAdjustReason(e.target.value)}
                   className="w-full px-3.5 py-2 text-xs sm:text-sm border border-slate-200/90 rounded-xl focus:outline-none focus:border-slate-400 bg-slate-50/80 hover:bg-slate-100/60 focus:bg-white transition-colors min-h-[40px]"
                   placeholder="例如: 充值补单、异常补偿、退单等"
+                  minLength={10}
+                  maxLength={500}
                   required
                 />
               </div>
@@ -481,18 +528,18 @@ export const ProTenantManagementTab: React.FC<ProTenantManagementTabProps> = ({
               <div className="p-3.5 bg-slate-50/80 border border-slate-200/90 rounded-xl text-xs space-y-1.5">
                 <div className="flex justify-between text-slate-600">
                   <span>当前可用积分:</span>
-                  <span className="font-mono font-bold text-slate-950">{adjustTarget.credits.toLocaleString()} 积分</span>
+                  <span className="font-mono font-bold text-slate-950">{formatDecimal(adjustTarget.credits)} 积分</span>
                 </div>
                 <div className="flex justify-between text-slate-600">
                   <span>本次变动:</span>
                   <span className={`font-mono font-black ${adjustType === 'TOPUP' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {adjustType === 'TOPUP' ? '+' : '-'}{adjustAmount.toLocaleString()} 积分
+                    {adjustType === 'TOPUP' ? '+' : '-'}{adjustAmount || '0'} 积分
                   </span>
                 </div>
                 <div className="pt-2 border-t border-slate-200/70 flex justify-between font-bold text-slate-950">
                   <span>调整后预计余额:</span>
                   <span className="font-mono font-black text-slate-950 text-sm">
-                    {Math.max(0, adjustTarget.credits + (adjustType === 'TOPUP' ? adjustAmount : -adjustAmount)).toLocaleString()} 积分
+                    {adjustedBalancePreview}
                   </span>
                 </div>
               </div>

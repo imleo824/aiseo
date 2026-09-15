@@ -94,17 +94,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'TENANT_MANAGEMENT',
-      label: '租户管理',
+      label: '客户管理',
       icon: <User className="w-4 h-4" />
     },
     {
       id: 'SYSTEM_PAYMENT_MANAGEMENT',
-      label: '付费管理',
+      label: '充值监控',
       icon: <Wallet className="w-4 h-4" />
     },
     {
       id: 'SYSTEM_BILLING_MANAGEMENT',
-      label: '消耗管理',
+      label: '用量审计',
       icon: <Activity className="w-4 h-4" />
     },
     {
@@ -248,12 +248,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </span>
                 ) : (
                   <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 text-[9px] font-semibold rounded shrink-0 border border-slate-200/50">
-                    租户
+                    客户
                   </span>
                 )}
               </div>
               <div className="text-[10px] text-slate-400 truncate mt-0.5">
-                {account?.companyName || (account?.role === 'ADMIN' ? '管理控制台' : account?.id || '独立租户')}
+                {account?.companyName || (account?.role === 'ADMIN' ? '管理控制台' : account?.id || '个人工作区')}
               </div>
             </div>
           </div>

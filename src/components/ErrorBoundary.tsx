@@ -8,6 +8,7 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  eventId: string | null;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -16,19 +17,23 @@ export class ErrorBoundary extends Component<Props, State> {
     this.state = {
       hasError: false,
       error: null,
+      eventId: null,
     };
   }
 
   public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+    return { hasError: true, error, eventId: null };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error in React Component Tree:', error, errorInfo);
+    void import('@sentry/react').then((Sentry) => {
+      const eventId = Sentry.captureException(error, { contexts: { react: { componentStack: errorInfo.componentStack } } });
+      this.setState({ eventId });
+    });
   }
 
   private handleReset = () => {
-    this.setState({ hasError: false, error: null });
+    this.setState({ hasError: false, error: null, eventId: null });
     window.location.reload();
   };
 
@@ -42,11 +47,11 @@ export class ErrorBoundary extends Component<Props, State> {
               <h2 className="text-lg sm:text-xl font-bold text-white">系统捕获到前端异常</h2>
             </div>
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              组件渲染过程中遭遇未知异常。这不影响底层 API 与数据库状态，您可以尝试刷新恢复视图。
+              工作台显示出现异常。系统已记录本次故障，您可以重新加载；未确认完成的操作请先检查任务或账单状态，避免重复提交。
             </p>
-            {this.state.error && (
-              <div className="bg-slate-950 p-3.5 rounded-xl text-xs font-mono text-rose-300 overflow-x-auto border border-rose-950/60 leading-relaxed">
-                {this.state.error.toString()}
+            {this.state.eventId && (
+              <div className="bg-slate-950 p-3.5 rounded-xl text-xs font-mono text-slate-300 overflow-x-auto border border-slate-800 leading-relaxed">
+                故障编号：{this.state.eventId}
               </div>
             )}
             <button

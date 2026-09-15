@@ -1,5 +1,5 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
-import { DraftStatus, GrowthActionStatus, GrowthInputType, GrowthProgramMode, GrowthProgramStatus, GrowthRunStatus, JobType, OrganizationRole, Prisma, ReviewDecision, SiteConnectionStatus } from '@prisma/client';
+import { DraftStatus, GrowthActionStatus, GrowthInputType, GrowthProgramMode, GrowthProgramStatus, GrowthRunStatus, GrowthRunTrigger, JobType, OrganizationRole, Prisma, ReviewDecision, SiteConnectionStatus } from '@prisma/client';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../domain/errors';
@@ -17,6 +17,9 @@ import { gscComparisonWindow } from './gscData';
 import { growthProgramService } from './growthProgramService';
 import { parsePublishingConfirmationPolicy, PUBLISH_CONFIRMATION_SETTING_KEY } from './publishingPolicy';
 import { compatibilityProfileResponse, persistWordPressCompatibility, scanWordPressCompatibility } from './wordpressCompatibility';
+import { normalizeSiteDomain } from './siteDomain';
+import { positiveAccountingMicrosSchema, pricingConfigurationSchema, signedAccountingMicrosSchema } from './accounting';
+import { continuousCadenceDays } from './growthPolicy';
 
 const roleRank: Record<OrganizationRole, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2, OWNER: 3 };
 const idSchema = z.string().uuid();
@@ -39,7 +42,7 @@ const growthProgramSchema = z.object({
       }
     }
   }),
-  budgetLimitMicros: z.string().regex(/^\d+$/).max(30).transform(BigInt).optional()
+  budgetLimitMicros: positiveAccountingMicrosSchema.transform((value) => BigInt(value)).optional()
 });
 
 const userId = (request: Request): string => {
@@ -55,6 +58,26 @@ const assertRole = async (tx: TransactionClient, profileId: string, orgId: strin
   return membership.role;
 };
 
+const organizationFinancialSummaries = async (tx: TransactionClient, organizationIds: string[]) => {
+  if (!organizationIds.length) return new Map<string, { totalRechargedMicros: bigint; totalConsumedMicros: bigint }>();
+  const [payments, usage] = await Promise.all([
+    tx.paymentIntent.groupBy({
+      by: ['organizationId'],
+      where: { organizationId: { in: organizationIds }, status: 'CREDITED' },
+      _sum: { expectedAmountMicros: true }
+    }),
+    tx.usageRecord.groupBy({
+      by: ['organizationId'],
+      where: { organizationId: { in: organizationIds } },
+      _sum: { amountMicros: true }
+    })
+  ]);
+  const result = new Map(organizationIds.map((id) => [id, { totalRechargedMicros: 0n, totalConsumedMicros: 0n }]));
+  for (const row of payments) result.get(row.organizationId)!.totalRechargedMicros = row._sum.expectedAmountMicros || 0n;
+  for (const row of usage) result.get(row.organizationId)!.totalConsumedMicros = row._sum.amountMicros || 0n;
+  return result;
+};
+
 const assertExecutionProviders = async (tx: TransactionClient): Promise<void> => {
   const heartbeat = await tx.workerHeartbeat.findFirst({ orderBy: { heartbeatAt: 'desc' } });
   const online = Boolean(heartbeat && heartbeat.heartbeatAt > new Date(Date.now() - 45_000));
@@ -67,6 +90,41 @@ const assertExecutionProviders = async (tx: TransactionClient): Promise<void> =>
 };
 
 const idempotencyKey = (request: Request): string => requireIdempotencyKey(request.header('idempotency-key'));
+
+const queueWordPressPublish = async (input: {
+  tx: TransactionClient;
+  organizationId: string;
+  draftId: string;
+  runId: string;
+  actionId: string;
+  automated: boolean;
+}) => {
+  const attemptNumber = await input.tx.publishAttempt.count({ where: { draftId: input.draftId } }) + 1;
+  const job = await jobService.create(input.tx, {
+    organizationId: input.organizationId,
+    type: JobType.WORDPRESS_PUBLISH,
+    idempotencyKey: `growth-action-publish:${input.actionId}:attempt:${attemptNumber}`,
+    payload: { draftId: input.draftId, growthRunId: input.runId, actionId: input.actionId, automated: input.automated }
+  });
+  const attempt = await input.tx.publishAttempt.create({
+    data: { organizationId: input.organizationId, draftId: input.draftId, jobRunId: job.id, attemptNumber }
+  });
+  const draft = await input.tx.contentDraft.update({
+    where: { id: input.draftId },
+    data: { status: DraftStatus.PUBLISHING },
+    include: { reviews: true, publishAttempts: true }
+  });
+  await input.tx.growthAction.update({ where: { id: input.actionId }, data: { status: GrowthActionStatus.EXECUTING } });
+  await input.tx.growthRun.update({
+    where: { id: input.runId },
+    data: { status: GrowthRunStatus.RUNNING, currentStage: 'EXECUTE', errorCode: null, errorMessage: null, finishedAt: null }
+  });
+  await input.tx.growthRunStage.update({
+    where: { runId_stage: { runId: input.runId, stage: 'EXECUTE' } },
+    data: { status: 'RUNNING', summary: '发布任务已进入队列，等待 WordPress 写入、回读和公开页面验证。', errorCode: null, errorMessage: null, finishedAt: null }
+  });
+  return { draft, job, attempt };
+};
 
 const consumeOauthState = async (
   tx: TransactionClient,
@@ -93,7 +151,9 @@ const readGscState = (value: string): GscState => {
   if (!body || !signature || !env.gscStateSecret) throw new ValidationError('GSC OAuth state 无效');
   const expected = createHmac('sha256', env.gscStateSecret).update(body).digest('base64url');
   if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) throw new ValidationError('GSC OAuth state 签名无效');
-  const state = JSON.parse(Buffer.from(body, 'base64url').toString()) as GscState;
+  let decoded: unknown;
+  try { decoded = JSON.parse(Buffer.from(body, 'base64url').toString()); } catch { throw new ValidationError('GSC OAuth state 格式无效'); }
+  const state = z.object({ organizationId: idSchema, profileId: idSchema, siteId: idSchema, nonce: idSchema, expiresAt: z.number().int().positive() }).parse(decoded);
   if (state.expiresAt < Date.now()) throw new ValidationError('GSC OAuth state 已过期');
   return state;
 };
@@ -108,12 +168,16 @@ const readWordPressState = (value: string): WordPressState => {
   if (!body || !signature || !env.gscStateSecret) throw new ValidationError('WordPress OAuth state 无效');
   const expected = createHmac('sha256', env.gscStateSecret).update(`wordpress:${body}`).digest('base64url');
   if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) throw new ValidationError('WordPress OAuth state 签名无效');
-  const state = JSON.parse(Buffer.from(body, 'base64url').toString()) as WordPressState;
+  let decoded: unknown;
+  try { decoded = JSON.parse(Buffer.from(body, 'base64url').toString()); } catch { throw new ValidationError('WordPress OAuth state 格式无效'); }
+  const state = z.object({ organizationId: idSchema, profileId: idSchema, siteId: idSchema, nonce: idSchema, expiresAt: z.number().int().positive() }).parse(decoded);
   if (state.expiresAt < Date.now()) throw new ValidationError('WordPress OAuth state 已过期');
   return state;
 };
 
 apiRouter.get('/integrations/gsc/callback', asyncRoute(async (request, response) => {
+  response.setHeader('Cache-Control', 'no-store, max-age=0');
+  response.setHeader('Referrer-Policy', 'no-referrer');
   const state = readGscState(String(request.query.state || ''));
   const code = String(request.query.code || '');
   if (!code) throw new ValidationError('Google 未返回授权码');
@@ -145,6 +209,8 @@ apiRouter.get('/integrations/gsc/callback', asyncRoute(async (request, response)
 }));
 
 apiRouter.get('/integrations/wordpress/callback', asyncRoute(async (request, response) => {
+  response.setHeader('Cache-Control', 'no-store, max-age=0');
+  response.setHeader('Referrer-Policy', 'no-referrer');
   const state = readWordPressState(String(request.query.state || ''));
   const siteUrl = String(request.query.site_url || '');
   const username = String(request.query.user_login || '');
@@ -181,7 +247,15 @@ apiRouter.get('/me', asyncRoute(async (request, response) => {
       tx.profile.findUniqueOrThrow({ where: { id: profileId } }),
       tx.organizationMember.findMany({ where: { profileId }, include: { organization: true }, orderBy: { createdAt: 'asc' } })
     ]);
-    return { profile, organizations: memberships.map(({ organization, role }) => ({ ...organization, role })) };
+    const totals = await organizationFinancialSummaries(tx, memberships.map(({ organizationId }) => organizationId));
+    return {
+      profile,
+      organizations: memberships.map(({ organization, role }) => ({
+        ...organization,
+        role,
+        ...(totals.get(organization.id) || { totalRechargedMicros: 0n, totalConsumedMicros: 0n })
+      }))
+    };
   });
   sendData(response, result);
 }));
@@ -199,25 +273,50 @@ apiRouter.get('/me/export', asyncRoute(async (request, response) => {
   await revalidateSensitiveSession(request);
   const profileId = userId(request);
   const data = await withRequestScope({ profileId }, async (tx) => {
-    const memberships = await tx.organizationMember.findMany({ where: { profileId }, include: { organization: true } });
-    const ids = memberships.map(({ organizationId: id }) => id);
-    const [sites, wordpressCompatibilityProfiles, knowledgeSources, snapshots, siteSnapshots, opportunities, growthPrograms, growthRuns, growthActions, measurementSamples, drafts, ledger, payments, auditEvents] = await Promise.all([
-      tx.site.findMany({ where: { organizationId: { in: ids } }, select: { id: true, organizationId: true, name: true, domain: true, language: true, wordpressStatus: true, wordpressCompatibilityMode: true, wordpressCompatibilityCheckedAt: true, createdAt: true } }),
-      tx.wordPressCompatibilityProfile.findMany({ where: { organizationId: { in: ids } } }),
-      tx.knowledgeSource.findMany({ where: { organizationId: { in: ids } }, include: { contentBlob: true } }),
-      tx.dataSnapshot.findMany({ where: { organizationId: { in: ids } } }),
-      tx.siteSnapshot.findMany({ where: { organizationId: { in: ids } }, include: { pages: true } }),
-      tx.opportunity.findMany({ where: { organizationId: { in: ids } } }),
-      tx.growthProgram.findMany({ where: { organizationId: { in: ids } }, include: { inputs: { orderBy: { position: 'asc' } } } }),
-      tx.growthRun.findMany({ where: { organizationId: { in: ids } }, include: { stages: true } }),
-      tx.growthAction.findMany({ where: { organizationId: { in: ids } }, include: { evidence: true, pageVersions: true } }),
-      tx.measurementSample.findMany({ where: { organizationId: { in: ids } } }),
-      tx.contentDraft.findMany({ where: { organizationId: { in: ids } }, include: { reviews: true, publishAttempts: true } }),
-      tx.ledgerEntry.findMany({ where: { organizationId: { in: ids } } }),
-      tx.paymentIntent.findMany({ where: { organizationId: { in: ids } } }),
-      tx.auditEvent.findMany({ where: { organizationId: { in: ids } }, take: 10_000 })
+    const [profile, memberships, termsAcceptances, notifications] = await Promise.all([
+      tx.profile.findUniqueOrThrow({
+        where: { id: profileId },
+        select: {
+          id: true,
+          email: true,
+          displayName: true,
+          platformRole: true,
+          suspendedAt: true,
+          deletionRequestedAt: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      }),
+      tx.organizationMember.findMany({
+        where: { profileId },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          organizationId: true,
+          role: true,
+          createdAt: true,
+          organization: { select: { name: true, disabledAt: true, createdAt: true } }
+        }
+      }),
+      tx.termsAcceptance.findMany({
+        where: { profileId },
+        orderBy: { acceptedAt: 'asc' },
+        select: { id: true, organizationId: true, document: true, version: true, acceptedAt: true }
+      }),
+      tx.notification.findMany({
+        where: { profileId },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: { id: true, organizationId: true, type: true, title: true, message: true, status: true, createdAt: true, readAt: true }
+      })
     ]);
-    return { exportedAt: new Date().toISOString(), profile: request.authUser, organizations: memberships, sites, wordpressCompatibilityProfiles, knowledgeSources, snapshots, siteSnapshots, opportunities, growthPrograms, growthRuns, growthActions, measurementSamples, drafts, ledger, payments, auditEvents };
+    return {
+      schemaVersion: 'personal-data-export-1',
+      exportedAt: new Date().toISOString(),
+      scope: 'CURRENT_PROFILE_ONLY',
+      profile,
+      memberships,
+      termsAcceptances,
+      notifications
+    };
   });
   response.setHeader('Content-Disposition', `attachment; filename="tuitui-export-${new Date().toISOString().slice(0, 10)}.json"`);
   sendData(response, data);
@@ -279,23 +378,22 @@ apiRouter.post('/organizations/:organizationId/members', asyncRoute(async (reque
 }));
 
 apiRouter.get('/organizations/:organizationId/sites', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request);
-  const sites = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
+  const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    return tx.site.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' }, select: { id: true, name: true, domain: true, language: true, niche: true, wordpressStatus: true, wordpressUser: true, wordpressVerifiedAt: true, wordpressCompatibilityMode: true, wordpressCompatibilityCheckedAt: true, createdAt: true, integrations: { select: { id: true, provider: true, propertyId: true, status: true, lastSyncedAt: true, lastErrorCode: true, lastErrorMessage: true } } } });
+    const rows = await tx.site.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}), select: { id: true, name: true, domain: true, language: true, niche: true, wordpressStatus: true, wordpressUser: true, wordpressVerifiedAt: true, wordpressCompatibilityMode: true, wordpressCompatibilityCheckedAt: true, createdAt: true, integrations: { select: { id: true, provider: true, propertyId: true, status: true, lastSyncedAt: true, lastErrorCode: true, lastErrorMessage: true } } } });
+    return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
-  sendData(response, sites);
+  sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
 }));
 
 apiRouter.post('/organizations/:organizationId/sites', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), key = idempotencyKey(request), input = parseBody(siteSchema, request);
-  const domainUrl = new URL(input.domain.startsWith('http') ? input.domain : `https://${input.domain}`);
-  if (domainUrl.protocol !== 'https:' || domainUrl.pathname !== '/' || domainUrl.search || domainUrl.hash) throw new ValidationError('站点必须是公网 HTTPS 域名');
-  const domain = domainUrl.hostname.toLowerCase();
+  const domain = normalizeSiteDomain(input.domain);
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { ...input, domain }, execute: async () => {
-      const site = await tx.site.create({ data: { organizationId: orgId, name: input.name, domain, language: input.language, niche: input.niche || '通用行业' } });
+      const site = await tx.site.create({ data: { organizationId: orgId, name: input.name, domain, language: input.language, niche: input.niche || null } });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_CREATED', targetType: 'site', targetId: site.id } });
       return { statusCode: 201, data: { site } };
     } });
@@ -306,24 +404,41 @@ apiRouter.post('/organizations/:organizationId/sites', asyncRoute(async (request
 apiRouter.put('/organizations/:organizationId/sites/:siteId', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), key = idempotencyKey(request), input = parseBody(siteUpdateSchema, request);
   let domain: string | undefined;
-  if (input.domain) {
-    const domainUrl = new URL(input.domain.startsWith('http') ? input.domain : `https://${input.domain}`);
-    if (domainUrl.protocol !== 'https:' || domainUrl.pathname !== '/' || domainUrl.search || domainUrl.hash) throw new ValidationError('站点必须是公网 HTTPS 域名');
-    domain = domainUrl.hostname.toLowerCase();
-  }
+  if (input.domain) domain = normalizeSiteDomain(input.domain);
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { ...input, domain }, execute: async () => {
-      const existing = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } });
+      const existing = await tx.site.findFirst({
+        where: { id: siteId, organizationId: orgId },
+        include: { _count: { select: { integrations: true, growthPrograms: true, drafts: true, siteSnapshots: true, wordpressCompatibilityProfiles: true } } }
+      });
       if (!existing) throw new NotFoundError('站点不存在');
       const domainChanged = Boolean(domain && domain !== existing.domain);
+      const hasBoundEvidence = Boolean(
+        existing.wordpressCredentials
+        || existing.wordpressVerifiedAt
+        || existing.wordpressStatus !== SiteConnectionStatus.NOT_CONFIGURED
+        || Object.values(existing._count).some((count) => count > 0)
+      );
+      if (domainChanged && hasBoundEvidence) {
+        throw new ConflictError('已授权或已有执行证据的站点不能改域名；请为新域名单独创建站点，避免凭证、GSC 和历史结果错误归属');
+      }
       const updateData = Object.fromEntries(
         Object.entries({
           name: input.name,
           domain,
           language: input.language,
           niche: input.niche,
-          ...(domainChanged ? { wordpressStatus: SiteConnectionStatus.VERIFYING, wordpressVerifiedAt: null, wordpressCompatibilityMode: 'RECHECK_REQUIRED', wordpressCompatibilityCheckedAt: null, latestWordpressCompatibilityProfileId: null } : {})
+          ...(domainChanged ? {
+            wordpressCredentials: null,
+            wordpressCredentialKeyVersion: null,
+            wordpressStatus: SiteConnectionStatus.NOT_CONFIGURED,
+            wordpressUser: null,
+            wordpressVerifiedAt: null,
+            wordpressCompatibilityMode: 'RECHECK_REQUIRED',
+            wordpressCompatibilityCheckedAt: null,
+            latestWordpressCompatibilityProfileId: null
+          } : {})
         }).filter(([, val]) => val !== undefined)
       );
       const site = await tx.site.update({ where: { id: siteId }, data: updateData });
@@ -537,20 +652,21 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/growth-programs', a
 }));
 
 apiRouter.get('/organizations/:organizationId/sites/:siteId/growth-programs', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId);
-  const programs = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), page = cursorPage(request.query.cursor, request.query.limit);
+  const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
     if (!await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } })) throw new NotFoundError('站点不存在');
-    return tx.growthProgram.findMany({ where: { organizationId: orgId, siteId }, include: { inputs: { orderBy: { position: 'asc' } }, runs: { orderBy: { createdAt: 'desc' }, take: 1, include: { stages: { orderBy: { createdAt: 'asc' } } } } }, orderBy: { createdAt: 'desc' } });
+    const rows = await tx.growthProgram.findMany({ where: { organizationId: orgId, siteId }, include: { inputs: { orderBy: { position: 'asc' } }, runs: { orderBy: { createdAt: 'desc' }, take: 1, include: { stages: { orderBy: { createdAt: 'asc' } } } } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
-  sendData(response, programs);
+  sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
 }));
 
 apiRouter.get('/organizations/:organizationId/growth-programs/:programId', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), programId = idSchema.parse(request.params.programId);
   const program = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const found = await tx.growthProgram.findFirst({ where: { id: programId, organizationId: orgId }, include: { inputs: { orderBy: { position: 'asc' } }, site: { select: { id: true, name: true, domain: true, wordpressStatus: true, integrations: { where: { provider: 'GSC' }, select: { status: true, lastSyncedAt: true }, take: 1 } } }, runs: { orderBy: { createdAt: 'desc' }, take: 20, include: { stages: { orderBy: { createdAt: 'asc' } }, actions: true } } } });
+    const found = await tx.growthProgram.findFirst({ where: { id: programId, organizationId: orgId }, include: { inputs: { orderBy: { position: 'asc' } }, site: { select: { id: true, name: true, domain: true, wordpressStatus: true, integrations: { where: { provider: 'GSC' }, select: { status: true, lastSyncedAt: true }, take: 1 } } }, runs: { orderBy: { createdAt: 'desc' }, take: 20, include: { stages: { orderBy: { createdAt: 'asc' } }, action: true } } } });
     if (!found) throw new NotFoundError('增长程序不存在');
     return found;
   });
@@ -575,6 +691,53 @@ const changeProgramStatus = (status: GrowthProgramStatus) => asyncRoute(async (r
 apiRouter.post('/organizations/:organizationId/growth-programs/:programId/pause', changeProgramStatus(GrowthProgramStatus.PAUSED));
 apiRouter.post('/organizations/:organizationId/growth-programs/:programId/resume', changeProgramStatus(GrowthProgramStatus.ACTIVE));
 
+apiRouter.post('/organizations/:organizationId/growth-programs/:programId/run-now', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), programId = idSchema.parse(request.params.programId), key = idempotencyKey(request);
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { programId }, execute: async () => {
+      const program = await tx.growthProgram.findFirst({
+        where: { id: programId, organizationId: orgId },
+        include: { site: true }
+      });
+      if (!program) throw new NotFoundError('增长程序不存在');
+      if (program.mode !== GrowthProgramMode.CONTINUOUS) throw new ConflictError('只有自动计划可以立即检查新机会');
+      if (program.status !== GrowthProgramStatus.ACTIVE) throw new ConflictError('请先开启自动计划，再检查新机会');
+      if (program.site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !program.site.wordpressVerifiedAt || !program.site.wordpressCredentials) {
+        throw new ConflictError('WordPress 连接不可用，请重新授权后再执行');
+      }
+      const activeRun = await tx.growthRun.findFirst({
+        where: { siteId: program.siteId, status: { in: [GrowthRunStatus.QUEUED, GrowthRunStatus.RUNNING, GrowthRunStatus.NEEDS_REVIEW] } },
+        select: { id: true }
+      });
+      if (activeRun) throw new ConflictError('该站点已有执行中或待确认的增长任务');
+      await assertExecutionProviders(tx);
+      const run = await growthProgramService.createScheduledRun(tx, {
+        organizationId: orgId,
+        programId,
+        siteId: program.siteId,
+        occurrenceKey: `manual:${key}`,
+        trigger: GrowthRunTrigger.USER
+      });
+      const gscConnected = await tx.integrationConnection.count({
+        where: { siteId: program.siteId, provider: 'GSC', status: SiteConnectionStatus.CONNECTED }
+      }) > 0;
+      const now = new Date();
+      const nextRunAt = new Date(now.getTime() + continuousCadenceDays(program.consecutiveWins, gscConnected) * 86_400_000);
+      const updated = await tx.growthProgram.update({
+        where: { id: programId },
+        data: { lastRunAt: now, nextRunAt, lockedUntil: null, lastError: null },
+        include: { inputs: { orderBy: { position: 'asc' } } }
+      });
+      await tx.auditEvent.create({
+        data: { organizationId: orgId, actorId: profileId, action: 'GROWTH_PROGRAM_RUN_REQUESTED', targetType: 'growth_program', targetId: programId, metadata: { growthRunId: run.id, nextRunAt } }
+      });
+      return { statusCode: 202, data: { program: updated, run } };
+    } });
+  });
+  sendData(response, outcome.data, outcome.statusCode);
+}));
+
 apiRouter.get('/organizations/:organizationId/sites/:siteId/growth-status', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId);
   const status = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
@@ -597,12 +760,12 @@ apiRouter.get('/organizations/:organizationId/sites/:siteId/growth-status', asyn
           opportunity: true,
           siteSnapshot: { select: { id: true, status: true, sourceVersion: true, market: true, health: true, corpusChecksum: true, pageCount: true, auditedPageCount: true, fetchedAt: true } },
           draft: { select: { id: true, status: true, title: true, slug: true, qualityReport: true, publishedUrl: true, createdAt: true } },
-          actions: { include: { evidence: { orderBy: { createdAt: 'asc' } }, measurements: { orderBy: { windowDays: 'asc' } } } }
+          action: { include: { evidence: { orderBy: { createdAt: 'asc' } }, measurements: { orderBy: { windowDays: 'asc' } } } }
         }
       }),
       tx.integrationConnection.findFirst({ where: { organizationId: orgId, siteId, provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, select: { lastSyncedAt: true } })
     ]);
-    const activeAction = run?.actions[0] || null;
+    const activeAction = run?.action || null;
     return {
       program: run?.program || program,
       run,
@@ -634,8 +797,7 @@ apiRouter.get('/organizations/:organizationId/sites/:siteId/site-snapshots/lates
       orderBy: { fetchedAt: 'desc' },
       select: {
         id: true, status: true, sourceVersion: true, market: true, health: true, corpusChecksum: true,
-        pageCount: true, auditedPageCount: true, fetchedAt: true, createdAt: true,
-        pages: { select: { id: true, url: true, resourceType: true, status: true, modifiedAt: true, title: true, wordCount: true, contentChecksum: true, technicalEvidence: true }, orderBy: { url: 'asc' } }
+        pageCount: true, auditedPageCount: true, fetchedAt: true, createdAt: true
       }
     });
     if (!found) throw new NotFoundError('站点尚未完成网站理解快照');
@@ -644,26 +806,47 @@ apiRouter.get('/organizations/:organizationId/sites/:siteId/site-snapshots/lates
   sendData(response, snapshot);
 }));
 
+apiRouter.get('/organizations/:organizationId/sites/:siteId/site-snapshots/:snapshotId/pages', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), siteId = idSchema.parse(request.params.siteId), snapshotId = idSchema.parse(request.params.snapshotId), page = cursorPage(request.query.cursor, request.query.limit);
+  const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
+    const snapshot = await tx.siteSnapshot.findFirst({ where: { id: snapshotId, organizationId: orgId, siteId }, select: { id: true } });
+    if (!snapshot) throw new NotFoundError('网站快照不存在');
+    const rows = await tx.sitePageSnapshot.findMany({
+      where: { organizationId: orgId, siteId, snapshotId },
+      orderBy: [{ url: 'asc' }, { id: 'asc' }],
+      take: page.take + 1,
+      ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}),
+      select: { id: true, url: true, resourceType: true, status: true, modifiedAt: true, title: true, wordCount: true, contentChecksum: true, technicalEvidence: true }
+    });
+    return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
+  });
+  sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
+}));
+
 apiRouter.get('/organizations/:organizationId/growth-runs/:runId/candidates', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), runId = idSchema.parse(request.params.runId);
-  const candidates = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+  const profileId = userId(request), orgId = organizationId(request), runId = idSchema.parse(request.params.runId), page = cursorPage(request.query.cursor, request.query.limit);
+  const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
     const run = await tx.growthRun.findFirst({ where: { id: runId, organizationId: orgId }, select: { id: true } });
     if (!run) throw new NotFoundError('增长执行不存在');
-    return tx.growthDecision.findMany({
+    const rows = await tx.growthDecision.findMany({
       where: { organizationId: orgId, runId },
-      orderBy: [{ rank: 'asc' }, { createdAt: 'asc' }],
+      orderBy: [{ rank: 'asc' }, { id: 'asc' }],
+      take: page.take + 1,
+      ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}),
       include: { opportunity: true, action: { select: { id: true, type: true, status: true, targetUrl: true } } }
     });
+    return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
-  sendData(response, candidates);
+  sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
 }));
 
 apiRouter.get('/organizations/:organizationId/growth-runs/:runId', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), runId = idSchema.parse(request.params.runId);
   const run = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const found = await tx.growthRun.findFirst({ where: { id: runId, organizationId: orgId }, include: { program: { include: { inputs: { orderBy: { position: 'asc' } } } }, stages: { orderBy: { createdAt: 'asc' } }, opportunity: true, siteSnapshot: true, draft: { include: { reviews: true, publishAttempts: true } }, actions: { include: { evidence: true, pageVersions: true, measurements: { orderBy: { windowDays: 'asc' } } } } } });
+    const found = await tx.growthRun.findFirst({ where: { id: runId, organizationId: orgId }, include: { program: { include: { inputs: { orderBy: { position: 'asc' } } } }, stages: { orderBy: { createdAt: 'asc' } }, opportunity: true, siteSnapshot: true, draft: { include: { reviews: true, publishAttempts: true } }, action: { include: { evidence: true, pageVersions: true, measurements: { orderBy: { windowDays: 'asc' } } } } } });
     if (!found) throw new NotFoundError('增长执行不存在');
     const gsc = await tx.integrationConnection.findFirst({ where: { organizationId: orgId, siteId: found.siteId, provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, select: { lastSyncedAt: true } });
     return { ...found, measurement: { gscConnected: Boolean(gsc), lastSyncedAt: gsc?.lastSyncedAt || null, trafficClaimAllowed: Boolean(gsc) } };
@@ -675,7 +858,7 @@ apiRouter.get('/organizations/:organizationId/opportunities', asyncRoute(async (
   const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
   const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const rows = await tx.opportunity.findMany({ where: { organizationId: orgId }, orderBy: { id: 'asc' }, take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    const rows = await tx.opportunity.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
     return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
   sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
@@ -685,7 +868,7 @@ apiRouter.get('/organizations/:organizationId/jobs', asyncRoute(async (request, 
   const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
   const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const rows = await tx.jobRun.findMany({ where: { organizationId: orgId }, orderBy: { id: 'asc' }, take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    const rows = await tx.jobRun.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
     return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
   sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
@@ -698,78 +881,105 @@ apiRouter.get('/organizations/:organizationId/jobs/:jobId', asyncRoute(async (re
 }));
 
 apiRouter.get('/organizations/:organizationId/drafts', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request);
-  const drafts = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => { await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER); return tx.contentDraft.findMany({ where: { organizationId: orgId }, include: { reviews: true, publishAttempts: true }, orderBy: { createdAt: 'desc' }, take: 100 }); });
-  sendData(response, drafts);
+  const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
+  const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
+    const rows = await tx.contentDraft.findMany({ where: { organizationId: orgId }, include: { reviews: true, publishAttempts: true }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
+  });
+  sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
 }));
 
 apiRouter.post('/organizations/:organizationId/drafts/:draftId/approve', asyncRoute(async (request, response) => {
+  await revalidateSensitiveSession(request);
   const profileId = userId(request), orgId = organizationId(request), draftId = idSchema.parse(request.params.draftId), key = idempotencyKey(request);
   const input = parseBody(z.object({ comment: z.string().trim().max(2_000).optional() }), request);
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { draftId, ...input }, execute: async () => {
-      const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { growthRuns: { include: { actions: true }, take: 1 } } });
+      const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { site: true, growthRun: { include: { action: true } } } });
       if (!draft) throw new NotFoundError('草稿不存在');
       if (draft.status !== DraftStatus.PENDING_REVIEW) throw new ConflictError('只有等待审核的草稿可以批准');
       const quality = draft.qualityReport as { passed?: boolean };
       const provenance = draft.dataProvenance as Array<{ status?: string; source?: string }>;
       if (!quality.passed || !Array.isArray(provenance) || provenance.length === 0 || provenance.some((item) => item.status !== 'LIVE')) throw new ConflictError('质量门禁或真实数据溯源未通过');
+      if (draft.site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !draft.site.wordpressCredentials) throw new ConflictError('WordPress 连接不可用');
+      const run = draft.growthRun;
+      const action = run?.action;
+      if (!run || !action || run.status !== GrowthRunStatus.NEEDS_REVIEW || action.status !== GrowthActionStatus.REVIEW_REQUIRED) throw new ConflictError('草稿未关联等待审核的统一增长动作');
       await tx.draftReview.create({ data: { draftId, reviewerId: profileId, decision: ReviewDecision.APPROVED, comment: input.comment } });
-      const updated = await tx.contentDraft.update({ where: { id: draftId }, data: { status: DraftStatus.APPROVED } });
-      const action = draft.growthRuns[0]?.actions[0];
-      if (action) await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.APPROVED } });
-      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'DRAFT_APPROVED', targetType: 'content_draft', targetId: draftId } });
-      return { statusCode: 200, data: { draft: updated } };
+      const queued = await queueWordPressPublish({ tx, organizationId: orgId, draftId, runId: run.id, actionId: action.id, automated: false });
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'DRAFT_APPROVED_AND_QUEUED', targetType: 'content_draft', targetId: draftId, metadata: { growthRunId: run.id, growthActionId: action.id, jobRunId: queued.job.id, attemptNumber: queued.attempt.attemptNumber } } });
+      return { statusCode: 202, data: queued };
+    } });
+  });
+  sendData(response, outcome.data, outcome.statusCode);
+}));
+
+apiRouter.post('/organizations/:organizationId/drafts/:draftId/retry-publish', asyncRoute(async (request, response) => {
+  await revalidateSensitiveSession(request);
+  const profileId = userId(request), orgId = organizationId(request), draftId = idSchema.parse(request.params.draftId), key = idempotencyKey(request);
+  const input = parseBody(z.object({ comment: z.string().trim().max(2_000).optional() }), request);
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { draftId, ...input }, execute: async () => {
+      const draft = await tx.contentDraft.findFirst({
+        where: { id: draftId, organizationId: orgId },
+        include: { site: true, growthRun: { include: { action: true, program: true } } }
+      });
+      if (!draft) throw new NotFoundError('草稿不存在');
+      if (draft.status !== DraftStatus.PUBLISH_FAILED) throw new ConflictError('只有发布最终失败的交付可以重新发布');
+      const run = draft.growthRun;
+      const action = run?.action;
+      if (!run || !action || run.status !== GrowthRunStatus.FAILED || action.status !== GrowthActionStatus.FAILED) {
+        throw new ConflictError('失败交付未关联可恢复的统一增长动作');
+      }
+      const quality = draft.qualityReport as { passed?: boolean };
+      const provenance = draft.dataProvenance as Array<{ status?: string }>;
+      if (!quality.passed || !Array.isArray(provenance) || provenance.length === 0 || provenance.some((item) => item.status !== 'LIVE')) {
+        throw new ConflictError('质量门禁或真实数据溯源不再满足发布要求');
+      }
+      if (draft.site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !draft.site.wordpressCredentials) {
+        throw new ConflictError('WordPress 连接不可用，请重新授权后再重试');
+      }
+      await tx.draftReview.create({
+        data: { draftId, reviewerId: profileId, decision: ReviewDecision.APPROVED, comment: input.comment || '重新发布失败交付' }
+      });
+      const queued = await queueWordPressPublish({ tx, organizationId: orgId, draftId, runId: run.id, actionId: action.id, automated: false });
+      await tx.growthProgram.update({ where: { id: run.programId }, data: { status: GrowthProgramStatus.ACTIVE, lockedUntil: null, lastError: null } });
+      await tx.auditEvent.create({
+        data: { organizationId: orgId, actorId: profileId, action: 'DRAFT_PUBLISH_RETRY_QUEUED', targetType: 'content_draft', targetId: draftId, metadata: { growthRunId: run.id, growthActionId: action.id, jobRunId: queued.job.id, attemptNumber: queued.attempt.attemptNumber } }
+      });
+      return { statusCode: 202, data: queued };
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);
 }));
 
 apiRouter.post('/organizations/:organizationId/drafts/:draftId/reject', asyncRoute(async (request, response) => {
+  await revalidateSensitiveSession(request);
   const profileId = userId(request), orgId = organizationId(request), draftId = idSchema.parse(request.params.draftId), key = idempotencyKey(request);
   const input = parseBody(z.object({ comment: z.string().trim().min(1).max(2_000) }), request);
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { draftId, ...input }, execute: async () => {
-      const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { growthRuns: { include: { actions: true, program: true }, take: 1 } } });
+      const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { growthRun: { include: { action: true, program: true } } } });
       if (!draft) throw new NotFoundError('草稿不存在');
       if (draft.status !== DraftStatus.PENDING_REVIEW) throw new ConflictError('只有等待审核的草稿可以拒绝');
+      const run = draft.growthRun;
+      const action = run?.action;
+      if (!run || !action || run.status !== GrowthRunStatus.NEEDS_REVIEW || action.status !== GrowthActionStatus.REVIEW_REQUIRED) throw new ConflictError('草稿未关联等待审核的统一增长动作');
       await tx.draftReview.create({ data: { draftId, reviewerId: profileId, decision: ReviewDecision.REJECTED, comment: input.comment } });
-      const updated = await tx.contentDraft.update({ where: { id: draftId }, data: { status: DraftStatus.REJECTED } });
-      const run = draft.growthRuns[0];
-      const action = run?.actions[0];
-      if (action) await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.CANCELLED } });
-      if (run) {
-        await tx.growthRun.update({ where: { id: run.id }, data: { status: GrowthRunStatus.CANCELLED, finishedAt: new Date(), errorCode: 'CUSTOMER_REJECTED', errorMessage: input.comment } });
-        if (run.program.mode === GrowthProgramMode.ONCE) await tx.growthProgram.update({ where: { id: run.programId }, data: { status: GrowthProgramStatus.COMPLETED, nextRunAt: null } });
-      }
-      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'DRAFT_REJECTED', targetType: 'content_draft', targetId: draftId, metadata: { growthRunId: run?.id || null, chargedDeliverable: true } } });
+      const updated = await tx.contentDraft.update({
+        where: { id: draftId },
+        data: { status: DraftStatus.REJECTED },
+        include: { reviews: true, publishAttempts: true }
+      });
+      await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.CANCELLED } });
+      await tx.growthRun.update({ where: { id: run.id }, data: { status: GrowthRunStatus.CANCELLED, finishedAt: new Date(), errorCode: 'CUSTOMER_REJECTED', errorMessage: input.comment } });
+      if (run.program.mode === GrowthProgramMode.ONCE) await tx.growthProgram.update({ where: { id: run.programId }, data: { status: GrowthProgramStatus.COMPLETED, nextRunAt: null } });
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'DRAFT_REJECTED', targetType: 'content_draft', targetId: draftId, metadata: { growthRunId: run.id, chargedDeliverable: true } } });
       return { statusCode: 200, data: { draft: updated } };
-    } });
-  });
-  sendData(response, outcome.data, outcome.statusCode);
-}));
-
-apiRouter.post('/organizations/:organizationId/drafts/:draftId/publish', asyncRoute(async (request, response) => {
-  await revalidateSensitiveSession(request);
-  const profileId = userId(request), orgId = organizationId(request), draftId = idSchema.parse(request.params.draftId), key = idempotencyKey(request);
-  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { draftId }, execute: async () => {
-      const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { site: true, reviews: true, growthRuns: { include: { actions: true }, take: 1 } } });
-      if (!draft || draft.status !== DraftStatus.APPROVED || !draft.reviews.some((review) => review.decision === ReviewDecision.APPROVED)) throw new ConflictError('草稿尚未通过人工审批');
-      if (draft.site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !draft.site.wordpressCredentials) throw new ConflictError('WordPress 连接不可用');
-      const run = draft.growthRuns[0];
-      const action = run?.actions[0];
-      if (!run || !action) throw new ConflictError('草稿未关联统一增长执行，不能进入发布队列');
-      const attemptNumber = await tx.publishAttempt.count({ where: { draftId } }) + 1;
-      const job = await jobService.create(tx, { organizationId: orgId, type: JobType.WORDPRESS_PUBLISH, idempotencyKey: `growth-action-publish:${action.id}`, payload: { draftId, growthRunId: run.id, actionId: action.id, automated: false } });
-      const attempt = await tx.publishAttempt.findUnique({ where: { jobRunId: job.id } })
-        || await tx.publishAttempt.create({ data: { organizationId: orgId, draftId, jobRunId: job.id, attemptNumber } });
-      await tx.contentDraft.update({ where: { id: draftId }, data: { status: DraftStatus.PUBLISHING } });
-      await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.EXECUTING } });
-      return { statusCode: 202, data: { job, attempt } };
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);
@@ -781,72 +991,19 @@ apiRouter.post('/organizations/:organizationId/drafts/:draftId/rollback', asyncR
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { draftId }, execute: async () => {
-      const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { growthRuns: { include: { actions: true }, take: 1 } } });
+      const draft = await tx.contentDraft.findFirst({ where: { id: draftId, organizationId: orgId }, include: { growthRun: { include: { action: true } } } });
       if (!draft?.remotePostId || draft.status !== DraftStatus.PUBLISHED) throw new ConflictError('草稿没有可回滚的远端文章');
-      const action = draft.growthRuns[0]?.actions[0];
+      const action = draft.growthRun?.action;
       if (!action) throw new ConflictError('草稿未关联统一增长动作，不能安全回滚');
-      const job = await jobService.create(tx, { organizationId: orgId, type: JobType.WORDPRESS_ROLLBACK, idempotencyKey: `growth-action-rollback:${action.id}`, payload: { draftId, actionId: action.id } });
-      return { statusCode: 202, data: { job } };
-    } });
-  });
-  sendData(response, outcome.data, outcome.statusCode);
-}));
-
-apiRouter.post('/organizations/:organizationId/growth-actions/:actionId/approve', asyncRoute(async (request, response) => {
-  await revalidateSensitiveSession(request);
-  const profileId = userId(request), orgId = organizationId(request), actionId = idSchema.parse(request.params.actionId), key = idempotencyKey(request);
-  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { actionId }, execute: async () => {
-      const action = await tx.growthAction.findFirst({ where: { id: actionId, organizationId: orgId }, include: { run: { include: { draft: { include: { site: true } } } } } });
-      const draft = action?.run.draft;
-      if (!action || !draft) throw new NotFoundError('增长动作或交付草稿不存在');
-      const quality = draft.qualityReport as { passed?: boolean };
-      if (!quality.passed || draft.status !== DraftStatus.PENDING_REVIEW) throw new ConflictError('草稿未通过质量门禁或已经处理');
-      if (draft.site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !draft.site.wordpressCredentials) throw new ConflictError('WordPress 连接不可用');
-      await tx.draftReview.create({ data: { draftId: draft.id, reviewerId: profileId, decision: ReviewDecision.APPROVED } });
-      const job = await jobService.create(tx, { organizationId: orgId, type: JobType.WORDPRESS_PUBLISH, idempotencyKey: `growth-action-publish:${action.id}`, payload: { draftId: draft.id, growthRunId: action.runId, actionId: action.id } });
-      const attemptNumber = await tx.publishAttempt.count({ where: { draftId: draft.id } }) + 1;
-      await tx.publishAttempt.create({ data: { organizationId: orgId, draftId: draft.id, jobRunId: job.id, attemptNumber } });
-      await tx.contentDraft.update({ where: { id: draft.id }, data: { status: DraftStatus.PUBLISHING } });
-      await tx.growthAction.update({ where: { id: action.id }, data: { status: 'EXECUTING' } });
-      return { statusCode: 202, data: { actionId: action.id, draftId: draft.id, job } };
-    } });
-  });
-  sendData(response, outcome.data, outcome.statusCode);
-}));
-
-apiRouter.post('/organizations/:organizationId/growth-actions/:actionId/reject', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request), actionId = idSchema.parse(request.params.actionId), key = idempotencyKey(request);
-  const input = parseBody(z.object({ comment: z.string().trim().min(1).max(2_000) }), request);
-  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { actionId, ...input }, execute: async () => {
-      const action = await tx.growthAction.findFirst({ where: { id: actionId, organizationId: orgId }, include: { run: { include: { program: true } } } });
-      if (!action?.run.draftId) throw new NotFoundError('增长动作或交付草稿不存在');
-      if (action.status !== GrowthActionStatus.REVIEW_REQUIRED || action.run.status !== GrowthRunStatus.NEEDS_REVIEW) throw new ConflictError('只有等待审核的增长动作可以拒绝');
-      await tx.draftReview.create({ data: { draftId: action.run.draftId, reviewerId: profileId, decision: ReviewDecision.REJECTED, comment: input.comment } });
-      await tx.contentDraft.update({ where: { id: action.run.draftId }, data: { status: DraftStatus.REJECTED } });
-      await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.CANCELLED } });
-      await tx.growthRun.update({ where: { id: action.runId }, data: { status: GrowthRunStatus.CANCELLED, finishedAt: new Date(), errorCode: 'CUSTOMER_REJECTED', errorMessage: input.comment, delivery: { rejectedByCustomer: true, actionId: action.id, chargedDeliverable: true } } });
-      if (action.run.program.mode === GrowthProgramMode.ONCE) await tx.growthProgram.update({ where: { id: action.run.programId }, data: { status: GrowthProgramStatus.COMPLETED, nextRunAt: null } });
-      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'GROWTH_ACTION_REJECTED', targetType: 'growth_action', targetId: action.id, metadata: { comment: input.comment, chargedDeliverable: true } } });
-      return { statusCode: 200, data: { rejected: true, actionId: action.id } };
-    } });
-  });
-  sendData(response, outcome.data, outcome.statusCode);
-}));
-
-apiRouter.post('/organizations/:organizationId/growth-actions/:actionId/rollback', asyncRoute(async (request, response) => {
-  await revalidateSensitiveSession(request);
-  const profileId = userId(request), orgId = organizationId(request), actionId = idSchema.parse(request.params.actionId), key = idempotencyKey(request);
-  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
-    await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { actionId }, execute: async () => {
-      const action = await tx.growthAction.findFirst({ where: { id: actionId, organizationId: orgId }, include: { run: { include: { draft: true } } } });
-      if (!action?.run.draft?.remotePostId || action.run.draft.status !== DraftStatus.PUBLISHED) throw new ConflictError('增长动作没有可回滚的 WordPress 版本');
-      const job = await jobService.create(tx, { organizationId: orgId, type: JobType.WORDPRESS_ROLLBACK, idempotencyKey: `growth-action-rollback:${action.id}`, payload: { draftId: action.run.draft.id, actionId } });
-      return { statusCode: 202, data: { job } };
+      const job = await jobService.create(tx, { organizationId: orgId, type: JobType.WORDPRESS_ROLLBACK, idempotencyKey: `growth-action-rollback:${action.id}:${key}`, payload: { draftId, actionId: action.id, previousActionStatus: action.status } });
+      const updated = await tx.contentDraft.update({
+        where: { id: draftId },
+        data: { status: DraftStatus.ROLLING_BACK },
+        include: { reviews: true, publishAttempts: true }
+      });
+      await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.EXECUTING } });
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'DRAFT_ROLLBACK_QUEUED', targetType: 'content_draft', targetId: draftId, metadata: { actionId: action.id, jobRunId: job.id } } });
+      return { statusCode: 202, data: { draft: updated, job } };
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);
@@ -856,7 +1013,7 @@ apiRouter.get('/organizations/:organizationId/audit-events', asyncRoute(async (r
   const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
   const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
-    const rows = await tx.auditEvent.findMany({ where: { organizationId: orgId }, orderBy: { id: 'asc' }, take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    const rows = await tx.auditEvent.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
     return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
   sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
@@ -875,9 +1032,13 @@ apiRouter.get('/organizations/:organizationId/metrics', asyncRoute(async (reques
 }));
 
 apiRouter.get('/organizations/:organizationId/payment-intents', asyncRoute(async (request, response) => {
-  const profileId = userId(request), orgId = organizationId(request);
-  const intents = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => { await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER); return tx.paymentIntent.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' }, take: 100 }); });
-  sendData(response, intents);
+  const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
+  const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
+    const rows = await tx.paymentIntent.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
+  });
+  sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
 }));
 
 apiRouter.post('/organizations/:organizationId/payment-intents', asyncRoute(async (request, response) => {
@@ -911,7 +1072,7 @@ apiRouter.get('/organizations/:organizationId/ledger', asyncRoute(async (request
     const [organization, holds, entries] = await Promise.all([
       tx.organization.findUniqueOrThrow({ where: { id: orgId }, select: { creditBalanceMicros: true } }),
       tx.creditHold.aggregate({ where: { organizationId: orgId, status: 'HELD' }, _sum: { amountMicros: true } }),
-      tx.ledgerEntry.findMany({ where: { organizationId: orgId }, orderBy: { id: 'asc' }, take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) })
+      tx.ledgerEntry.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) })
     ]);
     const held = holds._sum.amountMicros || 0n;
     return { balanceMicros: organization.creditBalanceMicros, heldMicros: held, availableMicros: organization.creditBalanceMicros - held, entries: entries.slice(0, page.take), nextCursor: entries.length > page.take ? entries[page.take - 1].id : undefined };
@@ -964,9 +1125,22 @@ apiRouter.put('/admin/publishing-confirmation-policy', asyncRoute(async (request
 }));
 
 apiRouter.get('/admin/organizations', asyncRoute(async (request, response) => {
-  const profileId = userId(request);
-  const organizations = await withRequestScope({ profileId }, async (tx) => { await assertPlatformAdmin(tx, profileId); return tx.organization.findMany({ include: { _count: { select: { members: true, sites: true, jobs: true } } }, orderBy: { createdAt: 'desc' }, take: 200 }); });
-  sendData(response, organizations);
+  const profileId = userId(request), page = cursorPage(request.query.cursor, request.query.limit);
+  const result = await withRequestScope({ profileId }, async (tx) => {
+    await assertPlatformAdmin(tx, profileId);
+    const rows = await tx.organization.findMany({ include: { _count: { select: { members: true, sites: true, jobs: true } }, members: { where: { role: 'OWNER' }, orderBy: { createdAt: 'asc' }, take: 1, include: { profile: { select: { email: true, displayName: true } } } } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    const visible = rows.slice(0, page.take);
+    const totals = await organizationFinancialSummaries(tx, visible.map(({ id }) => id));
+    return {
+      rows: visible.map(({ members, ...organization }) => ({
+        ...organization,
+        owner: members[0]?.profile || null,
+        ...(totals.get(organization.id) || { totalRechargedMicros: 0n, totalConsumedMicros: 0n })
+      })),
+      nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined
+    };
+  });
+  sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
 }));
 
 apiRouter.get('/admin/pricing', asyncRoute(async (request, response) => {
@@ -975,53 +1149,77 @@ apiRouter.get('/admin/pricing', asyncRoute(async (request, response) => {
   sendData(response, { packages: pricing[0], actions: pricing[1] });
 }));
 
-apiRouter.put('/admin/pricing/packages/:packageId', asyncRoute(async (request, response) => {
+apiRouter.put('/admin/pricing', asyncRoute(async (request, response) => {
   await revalidateSensitiveSession(request);
-  const profileId = userId(request), key = idempotencyKey(request), packageId = z.string().min(1).max(80).parse(request.params.packageId);
-  const input = parseBody(z.object({ name: z.string().min(1).max(100), baseAmountMicros: z.string().regex(/^\d+$/), creditMicros: z.string().regex(/^\d+$/), active: z.boolean(), sortOrder: z.number().int() }), request);
+  const profileId = userId(request), key = idempotencyKey(request);
+  const input = parseBody(pricingConfigurationSchema, request);
   const outcome = await withSerializableScope({ profileId }, async (tx) => {
     await assertPlatformAdmin(tx, profileId);
-    return executeIdempotent({ tx, profileId, key, body: { packageId, ...input }, execute: async () => {
-      const updated = await tx.paymentPackage.upsert({ where: { id: packageId }, create: { id: packageId, name: input.name, baseAmountMicros: BigInt(input.baseAmountMicros), creditMicros: BigInt(input.creditMicros), active: input.active, sortOrder: input.sortOrder }, update: { name: input.name, baseAmountMicros: BigInt(input.baseAmountMicros), creditMicros: BigInt(input.creditMicros), active: input.active, sortOrder: input.sortOrder } });
-      await tx.auditEvent.create({ data: { actorId: profileId, action: 'PAYMENT_PACKAGE_UPDATED', targetType: 'payment_package', targetId: packageId, metadata: input } });
-      return { statusCode: 200, data: { paymentPackage: updated } };
-    } });
-  });
-  sendData(response, outcome.data, outcome.statusCode);
-}));
+    return executeIdempotent({ tx, profileId, key, body: input, execute: async () => {
+      const knownActions = new Set((await tx.actionPrice.findMany({ select: { action: true } })).map(({ action }) => action));
+      const unknownAction = input.actions.find(({ action }) => !knownActions.has(action));
+      if (unknownAction) throw new ValidationError(`计价动作不存在：${unknownAction.action}`);
 
-apiRouter.put('/admin/pricing/actions/:action', asyncRoute(async (request, response) => {
-  await revalidateSensitiveSession(request);
-  const profileId = userId(request), key = idempotencyKey(request), action = z.string().regex(/^[A-Z][A-Z0-9_]{1,79}$/).parse(request.params.action);
-  const input = parseBody(z.object({ name: z.string().min(1).max(100), description: z.string().min(1).max(500), creditMicros: z.string().regex(/^\d+$/), active: z.boolean() }), request);
-  const outcome = await withSerializableScope({ profileId }, async (tx) => {
-    await assertPlatformAdmin(tx, profileId);
-    return executeIdempotent({ tx, profileId, key, body: { action, ...input }, execute: async () => {
-      if (!await tx.actionPrice.findUnique({ where: { action } })) throw new NotFoundError('计价项不存在');
-      const updated = await tx.actionPrice.update({ where: { action }, data: { name: input.name, description: input.description, creditMicros: BigInt(input.creditMicros), active: input.active } });
-      await tx.auditEvent.create({ data: { actorId: profileId, action: 'ACTION_PRICE_UPDATED', targetType: 'action_price', targetId: action, metadata: input } });
-      return { statusCode: 200, data: { actionPrice: updated } };
+      for (const item of input.packages) {
+        await tx.paymentPackage.upsert({
+          where: { id: item.id },
+          create: { ...item, baseAmountMicros: BigInt(item.baseAmountMicros), creditMicros: BigInt(item.creditMicros) },
+          update: { name: item.name, baseAmountMicros: BigInt(item.baseAmountMicros), creditMicros: BigInt(item.creditMicros), active: item.active, sortOrder: item.sortOrder }
+        });
+      }
+      await tx.paymentPackage.updateMany({
+        where: input.packages.length ? { id: { notIn: input.packages.map(({ id }) => id) }, active: true } : { active: true },
+        data: { active: false }
+      });
+      for (const item of input.actions) {
+        await tx.actionPrice.update({
+          where: { action: item.action },
+          data: { name: item.name, description: item.description, creditMicros: BigInt(item.creditMicros), active: item.active }
+        });
+      }
+      await tx.actionPrice.updateMany({
+        where: { action: { notIn: input.actions.map(({ action }) => action) }, active: true },
+        data: { active: false }
+      });
+      await tx.auditEvent.create({
+        data: {
+          actorId: profileId,
+          action: 'PRICING_CONFIGURATION_UPDATED',
+          targetType: 'platform_pricing',
+          targetId: 'pricing',
+          metadata: input
+        }
+      });
+      return { statusCode: 200, data: { packageCount: input.packages.length, actionCount: input.actions.length } };
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);
 }));
 
 apiRouter.get('/admin/payments', asyncRoute(async (request, response) => {
-  const profileId = userId(request);
-  const payments = await withRequestScope({ profileId }, async (tx) => { await assertPlatformAdmin(tx, profileId); return tx.paymentIntent.findMany({ include: { organization: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 200 }); });
-  sendData(response, payments);
+  const profileId = userId(request), page = cursorPage(request.query.cursor, request.query.limit);
+  const result = await withRequestScope({ profileId }, async (tx) => {
+    await assertPlatformAdmin(tx, profileId);
+    const rows = await tx.paymentIntent.findMany({ include: { organization: { select: { name: true } } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
+  });
+  sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
 }));
 
 apiRouter.get('/admin/usage', asyncRoute(async (request, response) => {
-  const profileId = userId(request);
-  const usage = await withRequestScope({ profileId }, async (tx) => { await assertPlatformAdmin(tx, profileId); return tx.usageRecord.findMany({ include: { organization: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 200 }); });
-  sendData(response, usage);
+  const profileId = userId(request), page = cursorPage(request.query.cursor, request.query.limit);
+  const result = await withRequestScope({ profileId }, async (tx) => {
+    await assertPlatformAdmin(tx, profileId);
+    const rows = await tx.usageRecord.findMany({ include: { organization: { select: { name: true } } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
+  });
+  sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
 }));
 
 apiRouter.post('/admin/organizations/:organizationId/adjustment', asyncRoute(async (request, response) => {
   await revalidateSensitiveSession(request);
   const profileId = userId(request), orgId = organizationId(request), key = idempotencyKey(request);
-  const input = parseBody(z.object({ amountMicros: z.string().regex(/^-?\d+$/).refine((value) => value !== '0'), reason: z.string().trim().min(10).max(500) }), request);
+  const input = parseBody(z.object({ amountMicros: signedAccountingMicrosSchema, reason: z.string().trim().min(10).max(500) }), request);
   const outcome = await withSerializableScope({ profileId }, async (tx) => {
     await assertPlatformAdmin(tx, profileId);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => {

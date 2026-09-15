@@ -2,16 +2,18 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Check, Coins, Copy, ShieldCheck, X, RefreshCw, AlertCircle, ArrowRight } from 'lucide-react';
 import { ApiService } from '../services/api';
 import type { TenantAccount, UsdtPackage } from '../types/seo';
+import { formatDecimal } from '../lib/fixedDecimal';
 
 type PaymentIntent = {
   id: string;
   packageId: string;
+  network: 'TRC20';
   recipientAddress: string;
-  expectedAmountMicros: string;
+  baseAmountUsdt: string;
+  expectedAmountUsdt: string;
   creditMicros: string;
   status: string;
   expiresAt: string;
-  createdAt: string;
 };
 
 type Props = {
@@ -36,7 +38,7 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
 
   const selected = useMemo(() => packages.find(({ id }) => id === selectedPkgId), [packages, selectedPkgId]);
 
-  const loadIntentForPackage = useCallback(async (packageId: string) => {
+  const createIntentForPackage = useCallback(async (packageId: string) => {
     if (!packageId) return;
     setLoadingIntent(true);
     setError(null);
@@ -63,12 +65,7 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
     api.getCreditConfig()
       .then(async (result) => {
         setPackages(result.packages);
-        const defaultPkg = result.packages[0];
-        if (defaultPkg) {
-          setSelectedPkgId(defaultPkg.id);
-          // Directly open and create payment intent so the user doesn't have to click a second time
-          await loadIntentForPackage(defaultPkg.id);
-        }
+        setSelectedPkgId(result.packages[0]?.id || '');
       })
       .catch((requestError) => {
         setError(requestError instanceof Error ? requestError.message : '充值套餐加载失败');
@@ -76,13 +73,20 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
       .finally(() => {
         setLoadingPackages(false);
       });
-  }, [isOpen, tenantId, loadIntentForPackage]);
+  }, [isOpen, tenantId]);
 
-  const handleSelectPackage = async (pkgId: string) => {
-    if (pkgId === selectedPkgId && intent) return;
+  const handleSelectPackage = (pkgId: string) => {
+    if (pkgId === selectedPkgId) return;
     setSelectedPkgId(pkgId);
+    setIntent(null);
+    setTxHash('');
+    setError(null);
     setSuccess(null);
-    await loadIntentForPackage(pkgId);
+  };
+
+  const handleCreateIntent = async () => {
+    if (!selectedPkgId) return;
+    await createIntentForPackage(selectedPkgId);
   };
 
   const submitHash = async (event: React.FormEvent) => {
@@ -119,13 +123,18 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
     setTimeout(() => setCopiedAmount(false), 2000);
   };
 
-  const expectedAmount = intent ? (Number(BigInt(intent.expectedAmountMicros)) / 1_000_000).toFixed(6) : '';
+  const expectedAmount = intent?.expectedAmountUsdt || '';
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="w-full max-w-lg bg-white border border-slate-200/90 rounded-2xl shadow-2xl overflow-hidden max-h-[92dvh] flex flex-col animate-in zoom-in-95 duration-150">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="recharge-dialog-title"
+        className="w-full max-w-lg bg-white border border-slate-200/90 rounded-2xl shadow-2xl overflow-hidden max-h-[92dvh] flex flex-col animate-in zoom-in-95 duration-150"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-100 bg-slate-50/80">
           <div className="flex items-center gap-2.5">
@@ -133,9 +142,9 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
               <Coins className="w-4 h-4 text-emerald-400" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">USDT 极速充值</h3>
+              <h3 id="recharge-dialog-title" className="text-base font-bold text-slate-900">USDT 充值</h3>
               <p className="text-xs text-slate-500">
-                当前可用：<b className="text-slate-900 font-mono font-bold">{account?.credits || 0}</b> 积分
+                当前可用：<b className="text-slate-900 font-mono font-bold">{formatDecimal(account?.credits || '0')}</b> 积分
               </p>
             </div>
           </div>
@@ -183,7 +192,7 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
                   <button
                     key={pkg.id}
                     type="button"
-                    onClick={() => void handleSelectPackage(pkg.id)}
+                    onClick={() => handleSelectPackage(pkg.id)}
                     className={`p-3 rounded-xl border text-left transition relative cursor-pointer min-h-[64px] ${
                       isSelected
                         ? 'bg-slate-950 text-white border-slate-950 shadow-xs ring-2 ring-slate-950/20'
@@ -201,15 +210,21 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
                       )}
                     </div>
                     <div className="text-base sm:text-lg font-black font-mono mt-0.5">
-                      {pkg.usdtAmount} <span className="text-xs font-bold">USDT</span>
+                      {formatDecimal(pkg.usdtAmount)} <span className="text-xs font-bold">USDT</span>
                     </div>
                     <div className={`text-[11px] font-medium mt-0.5 ${isSelected ? 'text-emerald-300' : 'text-slate-600'}`}>
-                      {pkg.credits.toLocaleString()} 积分
+                      {formatDecimal(pkg.credits)} 积分
                     </div>
                   </button>
                 );
               })}
             </div>
+
+            {!loadingPackages && packages.length === 0 && !error && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                当前没有可用充值套餐，请联系平台支持。
+              </div>
+            )}
           </div>
 
           {/* 2. Direct payment details panel */}
@@ -222,7 +237,16 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
               </span>
             </div>
 
-            {loadingIntent ? (
+            {!intent && selected ? (
+              <button
+                type="button"
+                onClick={() => void handleCreateIntent()}
+                disabled={loadingIntent}
+                className="w-full min-h-[44px] rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loadingIntent ? '正在生成安全订单…' : `确认创建 ${selected.name} 充值订单`}
+              </button>
+            ) : loadingIntent ? (
               <div className="py-8 text-center space-y-2 bg-white rounded-xl border border-slate-200/90">
                 <RefreshCw className="w-6 h-6 text-slate-400 animate-spin mx-auto" />
                 <p className="text-xs text-slate-500 font-medium">正在生成专属订单收款地址与精确金额…</p>
@@ -246,8 +270,9 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
                     <span>{expectedAmount}</span>
                     <span className="text-xs font-bold text-slate-500">USDT</span>
                   </div>
-                  <p className="text-[11px] text-rose-600 font-medium pt-0.5">
-                    ⚠️ 请务必转账上述包含小数点的精确金额，切勿转整数，否则无法自动上分。
+                  <p className="flex items-start gap-1.5 text-[11px] text-rose-600 font-medium pt-0.5">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>请务必转账上述包含小数点的精确金额。金额不一致时系统不会自动入账，需联系人工支持处理。</span>
                   </p>
                 </div>
 
@@ -276,7 +301,7 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
               </>
             ) : (
               <div className="py-6 text-center text-xs text-slate-500 bg-white rounded-xl border border-slate-200/90">
-                请先选择充值套餐以生成收款信息
+                请先选择充值套餐
               </div>
             )}
           </div>
@@ -308,7 +333,7 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
                   </>
                 ) : (
                   <>
-                    <span>提交链上核验并上分</span>
+                    <span>提交交易哈希并等待核验</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}

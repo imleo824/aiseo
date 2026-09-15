@@ -37,6 +37,12 @@ export class ValidationError extends AppError {
   public readonly errorCode = 'VALIDATION_FAILED';
 }
 
+/** A confirmed on-chain transfer that can never satisfy its payment intent. */
+export class TerminalPaymentVerificationError extends AppError {
+  public readonly statusCode = 400;
+  public readonly errorCode = 'PAYMENT_VERIFICATION_REJECTED';
+}
+
 export class ConflictError extends AppError {
   public readonly statusCode = 409;
   public readonly errorCode = 'RESOURCE_CONFLICT';

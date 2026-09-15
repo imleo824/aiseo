@@ -1,7 +1,6 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import * as Sentry from '@sentry/react';
 import App from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { AuthProvider } from './auth/AuthProvider.tsx';
@@ -13,7 +12,15 @@ const browserConfig = globalThis.__AISEO_RUNTIME_CONFIG__;
 const browserSentryDsn = browserConfig?.sentryDsn || import.meta.env.VITE_SENTRY_DSN;
 const requestedTraceRate = Number(browserConfig?.sentryTracesSampleRate || import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE || 0.1);
 const tracesSampleRate = Number.isFinite(requestedTraceRate) && requestedTraceRate >= 0 && requestedTraceRate <= 1 ? requestedTraceRate : 0.1;
-if (browserSentryDsn) Sentry.init({ dsn: browserSentryDsn, environment: import.meta.env.MODE, release: browserConfig?.release || import.meta.env.VITE_RELEASE, tracesSampleRate, sendDefaultPii: false });
+if (browserSentryDsn) {
+  void import('@sentry/react').then((Sentry) => Sentry.init({
+    dsn: browserSentryDsn,
+    environment: import.meta.env.MODE,
+    release: browserConfig?.release || import.meta.env.VITE_RELEASE,
+    tracesSampleRate,
+    sendDefaultPii: false
+  }));
+}
 
 const root = createRoot(document.getElementById('root')!);
 

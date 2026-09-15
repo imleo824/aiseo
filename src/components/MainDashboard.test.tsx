@@ -9,12 +9,8 @@ const connectedSite = {
   niche: 'Software',
   siteType: 'WORDPRESS' as const,
   siteLanguage: 'zh-CN' as const,
-  pagesCount: 12,
   connectorStatus: 'CONNECTED' as const,
-  pluginInstalled: true,
-  whitelistedCategories: [],
   gscConnected: false,
-  ga4Connected: false,
   createdAt: '2026-09-02T00:00:00.000Z'
 };
 

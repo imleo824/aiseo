@@ -40,7 +40,12 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
   }, [accountQuery.data?.tenantId, activeTenantId, onTenantChange]);
 
   const sitesQuery = useQuery({ queryKey: ['tenant', workspaceKey, 'sites'], queryFn: () => api.getSites(), enabled: Boolean(account) });
-  const draftsQuery = useQuery({ queryKey: ['tenant', workspaceKey, 'drafts'], queryFn: () => api.getDrafts(), enabled: Boolean(account) });
+  const draftsQuery = useQuery({
+    queryKey: ['tenant', workspaceKey, 'drafts'],
+    queryFn: () => api.getDrafts(),
+    enabled: Boolean(account),
+    refetchInterval: (query) => query.state.data?.drafts.some(({ status }) => status === 'PUBLISHING' || status === 'ROLLING_BACK') ? 3_000 : false
+  });
   const tasksQuery = useQuery({ queryKey: ['tenant', workspaceKey, 'growth-programs'], queryFn: () => api.getTasks(), enabled: Boolean(account) });
   const transactionsQuery = useQuery({ queryKey: ['tenant', workspaceKey, 'ledger'], queryFn: () => api.getCreditTransactions(), enabled: Boolean(account) });
   const tenantsQuery = useQuery({ queryKey: ['tenant', workspaceKey, 'admin-organizations'], queryFn: () => api.listTenants(), enabled: account?.role === 'ADMIN' });
@@ -64,28 +69,12 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     (growthStatusQuery.data || []).map(({ siteId, status }) => [siteId, status])
   ) as Record<string, GrowthStatus>, [growthStatusQuery.data]);
   const loading = accountQuery.isLoading || (Boolean(account) && [sitesQuery, draftsQuery, tasksQuery, transactionsQuery].some((query) => query.isLoading));
+  const loadError = [accountQuery, sitesQuery, draftsQuery, tasksQuery, transactionsQuery, tenantsQuery, growthStatusQuery]
+    .find((query) => query.isError)?.error;
 
   const invalidateTenantResources = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ['tenant'] });
   }, [queryClient]);
-
-  const handleLogin = async (usernameOrEmail: string, password?: string) => {
-    const result = await api.login(usernameOrEmail, password);
-    if (!result.success || !result.tenantId) throw new Error('登录失败');
-    api.setTenantId(result.tenantId);
-    onTenantChange?.(result.tenantId);
-    await invalidateTenantResources();
-    return result;
-  };
-
-  const handleRegister = async (data: { username: string; email: string; password?: string; companyName?: string }) => {
-    const result = await api.register(data);
-    if (!result.success || !result.tenantId) throw new Error('注册失败');
-    api.setTenantId(result.tenantId);
-    onTenantChange?.(result.tenantId);
-    await invalidateTenantResources();
-    return result;
-  };
 
   const handleLogout = useCallback(async () => {
     await api.logout().catch(() => undefined);
@@ -93,7 +82,17 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
   }, [api, queryClient]);
 
   const handleApprovePublish = async (draftId: string) => {
-    await api.approveAndPublishDraft(draftId);
+    await api.approvePublishDraft(draftId);
+    await invalidateTenantResources();
+  };
+
+  const handleRejectDraft = async (draftId: string, comment: string) => {
+    await api.rejectDraft(draftId, comment);
+    await invalidateTenantResources();
+  };
+
+  const handleRetryPublish = async (draftId: string) => {
+    await api.retryPublishDraft(draftId);
     await invalidateTenantResources();
   };
 
@@ -110,7 +109,6 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
   ) => {
     const targetSites = sites.filter((site) => targetSiteIds.includes(site.id));
     if (!targetSites.length) return undefined;
-    if (account && account.credits < 25) throw new Error(`当前积分余额 (${account.credits} 积分) 不足 25 积分，请先充值 USDT 兑换积分。`);
     addLog('[准备启动] 已创建可恢复、可审计的自然流量增长程序。');
     const stageNumbers = { UNDERSTAND: 1, DISCOVER: 2, DECIDE: 3, EXECUTE: 4, LEARN: 5 } as const;
     const observed = new Map<string, string>();
@@ -144,8 +142,8 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     await invalidateTenantResources();
   };
 
-  const handleAddSite = async (siteData: { name: string; domain: string; niche?: string; siteType?: SiteType; siteLanguage?: Language | string }) => {
-    const result = await api.createSite({ ...siteData, niche: siteData.niche || '通用行业', siteType: siteData.siteType || 'WORDPRESS', siteLanguage: siteData.siteLanguage || 'zh-CN' });
+  const handleAddSite = async (siteData: { name: string; domain: string; niche?: string; siteType?: SiteType; siteLanguage?: Language }) => {
+    const result = await api.createSite({ ...siteData, siteType: siteData.siteType || 'WORDPRESS', siteLanguage: siteData.siteLanguage || 'zh-CN' });
     await queryClient.invalidateQueries({ queryKey: ['tenant', workspaceKey, 'sites'] });
     return result.site;
   };
@@ -169,20 +167,19 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
   };
 
   const handleRunTaskNow = async (taskId: string) => {
-    if (account && account.credits < 25) throw new Error('当前积分余额不足 25 积分，无法执行定时任务，请先充值 USDT。');
     const result = await api.runTaskNow(taskId);
     await invalidateTenantResources();
     return { success: result.success, message: result.message };
   };
 
   return {
-    sites, tasks, drafts, account, transactions, allTenants, growthStatuses, loading,
+    sites, tasks, drafts, account, transactions, allTenants, growthStatuses, loading, loadError,
     actions: {
       loadTenantData: invalidateTenantResources,
-      handleLogin,
-      handleRegister,
       handleLogout,
       handleApprovePublish,
+      handleRejectDraft,
+      handleRetryPublish,
       handleRollback,
       handleStartGrowthProgram,
       handleUpdateSiteById,

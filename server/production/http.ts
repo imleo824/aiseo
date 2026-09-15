@@ -50,5 +50,8 @@ export const errorHandler = (error: unknown, request: Request, response: Respons
 
 export const cursorPage = (cursor: unknown, limit: unknown): { cursor?: string; take: number } => {
   const take = Math.min(Math.max(Number(limit) || 50, 1), 100);
+  if (cursor !== undefined && (typeof cursor !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cursor))) {
+    throw new ValidationError('分页游标无效');
+  }
   return { cursor: typeof cursor === 'string' && cursor ? cursor : undefined, take };
 };

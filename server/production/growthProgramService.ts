@@ -200,6 +200,7 @@ export const growthProgramService = {
     programId: string;
     siteId: string;
     occurrenceKey: string;
+    trigger?: GrowthRunTrigger;
   }) {
     const existing = await tx.growthRun.findUnique({ where: { programId_occurrenceKey: { programId: input.programId, occurrenceKey: input.occurrenceKey } } });
     if (existing) return existing;
@@ -208,7 +209,7 @@ export const growthProgramService = {
       organizationId: input.organizationId,
       siteId: input.siteId,
       programId: input.programId,
-      trigger: GrowthRunTrigger.SCHEDULED,
+      trigger: input.trigger ?? GrowthRunTrigger.SCHEDULED,
       occurrenceKey: input.occurrenceKey,
       stages: { create: GROWTH_STAGES.map((stage) => ({ organizationId: input.organizationId, siteId: input.siteId, stage })) }
     } });

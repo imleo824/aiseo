@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GrowthInputType, GrowthProgramMode, JobStatus } from '@prisma/client';
+import { GrowthInputType, GrowthProgramMode, GrowthRunTrigger, JobStatus } from '@prisma/client';
 
 const createJob = vi.hoisted(() => vi.fn());
 vi.mock('./jobService', () => ({ jobService: { create: createJob } }));
@@ -115,6 +115,35 @@ describe('growthProgramService', () => {
     }));
     expect(tx.growthRun.create).not.toHaveBeenCalled();
     expect(createJob).not.toHaveBeenCalled();
+  });
+
+  it('persists an immediate continuous run as a user-triggered run', async () => {
+    const growthRunCreate = vi.fn().mockImplementation(async ({ data }) => ({
+      id: '00000000-0000-0000-0000-000000000005',
+      ...data
+    }));
+    const tx = {
+      growthRun: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        create: growthRunCreate,
+        update: vi.fn().mockResolvedValue({ id: '00000000-0000-0000-0000-000000000005' })
+      },
+      growthProgram: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ budgetLimitMicros: null, runs: [] })
+      }
+    };
+    const { growthProgramService } = await import('./growthProgramService');
+    await growthProgramService.createScheduledRun(tx as never, {
+      organizationId: '00000000-0000-0000-0000-000000000001',
+      siteId: '00000000-0000-0000-0000-000000000002',
+      programId: '00000000-0000-0000-0000-000000000003',
+      occurrenceKey: 'manual:00000000-0000-0000-0000-000000000006',
+      trigger: GrowthRunTrigger.USER
+    });
+
+    expect(growthRunCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ trigger: GrowthRunTrigger.USER })
+    }));
   });
 
   it('rejects non-HTTPS and credential-bearing external URLs', async () => {

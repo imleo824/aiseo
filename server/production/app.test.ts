@@ -17,6 +17,7 @@ describe('content security policy', () => {
     expect(development).toContain("script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com");
     expect(production).toContain("script-src 'self' https://challenges.cloudflare.com");
     expect(production).not.toContain("script-src 'self' 'unsafe-inline'");
+    expect(production).toContain("frame-ancestors 'none'");
     expect(production).toContain('wss://project.supabase.co');
     expect(production).toContain('https://errors.example.com');
   });

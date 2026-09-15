@@ -1,4 +1,4 @@
-import { ExternalServiceError, ValidationError } from '../domain/errors';
+import { ExternalServiceError, TerminalPaymentVerificationError, ValidationError } from '../domain/errors';
 import { env } from './env';
 
 const externalFetch = (input: RequestInfo | URL, init: RequestInit = {}) => fetch(input, { ...init, signal: init.signal || AbortSignal.timeout(20_000) });
@@ -14,6 +14,7 @@ type ProviderBody = ProviderRecord & {
   scope?: unknown;
   access_token?: unknown;
   rows?: unknown[];
+  meta?: unknown;
 };
 const isRecord = (value: unknown): value is ProviderRecord => typeof value === 'object' && value !== null && !Array.isArray(value);
 const json = async (response: Response): Promise<ProviderBody> => {
@@ -318,24 +319,59 @@ export const dataForSeoProvider = {
   }
 };
 
+export const validateTrc20TransferRecord = (
+  transfer: ProviderRecord,
+  input: { recipientAddress: string; expectedAmountMicros: bigint; notBefore: Date; notAfter: Date },
+  tokenContract = env.trc20UsdtContract
+) => {
+  const tokenInfo = isRecord(transfer.token_info) ? transfer.token_info : null;
+  const timestamp = Number(transfer.block_timestamp);
+  if (!tokenInfo || !Number.isSafeInteger(timestamp) || !transfer.transaction_id || !transfer.from || !transfer.to) {
+    throw new ExternalServiceError('TronGrid 返回的交易结构不完整');
+  }
+  if (transfer.to !== input.recipientAddress || tokenInfo.address !== tokenContract) {
+    throw new TerminalPaymentVerificationError('交易收款地址或 USDT 合约不匹配');
+  }
+  if (!/^\d+$/.test(String(transfer.value)) || BigInt(String(transfer.value)) !== input.expectedAmountMicros) {
+    throw new TerminalPaymentVerificationError('链上金额与应付的六位小数金额不一致');
+  }
+  if (timestamp < input.notBefore.getTime() || timestamp > input.notAfter.getTime()) {
+    throw new TerminalPaymentVerificationError('交易时间不在充值意图有效窗口内');
+  }
+  return {
+    transactionId: String(transfer.transaction_id),
+    from: String(transfer.from),
+    to: String(transfer.to),
+    valueMicros: String(transfer.value),
+    contract: String(tokenInfo.address),
+    blockTimestamp: timestamp,
+    confirmed: true
+  };
+};
+
 export const tronGridProvider = {
   async verifyTransfer(input: { txHash: string; recipientAddress: string; expectedAmountMicros: bigint; notBefore: Date; notAfter: Date }) {
     if (!env.tronGridApiKey) throw new ValidationError('TronGrid 尚未配置');
-    const url = new URL(`https://api.trongrid.io/v1/accounts/${input.recipientAddress}/transactions/trc20`);
-    url.searchParams.set('only_confirmed', 'true');
-    url.searchParams.set('contract_address', env.trc20UsdtContract);
-    url.searchParams.set('min_timestamp', String(input.notBefore.getTime()));
-    url.searchParams.set('max_timestamp', String(input.notAfter.getTime()));
-    url.searchParams.set('limit', '200');
-    const result = await json(await externalFetch(url, { headers: { 'TRON-PRO-API-KEY': env.tronGridApiKey } }));
-    const transfer = (result.data || []).filter(isRecord).find((item) => String(item.transaction_id).toLowerCase() === input.txHash.toLowerCase());
-    if (!transfer) throw new ExternalServiceError('已固化区块中尚未找到该 TRC20 交易');
-    const timestamp = Number(transfer.block_timestamp);
-    const tokenInfo = isRecord(transfer.token_info) ? transfer.token_info : {};
-    if (transfer.to !== input.recipientAddress || tokenInfo.address !== env.trc20UsdtContract) throw new ValidationError('交易收款地址或 USDT 合约不匹配');
-    if (!/^\d+$/.test(String(transfer.value)) || BigInt(String(transfer.value)) !== input.expectedAmountMicros) throw new ValidationError('链上金额与应付的六位小数金额不一致');
-    if (timestamp < input.notBefore.getTime() || timestamp > input.notAfter.getTime()) throw new ValidationError('交易时间不在充值意图有效窗口内');
-    return { transactionId: String(transfer.transaction_id), from: String(transfer.from), to: String(transfer.to), valueMicros: String(transfer.value), contract: String(tokenInfo.address), blockTimestamp: timestamp, confirmed: true };
+    let fingerprint: string | undefined;
+    for (let page = 0; page < 25; page += 1) {
+      const url = new URL(`https://api.trongrid.io/v1/accounts/${input.recipientAddress}/transactions/trc20`);
+      url.searchParams.set('only_confirmed', 'true');
+      url.searchParams.set('only_to', 'true');
+      url.searchParams.set('contract_address', env.trc20UsdtContract);
+      url.searchParams.set('min_timestamp', String(input.notBefore.getTime()));
+      url.searchParams.set('max_timestamp', String(input.notAfter.getTime()));
+      url.searchParams.set('limit', '200');
+      if (fingerprint) url.searchParams.set('fingerprint', fingerprint);
+      const result = await json(await externalFetch(url, { headers: { 'TRON-PRO-API-KEY': env.tronGridApiKey } }));
+      const transfer = (result.data || []).filter(isRecord).find((item) => String(item.transaction_id).toLowerCase() === input.txHash.toLowerCase());
+      if (transfer) return validateTrc20TransferRecord(transfer, input);
+      const meta = isRecord(result.meta) ? result.meta : {};
+      const nextFingerprint = typeof meta.fingerprint === 'string' && meta.fingerprint ? meta.fingerprint : undefined;
+      if (!nextFingerprint) throw new ExternalServiceError('已固化区块中尚未找到该 TRC20 交易');
+      if (nextFingerprint === fingerprint) throw new ExternalServiceError('TronGrid 分页游标未前进');
+      fingerprint = nextFingerprint;
+    }
+    throw new ExternalServiceError('充值时间窗口内交易过多，已停止自动核验并转人工处理');
   }
 };
 

@@ -9,7 +9,10 @@ import {
   UsdtPackage,
 } from "../types/seo";
 import { api as productionApi } from '../lib/api';
-import { supabase } from '../lib/supabase';
+import { getSupabaseBrowserClient } from '../lib/supabase';
+import { decimalToMicros, microsToDecimal } from '../lib/fixedDecimal';
+
+const supabase = getSupabaseBrowserClient();
 import type { Draft, GrowthCandidate, GrowthInput, GrowthProgram, GrowthRun, GrowthStatus, JobRun, Ledger, Me, Site as ProductionSite, SiteSnapshotSummary } from '../types/api';
 
 type ProductionTask = {
@@ -18,68 +21,74 @@ type ProductionTask = {
   lastRunAt?: string; nextRunAt?: string; createdAt: string;
 };
 
-const microsToCredits = (value: string | bigint | number | undefined): number => Number(BigInt(value || 0)) / 1_000_000;
+const positiveMicros = (value: string, label: string): string => {
+  const micros = decimalToMicros(value);
+  if (BigInt(micros) <= 0n) throw new Error(`${label}必须大于 0`);
+  return micros;
+};
 
-const toLegacySite = (site: ProductionSite): WordPressSite => {
-  let localNiche = '通用行业';
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localNiche = localStorage.getItem(`site_niche_${site.id}`) || '通用行业';
-    }
-  } catch {
-    // ignore
-  }
+const toWorkspaceSite = (site: ProductionSite): WordPressSite => {
   return {
     id: site.id,
     name: site.name,
     domain: site.domain,
-    niche: (site as unknown as { niche?: string }).niche || localNiche,
+    niche: site.niche || '待系统识别',
     siteType: 'WORDPRESS',
     siteLanguage: site.language,
-    pagesCount: 0,
     connectorStatus: site.wordpressStatus === 'CONNECTED' ? 'CONNECTED' : site.wordpressStatus === 'VERIFYING' ? 'CHECKING' : site.wordpressStatus === 'FAILED' ? 'ERROR' : 'DISCONNECTED',
-    wpUsername: site.wordpressUser,
-    pluginInstalled: false,
     wordpressCompatibilityMode: site.wordpressCompatibilityMode,
     wordpressCompatibilityCheckedAt: site.wordpressCompatibilityCheckedAt,
-    whitelistedCategories: [],
     gscConnected: site.integrations.some((item) => item.provider === 'GSC' && item.status === 'CONNECTED'),
     gscPropertyId: site.integrations.find((item) => item.provider === 'GSC')?.propertyId,
     gscStatus: site.integrations.find((item) => item.provider === 'GSC')?.status,
     gscLastSyncedAt: site.integrations.find((item) => item.provider === 'GSC')?.lastSyncedAt,
     gscLastErrorMessage: site.integrations.find((item) => item.provider === 'GSC')?.lastErrorMessage,
-    ga4Connected: false,
     createdAt: site.createdAt
   };
 };
 
-const toLegacyDraft = (draft: Draft): ArticleDraft => ({
+const qualityGate = (report: Draft['qualityReport']): ArticleDraft['qualityGate'] => {
+  if (typeof report?.passed !== 'boolean' || typeof report?.score !== 'number') return undefined;
+  const checks = Array.isArray(report.checks) ? report.checks : [];
+  return {
+    passed: report.passed,
+    overallScore: report.score,
+    issues: report.issues || checks.filter(({ passed }) => !passed).map(({ detail, name }) => detail || name),
+    passedChecks: report.passedChecks || checks.filter(({ passed }) => passed).map(({ name }) => name),
+    checks,
+    generatedAt: report.generatedAt,
+    version: report.version
+  };
+};
+
+export const toWorkspaceDraft = (draft: Draft): ArticleDraft => ({
   id: draft.id,
   opportunityId: draft.opportunityId || '',
   siteId: draft.siteId,
   title: draft.title,
-  language: 'zh-CN',
-  category: '未分类',
+  language: 'und',
+  category: '增长动作',
   contentHtml: draft.html,
   summary: draft.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180),
   sourcesUsed: draft.knowledgeSourceIds || [],
-  qualityGate: {
-    passed: Boolean(draft.qualityReport?.passed),
-    overallScore: Number(draft.qualityReport?.score || 0),
-    factReliabilityScore: 0,
-    hallucinationFree: Boolean(draft.qualityReport?.passed),
-    languageMatch: true,
-    sourceCheckPassed: Boolean(draft.qualityReport?.passed),
-    duplicateContentCheck: Boolean(draft.qualityReport?.passed),
-    issues: draft.qualityReport?.issues || [],
-    passedChecks: draft.qualityReport?.passedChecks || (draft.qualityReport?.passed ? ['deterministic-quality-gate'] : [])
-  },
-  status: draft.status === 'PUBLISHED' ? 'PUBLISHED' : draft.status === 'ROLLED_BACK' ? 'ROLLED_BACK' : draft.status === 'PENDING_REVIEW' || draft.status === 'APPROVED' || draft.status === 'PUBLISHING' ? 'PENDING_APPROVAL' : draft.status === 'QUALITY_FAILED' ? 'QUALITY_FAILED' : draft.qualityReport?.passed ? 'QUALITY_PASSED' : 'DRAFT',
+  qualityGate: qualityGate(draft.qualityReport),
+  status: draft.status === 'PUBLISHED' ? 'PUBLISHED'
+    : draft.status === 'ROLLED_BACK' ? 'ROLLED_BACK'
+      : draft.status === 'ROLLING_BACK' ? 'ROLLING_BACK'
+        : draft.status === 'PUBLISHING' ? 'PUBLISHING'
+          : draft.status === 'PUBLISH_FAILED' ? 'PUBLISH_FAILED'
+            : draft.status === 'REJECTED' ? 'REJECTED'
+              : draft.status === 'PENDING_REVIEW' ? 'PENDING_APPROVAL'
+                : draft.status === 'QUALITY_FAILED' ? 'QUALITY_FAILED'
+                  : draft.qualityReport?.passed ? 'QUALITY_PASSED' : 'DRAFT',
   publishedUrl: draft.publishedUrl,
-  createdAt: draft.createdAt || new Date().toISOString()
+  publishedAt: (draft.publishAttempts || [])
+    .filter(({ status, finishedAt }) => status === 'SUCCEEDED' && finishedAt)
+    .sort((left, right) => String(right.finishedAt).localeCompare(String(left.finishedAt)))[0]?.finishedAt,
+  createdAt: draft.createdAt
 });
 
-const toLegacyTask = (task: ProductionTask, sites: WordPressSite[]): AutomatedTask => {
+const toWorkspaceTask = (task: ProductionTask, sites: WordPressSite[]): AutomatedTask => {
   const primary = task.inputs[0];
   const label = task.inputs.map(({ value }) => value).join('、');
   return ({
@@ -107,6 +116,45 @@ export class ApiService {
 
   constructor(tenantId?: string) { this.organizationId = tenantId || ''; }
 
+  private async listAll<T>(path: string): Promise<T[]> {
+    const rows: T[] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const separator = path.includes('?') ? '&' : '?';
+      const response = await productionApi.get<T[]>(`${path}${separator}limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`);
+      rows.push(...response.data);
+      if (rows.length > 10_000) throw new Error('当前页面一次最多加载 10,000 条记录，请缩小查询范围');
+      cursor = response.meta?.nextCursor;
+      if (cursor && seenCursors.has(cursor)) throw new Error('服务器返回了重复分页游标，请稍后重试');
+      if (cursor) seenCursors.add(cursor);
+    } while (cursor);
+    return rows;
+  }
+
+  private async readLedger(): Promise<Ledger> {
+    const { organizationId } = await this.resolveWorkspace();
+    const entries: Ledger['entries'] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | undefined;
+    let balances: Pick<Ledger, 'balanceMicros' | 'heldMicros' | 'availableMicros'> | undefined;
+    do {
+      const response = await productionApi.get<Ledger>(`/organizations/${organizationId}/ledger?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`);
+      balances ||= {
+        balanceMicros: response.data.balanceMicros,
+        heldMicros: response.data.heldMicros,
+        availableMicros: response.data.availableMicros
+      };
+      entries.push(...response.data.entries);
+      if (entries.length > 10_000) throw new Error('当前页面一次最多加载 10,000 条账本记录，请缩小查询范围');
+      cursor = response.meta?.nextCursor;
+      if (cursor && seenCursors.has(cursor)) throw new Error('服务器返回了重复账本游标，请稍后重试');
+      if (cursor) seenCursors.add(cursor);
+    } while (cursor);
+    if (!balances) throw new Error('服务器未返回账本余额');
+    return { ...balances, entries };
+  }
+
   private async resolveWorkspace(): Promise<{ me: Me; organizationId: string }> {
     if (!this.me || !this.organizationId) {
       this.me = (await productionApi.get<Me>('/me')).data;
@@ -116,52 +164,15 @@ export class ApiService {
     return { me: this.me, organizationId: this.organizationId };
   }
 
-  private async waitForJob(jobId: string, timeoutMs = 180_000): Promise<JobRun> {
-    const { organizationId } = await this.resolveWorkspace();
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      const job = (await productionApi.get<JobRun>(`/organizations/${organizationId}/jobs/${jobId}`)).data;
-      if (job.status === 'SUCCEEDED') return job;
-      if (job.status === 'FAILED' || job.status === 'DEAD_LETTER') {
-        throw new Error(job.errorMessage || '后台任务执行失败');
-      }
-      await new Promise((resolve) => window.setTimeout(resolve, 1_500));
-    }
-    throw new Error('后台任务仍在处理中，请稍后到任务记录查看结果');
-  }
-
   public setTenantId(tenantId: string) {
     this.organizationId = tenantId;
   }
 
-  public setAuthToken(token: string | null) {
-    // Browser sessions are HttpOnly cookies. This method remains as a compatibility no-op.
-    void token;
-  }
-
-  public getAuthToken(): string | null {
-    return null;
-  }
-
   // Auth & Tenant
-  public login(usernameOrEmail: string, password?: string) {
-    return supabase.auth.signInWithPassword({ email: usernameOrEmail, password: password || '' }).then(async ({ error }) => {
-      if (error) throw error;
-      return this.getMe();
-    });
-  }
-
-  public register(data: { username: string; email: string; password?: string; companyName?: string }) {
-    return supabase.auth.signUp({ email: data.email, password: data.password || '', options: { data: { display_name: data.username } } }).then(async ({ data: result, error }) => {
-      if (error) throw error;
-      if (!result.session) throw new Error('注册成功，请先验证邮箱后登录');
-      return this.getMe();
-    });
-  }
-
   public async getMe() {
     const { me, organizationId } = await this.resolveWorkspace();
     const organization = me.organizations.find((item) => item.id === organizationId) || me.organizations[0];
+    if (!organization) throw new Error('个人工作区尚未完成初始化');
     return {
       success: true,
       tenantId: organization.id,
@@ -170,11 +181,11 @@ export class ApiService {
         username: me.profile.displayName || me.profile.email.split('@')[0],
         email: me.profile.email,
         companyName: organization.name,
-        credits: microsToCredits(organization.creditBalanceMicros),
-        totalRechargedUsdt: 0,
-        totalConsumedCredits: 0,
+        credits: microsToDecimal(organization.creditBalanceMicros),
+        totalRechargedUsdt: microsToDecimal(organization.totalRechargedMicros),
+        totalConsumedCredits: microsToDecimal(organization.totalConsumedMicros),
         role: me.profile.platformRole === 'PLATFORM_ADMIN' ? 'ADMIN' : 'TENANT',
-        createdAt: new Date().toISOString()
+        createdAt: me.profile.createdAt
       } satisfies TenantAccount
     };
   }
@@ -187,8 +198,8 @@ export class ApiService {
   public async listTenants() {
     const { me } = await this.resolveWorkspace();
     if (me.profile.platformRole !== 'PLATFORM_ADMIN') return { success: true, tenants: [] };
-    const organizations = (await productionApi.get<Array<{ id: string; name: string; creditBalanceMicros: string; createdAt: string }>>('/admin/organizations')).data;
-    return { success: true, tenants: organizations.map((organization) => ({ id: organization.id, username: organization.name, email: '', companyName: organization.name, credits: microsToCredits(organization.creditBalanceMicros), totalRechargedUsdt: 0, totalConsumedCredits: 0, role: 'TENANT' as const, createdAt: organization.createdAt })) };
+    const organizations = await this.listAll<{ id: string; name: string; creditBalanceMicros: string; totalRechargedMicros: string; totalConsumedMicros: string; createdAt: string; owner?: { email: string; displayName?: string } | null }>('/admin/organizations');
+    return { success: true, tenants: organizations.map((organization) => ({ id: organization.id, username: organization.owner?.displayName || organization.name, email: organization.owner?.email || '未关联所有者邮箱', companyName: organization.name, credits: microsToDecimal(organization.creditBalanceMicros), totalRechargedUsdt: microsToDecimal(organization.totalRechargedMicros), totalConsumedCredits: microsToDecimal(organization.totalConsumedMicros), role: 'TENANT' as const, createdAt: organization.createdAt })) };
   }
 
   // Credit & USDT Payment
@@ -201,8 +212,8 @@ export class ApiService {
       rate: '链上精确金额',
       trc20Address: '',
       wallets: {},
-      packages: pricing.packages.filter((item) => item.active).map((item) => ({ id: item.id, name: item.name, usdtAmount: Number(BigInt(item.baseAmountMicros)) / 1_000_000, credits: microsToCredits(item.creditMicros) })),
-      actionPricing: pricing.actions.map((item) => ({ action: item.action, name: item.name, credits: microsToCredits(item.creditMicros), desc: item.description, enabled: item.active })),
+      packages: pricing.packages.filter((item) => item.active).map((item) => ({ id: item.id, name: item.name, usdtAmount: microsToDecimal(item.baseAmountMicros), credits: microsToDecimal(item.creditMicros) })),
+      actionPricing: pricing.actions.map((item) => ({ action: item.action, name: item.name, credits: microsToDecimal(item.creditMicros), desc: item.description, enabled: item.active })),
       paymentAvailable: pricing.packages.some((item) => item.active),
       paymentNotice: '创建充值订单后显示唯一 TRC20 应付金额与收款地址。'
     };
@@ -211,27 +222,35 @@ export class ApiService {
   public async updatePricingConfig(data: {
     rate?: string;
     trc20Address?: string;
-    actionPricing?: Array<{ action: string; name: string; credits: number; desc: string; enabled?: boolean }>;
+    actionPricing?: Array<{ action: string; name: string; credits: string; desc: string; enabled?: boolean }>;
     packages?: UsdtPackage[];
   }) {
-    const current = (await productionApi.get<{ packages: Array<{ id: string; name: string; baseAmountMicros: string; creditMicros: string; active: boolean; sortOrder: number }>; actions: unknown[] }>('/admin/pricing')).data;
-    const submittedIds = new Set((data.packages || []).map(({ id }) => id));
-    const packageRequests = (data.packages || []).map((item, sortOrder) => productionApi.put(`/admin/pricing/packages/${encodeURIComponent(item.id)}`, { name: item.name, baseAmountMicros: String(Math.round(item.usdtAmount * 1_000_000)), creditMicros: String(Math.round(item.credits * 1_000_000)), active: true, sortOrder }));
-    const deactivateRequests = current.packages.filter(({ id, active }) => active && !submittedIds.has(id)).map((item) => productionApi.put(`/admin/pricing/packages/${encodeURIComponent(item.id)}`, { name: item.name, baseAmountMicros: item.baseAmountMicros, creditMicros: item.creditMicros, active: false, sortOrder: item.sortOrder }));
-    const actionRequests = (data.actionPricing || []).map((item) => productionApi.put(`/admin/pricing/actions/${encodeURIComponent(item.action)}`, { name: item.name, description: item.desc, creditMicros: String(Math.round(item.credits * 1_000_000)), active: item.enabled !== false }));
-    await Promise.all([...packageRequests, ...deactivateRequests, ...actionRequests]);
+    const packages = (data.packages || []).map((item, sortOrder) => {
+      if (!/^[1-9]\d*$/.test(item.usdtAmount.trim())) throw new Error('充值套餐基础金额必须是正整数 USDT');
+      return { id: item.id, name: item.name, baseAmountMicros: positiveMicros(item.usdtAmount, '充值金额'), creditMicros: positiveMicros(item.credits, '到账积分'), active: true, sortOrder };
+    });
+    const actions = (data.actionPricing || []).map((item) => ({ action: item.action, name: item.name, description: item.desc, creditMicros: positiveMicros(item.credits, '业务积分单价'), active: item.enabled !== false }));
+    await productionApi.put('/admin/pricing', { packages, actions });
     return { success: true, message: '定价已写入正式数据库并记录审计事件', config: data };
   }
 
   public async getCreditTransactions() {
     const { organizationId } = await this.resolveWorkspace();
-    const ledger = (await productionApi.get<Ledger>(`/organizations/${organizationId}/ledger?limit=100`)).data;
-    return { success: true, transactions: ledger.entries.map((entry) => ({ id: entry.id, tenantId: organizationId, type: BigInt(entry.amountMicros) >= 0n ? 'RECHARGE' as const : 'CONSUME' as const, action: entry.type as CreditTransaction['action'], amount: microsToCredits(entry.amountMicros), balance: microsToCredits(entry.balanceAfterMicros), description: entry.reason, createdAt: entry.createdAt, status: 'CONFIRMED' as const, metadata: {} as CreditTransaction['metadata'] })) };
+    const ledger = await this.readLedger();
+    return { success: true, transactions: ledger.entries.map((entry) => {
+      const type = entry.type === 'PURCHASE' ? 'RECHARGE' as const
+        : entry.type === 'CONSUMPTION' ? 'CONSUME' as const
+          : 'ADJUSTMENT' as const;
+      const action = entry.type === 'PURCHASE' ? 'USDT_TOPUP' as const
+        : entry.type === 'ADJUSTMENT' ? 'ADMIN_ADJUSTMENT' as const
+          : 'GROWTH_RUN' as const;
+      return { id: entry.id, tenantId: organizationId, type, action, amount: microsToDecimal(entry.amountMicros), balance: microsToDecimal(entry.balanceAfterMicros), description: entry.reason, createdAt: entry.createdAt, txHash: typeof entry.metadata?.txHash === 'string' ? entry.metadata.txHash : undefined, usdtAmount: typeof entry.metadata?.valueMicros === 'string' ? microsToDecimal(entry.metadata.valueMicros) : undefined, network: entry.paymentIntentId ? 'TRC20' as const : undefined, status: 'CONFIRMED' as const, metadata: {} as CreditTransaction['metadata'] };
+    }) };
   }
 
   public async createPaymentIntent(packageId: string) {
     const { organizationId } = await this.resolveWorkspace();
-    return (await productionApi.post<{ paymentIntent: { id: string; packageId: string; recipientAddress: string; expectedAmountMicros: string; creditMicros: string; status: string; expiresAt: string; createdAt: string } }>(`/organizations/${organizationId}/payment-intents`, { packageId })).data.paymentIntent;
+    return (await productionApi.post<{ paymentIntent: { id: string; packageId: string; network: 'TRC20'; recipientAddress: string; baseAmountUsdt: string; expectedAmountUsdt: string; creditMicros: string; status: string; expiresAt: string } }>(`/organizations/${organizationId}/payment-intents`, { packageId })).data.paymentIntent;
   }
 
   public async submitPaymentTransaction(paymentIntentId: string, txHash: string) {
@@ -240,29 +259,31 @@ export class ApiService {
   }
 
   public async getAllTransactions() {
-    const payments = (await productionApi.get<Array<{ id: string; organizationId: string; expectedAmountMicros: string; creditMicros: string; txHash?: string; status: string; createdAt: string }>>('/admin/payments')).data;
-    return { success: true, transactions: payments.map((payment) => ({ id: payment.id, tenantId: payment.organizationId, type: 'RECHARGE' as const, action: 'USDT_TOPUP' as const, amount: microsToCredits(payment.creditMicros), balance: 0, description: 'TRC20 USDT 充值', createdAt: payment.createdAt, txHash: payment.txHash, usdtAmount: Number(BigInt(payment.expectedAmountMicros)) / 1_000_000, network: 'TRC20' as const, status: payment.status === 'CREDITED' ? 'CONFIRMED' as const : payment.status === 'REJECTED' || payment.status === 'EXPIRED' ? 'REJECTED' as const : 'PENDING' as const })) };
+    const payments = await this.listAll<{ id: string; organizationId: string; expectedAmountMicros: string; creditMicros: string; txHash?: string; status: string; createdAt: string }>('/admin/payments');
+    return { success: true, transactions: payments.map((payment) => ({ id: payment.id, tenantId: payment.organizationId, type: 'RECHARGE' as const, action: 'USDT_TOPUP' as const, amount: microsToDecimal(payment.creditMicros), description: 'TRC20 USDT 充值', createdAt: payment.createdAt, txHash: payment.txHash, usdtAmount: microsToDecimal(payment.expectedAmountMicros), network: 'TRC20' as const, status: payment.status === 'CREDITED' ? 'CONFIRMED' as const : payment.status === 'REJECTED' || payment.status === 'EXPIRED' ? 'REJECTED' as const : 'PENDING' as const })) };
   }
 
   public async getAllUsages() {
-    const usages = (await productionApi.get<Array<{ id: string; organizationId: string; action: string; amountMicros: string; resultId?: string; createdAt: string }>>('/admin/usage')).data;
-    return { success: true, usages: usages.map((usage) => ({ id: usage.id, tenantId: usage.organizationId, action: usage.action, actionName: usage.action, creditsDeducted: microsToCredits(usage.amountMicros), remainingCredits: 0, createdAt: usage.createdAt, description: usage.resultId ? `交付结果 ${usage.resultId}` : '已结算业务用量' })) } as { success: boolean; usages: Array<{
+    const usages = await this.listAll<{ id: string; organizationId: string; action: string; amountMicros: string; resultId?: string; createdAt: string }>('/admin/usage');
+    return { success: true, usages: usages.map((usage) => ({ id: usage.id, tenantId: usage.organizationId, action: usage.action, actionName: usage.action, creditsDeducted: microsToDecimal(usage.amountMicros), createdAt: usage.createdAt, description: usage.resultId ? `交付结果 ${usage.resultId}` : '已结算业务用量' })) } as { success: boolean; usages: Array<{
       id: string;
       tenantId: string;
       siteId?: string;
       taskId?: string;
       action: string;
       actionName: string;
-      creditsDeducted: number;
-      remainingCredits: number;
+      creditsDeducted: string;
+      remainingCredits?: string;
       createdAt: string;
       description?: string;
     }> };
   }
 
-  public async adjustTenantCredits(targetTenantId: string, deltaCredits: number, reason: string) {
-    const result = (await productionApi.post<{ organization: { creditBalanceMicros: string }; entry: { id: string; createdAt: string } }>(`/admin/organizations/${targetTenantId}/adjustment`, { amountMicros: String(Math.round(deltaCredits * 1_000_000)), reason })).data;
-    return { success: true, message: '积分调整已追加到账本', balance: microsToCredits(result.organization.creditBalanceMicros), account: {} as TenantAccount, transaction: { id: result.entry.id } as CreditTransaction };
+  public async adjustTenantCredits(targetTenantId: string, deltaCredits: string, reason: string) {
+    const amountMicros = decimalToMicros(deltaCredits);
+    if (BigInt(amountMicros) === 0n) throw new Error('积分调整金额不能为 0');
+    const result = (await productionApi.post<{ organization: { creditBalanceMicros: string }; entry: { id: string; createdAt: string } }>(`/admin/organizations/${targetTenantId}/adjustment`, { amountMicros, reason })).data;
+    return { success: true, message: '积分调整已追加到账本', balance: microsToDecimal(result.organization.creditBalanceMicros), account: {} as TenantAccount, transaction: { id: result.entry.id } as CreditTransaction };
   }
 
   public async getProviderStatus() {
@@ -281,48 +302,39 @@ export class ApiService {
   // Sites
   public async getSites() {
     const { organizationId } = await this.resolveWorkspace();
-    const sites = (await productionApi.get<ProductionSite[]>(`/organizations/${organizationId}/sites`)).data;
-    return { sites: sites.map(toLegacySite) };
+    const sites = await this.listAll<ProductionSite>(`/organizations/${organizationId}/sites`);
+    return { sites: sites.map(toWorkspaceSite) };
   }
 
   public async testSiteConnection(siteId: string) {
     const { organizationId } = await this.resolveWorkspace();
     const result = (await productionApi.post<{ connected: boolean; user?: string; capabilities?: unknown }>(`/organizations/${organizationId}/sites/${siteId}/test-connection`, {})).data;
-    const site = (await productionApi.get<ProductionSite[]>(`/organizations/${organizationId}/sites`)).data.find((item) => item.id === siteId);
+    const site = (await this.getSites()).sites.find((item) => item.id === siteId);
     if (!site) throw new Error('站点连接已测试，但站点记录不存在');
-    return { result, site: toLegacySite(site) };
+    return { result, site };
   }
 
   public async createSite(data: {
     name: string;
     domain: string;
-    niche: string;
+    niche?: string;
     siteType?: SiteType;
-    siteLanguage: Language | string;
-    wpUsername?: string;
-    wpAppPassword?: string;
-    wpRestEndpoint?: string;
+    siteLanguage: Language;
   }) {
     const { organizationId } = await this.resolveWorkspace();
     if (data.siteType && data.siteType !== 'WORDPRESS') throw new Error('当前正式版本仅支持 WordPress');
-    const created = (await productionApi.post<{ site: ProductionSite }>(`/organizations/${organizationId}/sites`, { name: data.name, domain: data.domain, language: data.siteLanguage === 'en' ? 'en-US' : data.siteLanguage, niche: data.niche })).data.site;
-    if (typeof localStorage !== 'undefined' && data.niche) {
-      try { localStorage.setItem(`site_niche_${created.id}`, data.niche); } catch { /* ignore */ }
-    }
-    return { site: toLegacySite(created) };
+    const created = (await productionApi.post<{ site: ProductionSite }>(`/organizations/${organizationId}/sites`, { name: data.name, domain: data.domain, language: data.siteLanguage, niche: data.niche })).data.site;
+    return { site: toWorkspaceSite(created) };
   }
 
   public async updateSite(siteId: string, updated: Partial<WordPressSite>) {
     const { organizationId } = await this.resolveWorkspace();
-    if (typeof localStorage !== 'undefined' && updated.niche) {
-      try { localStorage.setItem(`site_niche_${siteId}`, updated.niche); } catch { /* ignore */ }
-    }
     const payload = { name: updated.name, domain: updated.domain, language: updated.siteLanguage, niche: updated.niche }.valueOf();
     const cleanPayload = Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
     await productionApi.put(`/organizations/${organizationId}/sites/${siteId}`, cleanPayload);
-    const site = (await productionApi.get<ProductionSite[]>(`/organizations/${organizationId}/sites`)).data.find((item) => item.id === siteId);
+    const site = (await this.getSites()).sites.find((item) => item.id === siteId);
     if (!site) throw new Error('站点更新后无法读取');
-    return { site: toLegacySite(site) };
+    return { site };
   }
 
   public async deleteSite(siteId: string) {
@@ -363,7 +375,7 @@ export class ApiService {
 
   public async listGrowthPrograms(siteId: string): Promise<GrowthProgram[]> {
     const { organizationId } = await this.resolveWorkspace();
-    return (await productionApi.get<GrowthProgram[]>(`/organizations/${organizationId}/sites/${siteId}/growth-programs`)).data;
+    return this.listAll<GrowthProgram>(`/organizations/${organizationId}/sites/${siteId}/growth-programs`);
   }
 
   public async getGrowthRun(runId: string): Promise<GrowthRun> {
@@ -383,7 +395,7 @@ export class ApiService {
 
   public async getGrowthCandidates(runId: string): Promise<GrowthCandidate[]> {
     const { organizationId } = await this.resolveWorkspace();
-    return (await productionApi.get<GrowthCandidate[]>(`/organizations/${organizationId}/growth-runs/${runId}/candidates`)).data;
+    return this.listAll<GrowthCandidate>(`/organizations/${organizationId}/growth-runs/${runId}/candidates`);
   }
 
   public async createGrowthProgram(
@@ -395,7 +407,7 @@ export class ApiService {
     const { organizationId } = await this.resolveWorkspace();
     const created = (await productionApi.post<{ program: GrowthProgram; run: GrowthRun; job: JobRun }>(`/organizations/${organizationId}/sites/${siteId}/growth-programs`, { mode, inputs })).data;
     onProgress?.(created.run);
-    return { program: created.program, run: created.run, draft: created.run.draft ? toLegacyDraft(created.run.draft) : undefined };
+    return { program: created.program, run: created.run, draft: created.run.draft ? toWorkspaceDraft(created.run.draft) : undefined };
   }
 
   public async changeGrowthProgram(programId: string, status: 'ACTIVE' | 'PAUSED') {
@@ -407,39 +419,39 @@ export class ApiService {
   // Drafts
   public async getDrafts() {
     const { organizationId } = await this.resolveWorkspace();
-    const drafts = (await productionApi.get<Draft[]>(`/organizations/${organizationId}/drafts`)).data;
-    return { drafts: drafts.map(toLegacyDraft) };
+    const drafts = await this.listAll<Draft>(`/organizations/${organizationId}/drafts`);
+    return { drafts: drafts.map(toWorkspaceDraft) };
   }
 
   public async approvePublishDraft(draftId: string) {
     const { organizationId } = await this.resolveWorkspace();
-    await productionApi.post(`/organizations/${organizationId}/drafts/${draftId}/approve`, {});
-    const published = (await productionApi.post<{ job: { id: string } }>(`/organizations/${organizationId}/drafts/${draftId}/publish`, {})).data;
-    await this.waitForJob(published.job.id);
-    const drafts = (await this.getDrafts()).drafts;
-    const draft = drafts.find((item) => item.id === draftId);
-    if (!draft) throw new Error('发布完成，但未找到对应文章记录');
-    return { draft };
+    const queued = (await productionApi.post<{ draft: Draft; job: JobRun }>(`/organizations/${organizationId}/drafts/${draftId}/approve`, {})).data;
+    return { draft: toWorkspaceDraft(queued.draft), job: queued.job };
   }
 
-  public approveAndPublishDraft(draftId: string) {
-    return this.approvePublishDraft(draftId);
+  public async rejectDraft(draftId: string, comment: string) {
+    const { organizationId } = await this.resolveWorkspace();
+    const rejected = (await productionApi.post<{ draft: Draft }>(`/organizations/${organizationId}/drafts/${draftId}/reject`, { comment })).data;
+    return { draft: toWorkspaceDraft(rejected.draft) };
+  }
+
+  public async retryPublishDraft(draftId: string) {
+    const { organizationId } = await this.resolveWorkspace();
+    const queued = (await productionApi.post<{ draft: Draft; job: JobRun }>(`/organizations/${organizationId}/drafts/${draftId}/retry-publish`, {})).data;
+    return { draft: toWorkspaceDraft(queued.draft), job: queued.job };
   }
 
   public async rollbackDraft(draftId: string) {
     const { organizationId } = await this.resolveWorkspace();
-    const result = (await productionApi.post<{ job: { id: string } }>(`/organizations/${organizationId}/drafts/${draftId}/rollback`, {})).data;
-    await this.waitForJob(result.job.id);
-    const draft = (await this.getDrafts()).drafts.find((item) => item.id === draftId);
-    if (!draft) throw new Error('回滚完成，但未找到对应文章记录');
-    return { draft };
+    const queued = (await productionApi.post<{ draft: Draft; job: JobRun }>(`/organizations/${organizationId}/drafts/${draftId}/rollback`, {})).data;
+    return { draft: toWorkspaceDraft(queued.draft), job: queued.job };
   }
 
   // Automated Tasks
   public async getTasks() {
     const sites = await this.getSites();
     const programs = (await Promise.all(sites.sites.map((site) => this.listGrowthPrograms(site.id)))).flat().filter((program) => program.mode === 'CONTINUOUS');
-    return { tasks: programs.map((program) => toLegacyTask(program as ProductionTask, sites.sites)) };
+    return { tasks: programs.map((program) => toWorkspaceTask(program as ProductionTask, sites.sites)) };
   }
 
   public async createTask(data: Partial<AutomatedTask>) {
@@ -448,20 +460,21 @@ export class ApiService {
     const inputs = (data.inputs || []).map(({ type, value }) => ({ type, value: value.trim() })).filter(({ value }) => Boolean(value));
     const created = (await productionApi.post<{ program: GrowthProgram }>(`/organizations/${organizationId}/sites/${data.siteId}/growth-programs`, { mode: 'CONTINUOUS', inputs })).data.program;
     const sites = await this.getSites();
-    return { task: toLegacyTask(created as ProductionTask, sites.sites) };
+    return { task: toWorkspaceTask(created as ProductionTask, sites.sites) };
   }
 
   public async updateTask(taskId: string, data: Partial<AutomatedTask>) {
     const { organizationId } = await this.resolveWorkspace();
     const updated = await this.changeGrowthProgram(taskId, data.status === 'ACTIVE' ? 'ACTIVE' : 'PAUSED');
     const sites = await this.getSites();
-    return { task: toLegacyTask(updated as ProductionTask, sites.sites) };
+    return { task: toWorkspaceTask(updated as ProductionTask, sites.sites) };
   }
 
   public async runTaskNow(taskId: string) {
-    const result = await this.changeGrowthProgram(taskId, 'ACTIVE');
+    const { organizationId } = await this.resolveWorkspace();
+    const result = (await productionApi.post<{ program: GrowthProgram; run: GrowthRun }>(`/organizations/${organizationId}/growth-programs/${taskId}/run-now`, {})).data;
     const sites = await this.getSites();
-    return { success: true, message: '已恢复，数据库调度器将在下一轮创建真实执行', task: toLegacyTask(result as ProductionTask, sites.sites) };
+    return { success: true, message: '新机会检查已进入后台队列，可离开页面后继续执行', task: toWorkspaceTask(result.program as ProductionTask, sites.sites), run: result.run };
   }
 
 }

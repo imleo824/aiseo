@@ -49,6 +49,7 @@ interface ProAutopilotTasksTabProps {
   onCreateTask: (task: Partial<AutomatedTask>) => Promise<void>;
   onToggleTask: (taskId: string, currentStatus: 'ACTIVE' | 'PAUSED') => Promise<void>;
   onRunTaskNow: (taskId: string) => Promise<{ success?: boolean; message?: string } | void>;
+  onOpenSiteManagement?: () => void;
 }
 
 export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
@@ -56,7 +57,8 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
   tasks = [],
   onCreateTask,
   onToggleTask,
-  onRunTaskNow
+  onRunTaskNow,
+  onOpenSiteManagement
 }) => {
   const safeSites = useMemo(() => sites || [], [sites]);
   const safeTasks = useMemo(() => tasks || [], [tasks]);
@@ -190,7 +192,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
               </span>
               <span className="text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5">
                 <FileText className="w-3.5 h-3.5 text-indigo-500" />
-                <span>共 {safeTasks.reduce((acc, t) => acc + (t.totalArticles || 0), 0)} 篇</span>
+                <span>共 {safeTasks.reduce((acc, t) => acc + (t.totalArticles || 0), 0)} 次交付</span>
               </span>
             </div>
           </div>
@@ -201,6 +203,12 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                 <Bot className="w-6 h-6" />
               </div>
               <div className="text-sm font-bold text-slate-800">暂无自动计划</div>
+              <p className="text-xs text-slate-500">连接 WordPress 后，系统会按新证据自动安排安全增长动作。</p>
+              {!eligibleSites.length && onOpenSiteManagement && (
+                <button type="button" onClick={onOpenSiteManagement} className="btn-primary min-h-[40px] px-4 text-xs">
+                  去授权 WordPress
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3">
@@ -262,10 +270,11 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                       <button
                         type="button"
                         onClick={() => handleRunNow(task.id)}
-                        disabled={isRunning}
+                        disabled={isRunning || !isActive}
+                        title={isActive ? '立即创建一次真实机会检查' : '请先开启自动计划'}
                         className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border min-h-[40px] cursor-pointer ${
-                          isRunning
-                            ? 'bg-slate-100 text-slate-400 border-slate-200/80 cursor-wait'
+                          isRunning || !isActive
+                            ? `bg-slate-100 text-slate-400 border-slate-200/80 ${isRunning ? 'cursor-wait' : 'cursor-not-allowed'}`
                             : 'bg-emerald-50 text-emerald-800 border-emerald-200/90 hover:bg-emerald-100 active:scale-95'
                         }`}
                       >
@@ -308,9 +317,9 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200/90 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl animate-in zoom-in-95 duration-150">
+          <div role="dialog" aria-modal="true" aria-labelledby="autopilot-dialog-title" className="bg-white border border-slate-200/90 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl animate-in zoom-in-95 duration-150">
             <div className="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60 sticky top-0 z-10">
-              <h3 className="font-bold text-slate-950 text-base">新建自动计划</h3>
+              <h3 id="autopilot-dialog-title" className="font-bold text-slate-950 text-base">新建自动计划</h3>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
@@ -323,8 +332,9 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
 
             <form onSubmit={handleCreateSubmit} className="p-5 sm:p-6 space-y-4 text-sm">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">目标站点</label>
+                <label htmlFor="autopilot-site" className="text-xs font-bold text-slate-700">目标站点</label>
                 <select
+                  id="autopilot-site"
                   value={siteId}
                   onChange={(e) => setSiteId(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-50/80 border border-slate-200/90 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400 text-sm font-medium text-slate-800 transition-colors"

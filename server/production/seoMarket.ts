@@ -67,8 +67,8 @@ export const resolveSeoMarket = (input: {
   try {
     hostname = new URL(/^https?:\/\//i.test(hostname) ? hostname : `https://${hostname}`).hostname;
   } catch {
-    // Site creation performs its own domain validation. A malformed legacy
-    // hostname is still handled deterministically through the platform market.
+    // Site creation performs strict validation. Keep this resolver total for
+    // isolated policy calls by falling back to the configured platform market.
   }
   const match = MARKET_BY_SUFFIX.find(({ suffix }) => hostname.endsWith(suffix));
   const dominantGscCountry = [...(input.gscCountries || [])]

@@ -1,4 +1,4 @@
-import { CreditHoldStatus } from '@prisma/client';
+import { CreditHoldStatus, PaymentStatus } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import type { TransactionClient } from './prisma';
 import { billingService } from './billingService';
@@ -74,5 +74,76 @@ describe('credit hold finalization', () => {
     expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { jobRunId: 'job', status: CreditHoldStatus.HELD }
     }));
+  });
+});
+
+const payment = (overrides: Record<string, unknown> = {}) => ({
+  id: '10000000-0000-4000-8000-000000000010',
+  organizationId: '10000000-0000-4000-8000-000000000001',
+  packageId: 'starter',
+  recipientAddress: 'TRecipient',
+  baseAmountMicros: 10_000_000n,
+  expectedAmountMicros: 10_000_001n,
+  creditMicros: 100_000_000n,
+  txHash: null,
+  status: PaymentStatus.AWAITING_TRANSFER,
+  expiresAt: new Date(Date.now() + 60_000),
+  ...overrides
+});
+
+describe('payment transaction submission', () => {
+  const firstHash = 'a'.repeat(64);
+  const secondHash = 'b'.repeat(64);
+
+  it('claims an awaiting intent once and writes an audit event', async () => {
+    const awaiting = payment();
+    const verifying = payment({ txHash: firstHash, status: PaymentStatus.VERIFYING });
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const auditCreate = vi.fn().mockResolvedValue({ id: 'audit' });
+    const tx = {
+      paymentIntent: {
+        findFirst: vi.fn().mockResolvedValueOnce(awaiting).mockResolvedValueOnce(verifying),
+        updateMany
+      },
+      auditEvent: { create: auditCreate }
+    } as unknown as TransactionClient;
+
+    const result = await billingService.submitTransaction(tx, awaiting.organizationId, awaiting.id, firstHash.toUpperCase());
+
+    expect(result.status).toBe(PaymentStatus.VERIFYING);
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: PaymentStatus.AWAITING_TRANSFER, txHash: null }),
+      data: expect.objectContaining({ txHash: firstHash, status: PaymentStatus.VERIFYING })
+    }));
+    expect(auditCreate).toHaveBeenCalledOnce();
+  });
+
+  it('replays the same hash but refuses to replace a hash under verification', async () => {
+    const verifying = payment({ txHash: firstHash, status: PaymentStatus.VERIFYING });
+    const tx = { paymentIntent: { findFirst: vi.fn().mockResolvedValue(verifying) } } as unknown as TransactionClient;
+
+    await expect(billingService.submitTransaction(tx, verifying.organizationId, verifying.id, firstHash)).resolves.toMatchObject({ status: PaymentStatus.VERIFYING });
+    await expect(billingService.submitTransaction(tx, verifying.organizationId, verifying.id, secondHash)).rejects.toThrow('正在核验其他交易哈希');
+  });
+
+  it('never reopens a rejected or expired payment intent', async () => {
+    for (const status of [PaymentStatus.REJECTED, PaymentStatus.EXPIRED]) {
+      const terminal = payment({ txHash: firstHash, status });
+      const tx = { paymentIntent: { findFirst: vi.fn().mockResolvedValue(terminal) } } as unknown as TransactionClient;
+      await expect(billingService.submitTransaction(tx, terminal.organizationId, terminal.id, firstHash)).rejects.toThrow('充值意图已结束');
+    }
+  });
+
+  it('returns a concurrent claim only when it uses the identical hash', async () => {
+    const awaiting = payment();
+    const verifying = payment({ txHash: firstHash, status: PaymentStatus.VERIFYING });
+    const tx = {
+      paymentIntent: {
+        findFirst: vi.fn().mockResolvedValueOnce(awaiting).mockResolvedValueOnce(verifying),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 })
+      }
+    } as unknown as TransactionClient;
+
+    await expect(billingService.submitTransaction(tx, awaiting.organizationId, awaiting.id, firstHash)).resolves.toMatchObject({ status: PaymentStatus.VERIFYING });
   });
 });

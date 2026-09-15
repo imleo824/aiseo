@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
 import { createApiService } from '../services/api';
 import type { WordPressSite } from '../types/seo';
@@ -11,6 +11,14 @@ export const GscConnectionModal: React.FC<{
   const [loading, setLoading] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    closeButton.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape' && !loading) onClose(); };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [loading, onClose]);
 
   const authorize = async () => {
     setLoading(true);
@@ -57,15 +65,16 @@ export const GscConnectionModal: React.FC<{
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white border border-slate-200/90 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+      <div role="dialog" aria-modal="true" aria-labelledby="gsc-dialog-title" className="bg-white border border-slate-200/90 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/90 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-xs">
               <Search className="w-4 h-4 text-emerald-400" />
             </div>
-            <h3 className="font-bold text-slate-900 text-base">Google Search Console</h3>
+            <h3 id="gsc-dialog-title" className="font-bold text-slate-900 text-base">Google Search Console</h3>
           </div>
           <button
+            ref={closeButton}
             type="button"
             onClick={onClose}
             className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-200/60 transition cursor-pointer"

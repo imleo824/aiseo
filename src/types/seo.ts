@@ -1,8 +1,7 @@
-export type Language = 'zh-CN' | 'en' | 'en-US';
+export type Language = 'zh-CN' | 'en-US';
 
 export type NavItem =
   | 'DASHBOARD'
-  | 'KEYWORD_RADAR'
   | 'AUTOPILOT_TASKS'
   | 'SITE_MANAGEMENT'
   | 'AUDIT_LEDGER'
@@ -13,69 +12,12 @@ export type NavItem =
   | 'SYSTEM_PAYMENT_MANAGEMENT'
   | 'SYSTEM_BILLING_MANAGEMENT';
 
-export interface SystemServicesConfig {
-  aiEngine: {
-    provider: 'GEMINI' | 'OPENAI_COMPATIBLE' | 'AZURE_OPENAI';
-    geminiModel: string;
-    fallbackModel?: string;
-    temperature: number;
-    maxOutputTokens: number;
-    customEndpoint?: string;
-    customApiKey?: string;
-    maxConcurrency: number;
-    timeoutMs: number;
-    systemPromptPrefix?: string;
-  };
-  serpData: {
-    provider: 'HYBRID_ENGINE' | 'DATAFORSEO' | 'SERPAPI' | 'GOOGLE_CSE';
-    dataForSeoLogin?: string;
-    dataForSeoPassword?: string;
-    serpApiKey?: string;
-    googleCseKey?: string;
-    googleCseCx?: string;
-    defaultLocation: string;
-    defaultLanguage: string;
-    cacheTtlHours: number;
-  };
-  mediaService: {
-    imageProvider: 'GEMINI_IMAGEN' | 'UNSPLASH' | 'PEXELS' | 'LOCAL_PLACEHOLDER';
-    unsplashAccessKey?: string;
-    pexelsApiKey?: string;
-    imageOrientation: 'landscape' | 'squarish' | 'portrait';
-    autoInsertAlt: boolean;
-    compressWebp: boolean;
-  };
-  blockchainGateway: {
-    network: 'TRC20';
-    tronGridApiKey?: string;
-    customRpcUrl?: string;
-    requiredConfirmations: number;
-    autoScanIntervalSeconds: number;
-  };
-  networkPolicy: {
-    requestTimeoutMs: number;
-    maxRetries: number;
-    crawlerUserAgent: string;
-    concurrencyLimitPerSite: number;
-  };
-}
-
-export interface ServiceConnectionTestResult {
-  service: string;
-  success: boolean;
-  latencyMs: number;
-  statusCode?: number;
-  message: string;
-  details?: Record<string, unknown>;
-  testedAt: string;
-}
-
 export type UsdtNetwork = 'TRC20';
 
 export interface ActionPricingItem {
   action: CreditActionType | string;
   name: string;
-  credits: number;
+  credits: string;
   desc: string;
   enabled?: boolean;
 }
@@ -83,29 +25,15 @@ export interface ActionPricingItem {
 export interface UsdtPackage {
   id: string;
   name: string;
-  badge?: string;
-  usdtAmount: number;
-  credits: number;
-  bonusCredits?: number;
-  popular?: boolean;
+  usdtAmount: string;
+  credits: string;
 }
 
-export interface PricingConfig {
-  rate: string;
-  trc20Address: string;
-  actionPricing: ActionPricingItem[];
-  packages: UsdtPackage[];
-}
-
-export type CreditTransactionType = 'RECHARGE' | 'CONSUME';
+export type CreditTransactionType = 'RECHARGE' | 'CONSUME' | 'ADJUSTMENT';
 
 export type CreditActionType =
   | 'USDT_TOPUP'
-  | 'CRUISE_PIPELINE'
-  | 'DRAFT_GENERATE'
-  | 'AUTOPILOT_CRUISE'
-  | 'COMPETITOR_ANALYSIS'
-  | 'SITE_AUDIT'
+  | 'GROWTH_RUN'
   | 'ADMIN_ADJUSTMENT';
 
 export interface CreditTransaction {
@@ -113,13 +41,13 @@ export interface CreditTransaction {
   tenantId: string;
   type: CreditTransactionType;
   action: CreditActionType;
-  amount: number; // 正数为充值/增加，负数为消耗
-  balance: number; // 交易后余额
+  amount: string; // 精确十进制字符串；正数为充值/增加，负数为消耗
+  balance?: string; // 精确十进制字符串；历史来源未记录时不伪造
   description: string;
   createdAt: string;
   txHash?: string;
-  usdtAmount?: number;
-  requestedCredits?: number;
+  usdtAmount?: string;
+  requestedCredits?: string;
   network?: UsdtNetwork;
   status?: 'CONFIRMED' | 'PENDING' | 'REJECTED';
   confirmedAt?: string;
@@ -141,134 +69,21 @@ export interface TenantAccount {
   username: string;
   email: string;
   companyName?: string;
-  credits: number;
-  totalRechargedUsdt: number;
-  totalConsumedCredits: number;
+  credits: string;
+  totalRechargedUsdt: string;
+  totalConsumedCredits: string;
   role: AccountRole;
   createdAt: string;
-  avatarUrl?: string;
-}
-
-export type OpportunityType =
-  | 'NEW_CONTENT'
-  | 'COMPETITOR_DISPLACEMENT'
-  | 'RANKING_IMPROVEMENT'
-  | 'HIGH_IMPRESSION_LOW_CTR'
-  | 'CONTENT_DECAY'
-  | 'CONTENT_CANNIBALIZATION'
-  | 'INTERNAL_LINK'
-  | 'TECHNICAL_RELEASE';
-
-export type OpportunityStatus =
-  | 'PROPOSED'
-  | 'CALIBRATING'
-  | 'APPROVED'
-  | 'GENERATING'
-  | 'IN_QUALITY_GATE'
-  | 'READY_TO_PUBLISH'
-  | 'AUTO_PUBLISHED'
-  | 'PUBLISHED'
-  | 'MANUAL_REVIEW'
-  | 'PAUSED'
-  | 'REJECTED';
-
-export type SearchIntentType =
-  | 'INFORMATIONAL'             // 📘 信息型 (40% 权威科普引流)
-  | 'COMMERCIAL_INVESTIGATION'  // ⚖️ 对比调研型 (30% 竞品截流)
-  | 'TRANSACTIONAL'             // 💳 交易决策型 (20% 留资转化)
-  | 'NAVIGATIONAL';             // 🧭 导航品牌型 (10% 品牌信任)
-
-export type EvergreenHealthStatus =
-  | 'PEAK_RANKING'              // 🟢 处于 Top 1~3 黄金排位
-  | 'RE_OPTIMIZED_2026'         // ⚡ 已触发 2026 自动增量更新
-  | 'STABLE_GROWTH'             // 📈 持续引流中
-  | 'DECAY_WARNING';            // ⚠️ 检测到轻度衰退，建议自愈
-
-export interface SiteHealthDiagnostics {
-  restApiStatus: boolean;
-  authStatus: boolean;
-  sitemapStatus: boolean;
-  permalinkStatus: boolean;
-  indexNowStatus: boolean;
-  lastCheckedAt: string;
-}
-
-export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
-
-export interface ScoreBreakdown {
-  businessValue: number;      // 20%
-  searchDemand: number;       // 18%
-  winProbability: number;     // 15%
-  currentRanking: number;     // 12%
-  engagementPotential: number;// 10%
-  contentUtility: number;     // 10%
-  internalLinkValue: number;  // 5%
-  freshness: number;          // 5%
-  dataReliability: number;    // 5%
-  riskPenalty: number;        // deduction
-  costPenalty: number;        // deduction
-  totalScore: number;         // 0-100
-}
-
-export interface DemandEvidence {
-  sourceType: 'GSC_QUERY' | 'CONTENT_GAP' | 'USER_SEED' | 'IMPRESSION_DECAY' | 'CANNIBALIZATION_ALERT';
-  queryOrTopic: string;
-  monthlyImpressions?: number;
-  currentClicks?: number;
-  currentPosition?: number;
-  competingUrls?: string[];
-  evidenceDescription: string;
-  reliabilityConfidence: number; // e.g. 0.95
-}
-
-export interface Opportunity {
-  id: string;
-  siteId: string;
-  title: string;
-  type: OpportunityType;
-  language: Language | string;
-  targetKeyword: string;
-  category: string;
-  searchIntent?: SearchIntentType;
-  cannibalizationRiskScore?: number; // 0-100, 0 = no risk
-  riskLevel: RiskLevel;
-  demandEvidence: DemandEvidence;
-  scoreBreakdown: ScoreBreakdown;
-  status: OpportunityStatus;
-  createdAt: string;
-  updatedAt: string;
-  requiresManualReviewReason?: string;
-  /**
-   * The exact brief created in stages 2–3. Stage 4 must consume this value;
-   * otherwise the visible pipeline would not describe the writing work.
-   */
-  contentBrief?: ContentBrief;
-}
-
-export interface ContentBrief {
-  opportunityId: string;
-  targetKeyword: string;
-  language: Language | string;
-  searchIntent: string;
-  searchIntentType?: SearchIntentType;
-  targetAudience: string;
-  recommendedWordCount: number;
-  articleStructure: { heading: string; points: string[] }[];
-  requiredKnowledgeSources: string[];
-  internalLinksToInsert: { anchorText: string; targetUrl: string }[];
-  forbiddenTopics: string[];
 }
 
 export interface QualityGateResult {
   passed: boolean;
-  overallScore: number;          // >= 85 required
-  factReliabilityScore: number;  // >= 90 required
-  hallucinationFree: boolean;
-  languageMatch: boolean;
-  sourceCheckPassed: boolean;
-  duplicateContentCheck: boolean;
+  overallScore: number;
   issues: string[];
   passedChecks: string[];
+  checks?: Array<{ name: string; passed: boolean; detail?: string }>;
+  generatedAt?: string;
+  version?: string;
 }
 
 /**
@@ -295,17 +110,14 @@ export interface ArticleDraft {
   opportunityId: string;
   siteId: string;
   title: string;
-  language: Language | string;
+  language: Language | 'und';
   category: string;
   contentHtml: string;
   summary: string;
   wordCount?: number;
-  searchIntent?: SearchIntentType;
-  evergreenStatus?: EvergreenHealthStatus;
-  lastEvergreenRefreshAt?: string;
   sourcesUsed: string[];
-  qualityGate: QualityGateResult;
-  status: 'DRAFT' | 'QUALITY_PASSED' | 'QUALITY_FAILED' | 'PENDING_APPROVAL' | 'PUBLISHED' | 'ROLLED_BACK';
+  qualityGate?: QualityGateResult;
+  status: 'DRAFT' | 'QUALITY_PASSED' | 'QUALITY_FAILED' | 'PENDING_APPROVAL' | 'PUBLISHING' | 'PUBLISH_FAILED' | 'REJECTED' | 'PUBLISHED' | 'ROLLING_BACK' | 'ROLLED_BACK';
   publishedUrl?: string;
   publishedAt?: string;
   wpPostId?: number;
@@ -338,56 +150,14 @@ export interface WordPressSite {
   domain: string;
   niche: string;
   siteType?: SiteType;
-  siteLanguage: Language | string;
-  pagesCount: number;
+  siteLanguage: Language;
   connectorStatus: 'CONNECTED' | 'CHECKING' | 'DISCONNECTED' | 'ERROR';
-  wpVersion?: string;
-  wpUsername?: string;
-  wpAppPassword?: string;
-  pluginInstalled: boolean;
   wordpressCompatibilityMode?: 'RECHECK_REQUIRED' | 'FULL_AUTO' | 'SAFE_AUTO' | 'ANALYSIS_ONLY' | 'BLOCKED';
   wordpressCompatibilityCheckedAt?: string;
-  whitelistedCategories: string[];
-  healthDiagnostics?: SiteHealthDiagnostics;
   gscConnected: boolean;
   gscPropertyId?: string;
   gscStatus?: string;
   gscLastSyncedAt?: string;
   gscLastErrorMessage?: string;
-  ga4Connected: boolean;
-  currentWeeklyPublished?: number;
-  lastWeeklyResetAt?: string;
   createdAt: string;
-}
-
-export interface KnowledgeSource {
-  id: string;
-  siteId: string;
-  title: string;
-  type: 'CLIENT_KB' | 'ORIGINAL_RESEARCH' | 'WHITELISTED_DOMAIN';
-  contentSnippet: string;
-  urlOrFilename?: string;
-  addedAt: string;
-}
-
-export interface AuditLogItem {
-  id: string;
-  siteId: string;
-  timestamp: string;
-  actor: 'SYSTEM_AUTOPILOT' | 'USER_ADMIN' | 'POLICY_ENGINE';
-  action: string;
-  target: string;
-  result: 'SUCCESS' | 'WARNING' | 'BLOCKED' | 'FAILED';
-  details: string;
-}
-
-export interface UsageLedgerItem {
-  month: string;
-  aiTokenCost: number;
-  crawlerCost: number;
-  publishedArticlesCount: number;
-  costPerArticle: number;
-  costPerIndexedPage: number;
-  budgetLimit: number;
-  budgetUsed: number;
 }

@@ -95,9 +95,9 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
   };
 
 
-  const handleUpdateActionCredits = (index: number, credits: number) => {
+  const handleUpdateActionCredits = (index: number, credits: string) => {
     const next = [...actionPricing];
-    next[index] = { ...next[index], credits: Math.max(0, credits) };
+    next[index] = { ...next[index], credits };
     setActionPricing(next);
   };
 
@@ -126,11 +126,8 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
       {
         id: newId,
         name: '新特惠套餐',
-        badge: '特惠活动',
-        usdtAmount: 200,
-        credits: 24000,
-        bonusCredits: 4000,
-        popular: false
+        usdtAmount: '200',
+        credits: '24000'
       }
     ]);
   };
@@ -270,13 +267,13 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                             <div className="flex items-center gap-1.5 bg-slate-50/80 border border-slate-200/90 rounded-xl px-3 py-1.5 min-h-[38px]">
                               <span className="text-xs font-semibold text-slate-600">扣除单价:</span>
                               <input
-                                type="number"
-                                min="0"
-                                max="1000"
+                                type="text"
+                                inputMode="decimal"
+                                pattern="[0-9]+([.][0-9]{1,6})?"
                                 disabled={!isAdmin}
                                 value={item.credits}
-                                onChange={(e) => handleUpdateActionCredits(idx, parseInt(e.target.value) || 0)}
-                                className="w-12 bg-transparent text-xs font-black text-rose-600 text-right focus:outline-none disabled:opacity-100 font-mono"
+                                onChange={(e) => handleUpdateActionCredits(idx, e.target.value)}
+                                className="w-20 bg-transparent text-xs font-black text-rose-600 text-right focus:outline-none disabled:opacity-100 font-mono"
                               />
                               <span className="text-xs font-bold text-slate-800">积分</span>
                             </div>
@@ -294,7 +291,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                     <div>
                       <h4 className="text-xs font-bold text-slate-950">USDT 购买/充值优惠套餐</h4>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        前台充值面板将直接呈现下列梯度套餐。管理员可动态更改充值金额、到账额度与加赠比例，并设定推荐状态。
+                        前台充值面板将直接呈现下列套餐。基础金额必须为整数 USDT；系统会在创建订单时自动分配唯一六位小数用于链上对账。
                       </p>
                     </div>
                     {isAdmin && (
@@ -313,11 +310,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                     {packages.map((pkg, idx) => (
                       <div
                         key={pkg.id || idx}
-                        className={`p-4 rounded-xl border transition-all relative ${
-                          pkg.popular
-                            ? 'bg-blue-50/20 border-blue-300 ring-1 ring-blue-200 shadow-2xs'
-                            : 'bg-white border-slate-200/90 hover:border-slate-300 shadow-2xs'
-                        }`}
+                        className="p-4 rounded-xl border transition-all relative bg-white border-slate-200/90 hover:border-slate-300 shadow-2xs"
                       >
                         <div className="flex items-center justify-between gap-2 mb-3.5">
                           <div className="flex items-center gap-1.5 min-w-0">
@@ -329,28 +322,9 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                               className="bg-slate-50/80 border border-slate-200/90 px-2.5 py-1 rounded-lg text-xs font-bold text-slate-950 focus:bg-white focus:outline-none focus:border-slate-400 w-28 disabled:bg-transparent disabled:border-transparent disabled:px-0"
                               placeholder="套餐名称"
                             />
-                            <input
-                              type="text"
-                              disabled={!isAdmin}
-                              value={pkg.badge || ''}
-                              onChange={(e) => handleUpdatePackage(idx, 'badge', e.target.value)}
-                              className="bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-lg text-[10px] text-emerald-800 font-bold focus:bg-white focus:outline-none focus:border-emerald-400 w-24 disabled:bg-emerald-50 disabled:border-emerald-200/80"
-                              placeholder="优惠角标"
-                            />
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0">
-                            <label className="flex items-center gap-1 text-[11px] text-slate-600 font-semibold cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                disabled={!isAdmin}
-                                checked={!!pkg.popular}
-                                onChange={(e) => handleUpdatePackage(idx, 'popular', e.target.checked)}
-                                className="rounded border-slate-300 text-slate-950 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
-                              />
-                              <span>推荐</span>
-                            </label>
-
                             {isAdmin && packages.length > 1 && (
                               <button
                                 type="button"
@@ -364,17 +338,17 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2.5 bg-slate-50/80 p-3 rounded-xl border border-slate-200/80 text-xs">
+                        <div className="grid grid-cols-2 gap-2.5 bg-slate-50/80 p-3 rounded-xl border border-slate-200/80 text-xs">
                           <div>
                             <div className="text-[10px] text-slate-500 font-semibold">支付 (USDT)</div>
                             <div className="flex items-center gap-0.5 mt-1">
-                              <span className="text-slate-500 font-bold">$</span>
                               <input
-                                type="number"
-                                min="1"
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[1-9][0-9]*"
                                 disabled={!isAdmin}
                                 value={pkg.usdtAmount}
-                                onChange={(e) => handleUpdatePackage(idx, 'usdtAmount', parseFloat(e.target.value) || 0)}
+                                onChange={(e) => handleUpdatePackage(idx, 'usdtAmount', e.target.value)}
                                 className="w-full bg-transparent font-bold text-slate-950 focus:outline-none font-mono"
                               />
                             </div>
@@ -383,24 +357,13 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                           <div>
                             <div className="text-[10px] text-slate-500 font-semibold">到账积分</div>
                             <input
-                              type="number"
-                              min="0"
+                              type="text"
+                              inputMode="decimal"
+                              pattern="[0-9]+([.][0-9]{1,6})?"
                               disabled={!isAdmin}
                               value={pkg.credits}
-                              onChange={(e) => handleUpdatePackage(idx, 'credits', parseInt(e.target.value) || 0)}
+                              onChange={(e) => handleUpdatePackage(idx, 'credits', e.target.value)}
                               className="w-full bg-transparent font-bold text-slate-950 focus:outline-none mt-1 font-mono"
-                            />
-                          </div>
-
-                          <div>
-                            <div className="text-[10px] text-slate-500 font-semibold">加赠积分</div>
-                            <input
-                              type="number"
-                              min="0"
-                              disabled={!isAdmin}
-                              value={pkg.bonusCredits || 0}
-                              onChange={(e) => handleUpdatePackage(idx, 'bonusCredits', parseInt(e.target.value) || 0)}
-                              className="w-full bg-transparent font-bold text-emerald-600 focus:outline-none mt-1 font-mono"
                             />
                           </div>
                         </div>

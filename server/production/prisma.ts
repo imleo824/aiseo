@@ -1,26 +1,15 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { env } from './env';
-import { mockDatabaseScope, createMockTransactionClient } from './mockDatabase';
 
-const hasRealDatabase = Boolean(
-  env.databaseUrl &&
-  !env.databaseUrl.includes('127.0.0.1') &&
-  !env.databaseUrl.includes('localhost')
-);
-
-let realPrisma: PrismaClient | undefined;
-if (hasRealDatabase) {
-  try {
-    realPrisma = new PrismaClient({
-      datasources: { db: { url: env.databaseUrl } },
-      log: env.runtime === 'development' ? ['warn', 'error'] : ['error']
-    });
-  } catch (err) {
-    console.warn('[AI Studio] Database not connected — using mock', err);
-  }
-}
-
-export const prisma = realPrisma || (createMockTransactionClient() as unknown as PrismaClient);
+// Always use the configured Postgres connection, including local Supabase in CI.
+// A deliberately invalid URL keeps module evaluation testable when configuration
+// is absent, while every attempted query still fails closed instead of returning
+// fabricated tenant data.
+const databaseUrl = env.databaseUrl || 'postgresql://configuration-required:invalid@127.0.0.1:1/configuration_required';
+export const prisma = new PrismaClient({
+  datasources: { db: { url: databaseUrl } },
+  log: env.runtime === 'development' ? ['warn', 'error'] : ['error']
+});
 
 export type ScopedIdentity = { organizationId?: string; profileId: string };
 export type TransactionClient = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$extends' | '$use'>;
@@ -42,10 +31,7 @@ export const retrySerializableOperation = async <T>(operation: () => Promise<T>,
 };
 
 export const withRequestScope = async <T>(identity: ScopedIdentity, operation: (tx: TransactionClient) => Promise<T>): Promise<T> => {
-  if (!realPrisma || !hasRealDatabase) {
-    return mockDatabaseScope(identity, operation);
-  }
-  return realPrisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`select set_config('app.profile_id', ${identity.profileId}, true)`;
     await tx.$executeRaw`select set_config('app.organization_id', ${identity.organizationId || ''}, true)`;
     return operation(tx as TransactionClient);
@@ -53,15 +39,11 @@ export const withRequestScope = async <T>(identity: ScopedIdentity, operation: (
 };
 
 export const withSerializableScope = async <T>(identity: ScopedIdentity, operation: (tx: TransactionClient) => Promise<T>): Promise<T> => {
-  if (!realPrisma || !hasRealDatabase) {
-    return mockDatabaseScope(identity, operation);
-  }
-  return retrySerializableOperation(() => realPrisma!.$transaction(async (tx) => {
+  return retrySerializableOperation(() => prisma.$transaction(async (tx) => {
     await tx.$executeRaw`select set_config('app.profile_id', ${identity.profileId}, true)`;
     await tx.$executeRaw`select set_config('app.organization_id', ${identity.organizationId || ''}, true)`;
     return operation(tx as TransactionClient);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
 };
 
-export const disconnectWebDatabase = () => realPrisma?.$disconnect();
-
+export const disconnectWebDatabase = () => prisma.$disconnect();

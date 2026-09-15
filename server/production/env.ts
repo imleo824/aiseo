@@ -23,6 +23,48 @@ const inferredAppBaseUrl = (): string => {
 };
 
 const isValidTronBase58 = (value: string): boolean => /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(value);
+const isCanonicalBase64Key = (value: string): boolean => {
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(value)) return false;
+  const decoded = Buffer.from(value, 'base64');
+  return decoded.length === 32 && decoded.toString('base64') === value;
+};
+
+const assertHttpsOrigin = (value: string, variable: string): void => {
+  let parsed: URL;
+  try { parsed = new URL(value); } catch { throw new Error(`${variable} must be a valid URL`); }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+    throw new Error(`${variable} must be a public HTTPS origin without credentials, port, path, query or fragment`);
+  }
+};
+
+const assertSampleRate = (name: string): void => {
+  const value = raw(name);
+  if (!value) return;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) throw new Error(`${name} must be a number from 0 to 1`);
+};
+
+export const assertEncryptionConfiguration = (): void => {
+  const version = Number(raw('APP_ENCRYPTION_KEY_VERSION') || '1');
+  if (!Number.isInteger(version) || version < 1 || version > 255) throw new Error('APP_ENCRYPTION_KEY_VERSION must be an integer from 1 to 255');
+  if (!isCanonicalBase64Key(env.appEncryptionKey)) throw new Error('APP_ENCRYPTION_KEY must be a base64-encoded 32-byte key');
+  const serializedRing = raw('APP_ENCRYPTION_KEYS');
+  if (!serializedRing) return;
+  let ring: unknown;
+  try { ring = JSON.parse(serializedRing); } catch { throw new Error('APP_ENCRYPTION_KEYS must be a JSON object of versioned base64 keys'); }
+  if (!ring || typeof ring !== 'object' || Array.isArray(ring)) throw new Error('APP_ENCRYPTION_KEYS must be a JSON object of versioned base64 keys');
+  const entries = Object.entries(ring as Record<string, unknown>);
+  if (!entries.length) throw new Error('APP_ENCRYPTION_KEYS cannot be empty');
+  for (const [keyVersion, encoded] of entries) {
+    const numericVersion = Number(keyVersion);
+    if (!/^\d+$/.test(keyVersion) || !Number.isInteger(numericVersion) || numericVersion < 1 || numericVersion > 255 || typeof encoded !== 'string' || !isCanonicalBase64Key(encoded)) {
+      throw new Error(`APP_ENCRYPTION_KEYS version ${keyVersion} is invalid`);
+    }
+  }
+  const currentKey = (ring as Record<string, unknown>)[String(version)];
+  if (typeof currentKey !== 'string') throw new Error(`APP_ENCRYPTION_KEYS must include current version ${version}`);
+  if (currentKey !== env.appEncryptionKey) throw new Error('APP_ENCRYPTION_KEY must equal the current key in APP_ENCRYPTION_KEYS');
+};
 
 export const env = Object.freeze({
   runtime,
@@ -52,7 +94,7 @@ export const env = Object.freeze({
   encryptionKeyFingerprint: createHash('sha256').update(process.env.APP_ENCRYPTION_KEY || '').digest('hex').slice(0, 12)
 });
 
-export const isValidEncryptionKey = (): boolean => Buffer.from(env.appEncryptionKey, 'base64').length === 32;
+export const isValidEncryptionKey = (): boolean => isCanonicalBase64Key(env.appEncryptionKey);
 const expectedDatabaseRole = (url: string, role: 'app_backend' | 'app_worker', variable: string): void => {
   let parsed: URL;
   try {
@@ -90,6 +132,7 @@ export const productionConfigurationStatus = (service: ServiceKind = 'web') => (
     redis: Boolean(env.redisUrl),
     encryptionKey: isValidEncryptionKey(),
     supabaseAuth: service === 'web' ? Boolean(env.supabaseUrl && env.supabasePublishableKey) : true,
+    turnstile: service === 'web' ? Boolean(env.turnstileSiteKey) : true,
     sentry: Boolean(env.sentryDsn),
     databaseBackedApi: !isDatabaseBackedRuntimeUnavailable(service)
   },
@@ -108,6 +151,7 @@ export const productionConfigurationWarnings = (service: ServiceKind): string[] 
   if (!raw(databaseVariable)) warnings.push(`${databaseVariable} is not set; the ${service} service cannot use its dedicated non-BYPASSRLS role.`);
   if (!env.redisUrl) warnings.push('REDIS_URL is not set; asynchronous jobs are disabled.');
   if (service === 'web' && (!env.supabaseUrl || !env.supabasePublishableKey)) warnings.push('Required Supabase Auth credentials are not configured.');
+  if (service === 'web' && !env.turnstileSiteKey) warnings.push('VITE_TURNSTILE_SITE_KEY is not set; protected signup cannot complete.');
   if (!env.sentryDsn) warnings.push('SENTRY_DSN is not set; production error and performance monitoring is unavailable.');
   if (!env.appEncryptionKey) warnings.push('APP_ENCRYPTION_KEY is not set; credential encryption is disabled.');
   if (service === 'web' && !raw('APP_BASE_URL') && !raw('RAILWAY_PUBLIC_DOMAIN')) warnings.push('APP_BASE_URL is not set; OAuth callbacks will default to localhost.');
@@ -120,7 +164,10 @@ export const productionConfigurationWarnings = (service: ServiceKind): string[] 
 
 export const assertProductionConfiguration = (service: ServiceKind): void => {
   if (env.runtime !== 'production') return;
-  if (!env.appEncryptionKey || !isValidEncryptionKey()) throw new Error('APP_ENCRYPTION_KEY must be a base64-encoded 32-byte key');
+  assertEncryptionConfiguration();
+  assertHttpsOrigin(env.appBaseUrl, 'APP_BASE_URL');
+  assertSampleRate('SENTRY_TRACES_SAMPLE_RATE');
+  assertSampleRate('VITE_SENTRY_TRACES_SAMPLE_RATE');
   if (env.trc20RecipientAddress && !isValidTronBase58(env.trc20RecipientAddress)) {
     throw new Error('TRC20_RECIPIENT_ADDRESS must be a valid base58 TRON address');
   }
@@ -135,14 +182,24 @@ export const assertProductionConfiguration = (service: ServiceKind): void => {
     if (env.workerDatabaseUrl) throw new Error('DATABASE_WORKER_URL must not be exposed to the Web service');
     expectedDatabaseRole(env.databaseUrl, 'app_backend', 'DATABASE_APP_URL');
     if (env.supabaseServiceRoleKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY must not be exposed to the Web service');
+    if (raw('DATAFORSEO_PASSWORD') || raw('OPENAI_API_KEY') || raw('GEMINI_API_KEY') || raw('TRONGRID_API_KEY')) {
+      throw new Error('Worker-only provider secrets must not be exposed to the Web service');
+    }
   } else {
     if (!env.workerDatabaseUrl) throw new Error('DATABASE_WORKER_URL is required for the Worker service');
     if (env.databaseUrl) throw new Error('DATABASE_APP_URL must not be exposed to the Worker service');
     expectedDatabaseRole(env.workerDatabaseUrl, 'app_worker', 'DATABASE_WORKER_URL');
     if (env.supabaseServiceRoleKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY must not be exposed to the Worker service; account erasure is isolated in Supabase Edge Functions');
-    if (env.supabasePublishableKey) throw new Error('SUPABASE_PUBLISHABLE_KEY must not be exposed to the Worker service');
+    if (env.supabaseUrl || env.supabasePublishableKey || env.turnstileSiteKey || raw('VITE_SENTRY_DSN')) throw new Error('Browser and Supabase Auth configuration must not be exposed to the Worker service');
   }
   if (!env.redisUrl) throw new Error('REDIS_URL is required in production');
-  if (service === 'web' && (!env.supabaseUrl || !env.supabasePublishableKey)) throw new Error('Required Supabase Auth configuration is missing for web');
+  if (service === 'web' && (!env.supabaseUrl || !env.supabasePublishableKey || !env.turnstileSiteKey)) throw new Error('Required Supabase Auth and Turnstile configuration is missing for web');
+  if (service === 'web') assertHttpsOrigin(env.supabaseUrl, 'SUPABASE_URL');
   if (!env.sentryDsn) throw new Error('SENTRY_DSN is required in production');
+  try {
+    const sentry = new URL(env.sentryDsn);
+    if (sentry.protocol !== 'https:') throw new Error();
+  } catch {
+    throw new Error('SENTRY_DSN must be a valid HTTPS DSN');
+  }
 };

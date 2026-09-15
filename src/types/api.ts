@@ -1,7 +1,7 @@
-export type Organization = { id: string; name: string; creditBalanceMicros: string; role: 'OWNER' | 'ADMIN' | 'EDITOR' | 'VIEWER' };
-export type Me = { profile: { id: string; email: string; displayName?: string; platformRole: 'USER' | 'PLATFORM_ADMIN' }; organizations: Organization[] };
+export type Organization = { id: string; name: string; creditBalanceMicros: string; totalRechargedMicros: string; totalConsumedMicros: string; role: 'OWNER' | 'ADMIN' | 'EDITOR' | 'VIEWER'; createdAt: string };
+export type Me = { profile: { id: string; email: string; displayName?: string; platformRole: 'USER' | 'PLATFORM_ADMIN'; createdAt: string }; organizations: Organization[] };
 export type WordPressCompatibilityMode = 'RECHECK_REQUIRED' | 'FULL_AUTO' | 'SAFE_AUTO' | 'ANALYSIS_ONLY' | 'BLOCKED';
-export type Site = { id: string; name: string; domain: string; language: string; niche?: string; wordpressStatus: string; wordpressUser?: string; wordpressVerifiedAt?: string; wordpressCompatibilityMode: WordPressCompatibilityMode; wordpressCompatibilityCheckedAt?: string; createdAt: string; integrations: Array<{ id: string; provider: 'GSC'; propertyId?: string; status: string; lastSyncedAt?: string; lastErrorMessage?: string }> };
+export type Site = { id: string; name: string; domain: string; language: 'zh-CN' | 'en-US'; niche?: string; wordpressStatus: string; wordpressUser?: string; wordpressVerifiedAt?: string; wordpressCompatibilityMode: WordPressCompatibilityMode; wordpressCompatibilityCheckedAt?: string; createdAt: string; integrations: Array<{ id: string; provider: 'GSC'; propertyId?: string; status: string; lastSyncedAt?: string; lastErrorMessage?: string }> };
 export type Opportunity = { id: string; siteId: string; title: string; type: string; targetUrl?: string; keyword?: string; searchVolume?: number; keywordDifficulty?: number; roiScoreMicros?: string; expectedValueMicros?: string; confidenceMicros?: string; formulaVersion: string; status: string };
 export type GrowthStageCode = 'UNDERSTAND' | 'DISCOVER' | 'DECIDE' | 'EXECUTE' | 'LEARN';
 export type GrowthRunStage = {
@@ -91,7 +91,7 @@ export type GrowthRun = {
   errorCode?: string;
   errorMessage?: string;
   stages: GrowthRunStage[];
-  actions?: GrowthAction[];
+  action?: GrowthAction;
   draft?: Draft;
   siteSnapshot?: SiteSnapshotSummary;
   measurement?: { gscConnected: boolean; lastSyncedAt?: string; trafficClaimAllowed: boolean };
@@ -112,14 +112,22 @@ export type Draft = {
   siteId: string;
   opportunityId?: string;
   title: string;
-  status: string;
+  status: 'GENERATING' | 'QUALITY_FAILED' | 'PENDING_REVIEW' | 'REJECTED' | 'PUBLISHING' | 'PUBLISHED' | 'PUBLISH_FAILED' | 'ROLLING_BACK' | 'ROLLED_BACK';
   html: string;
-  qualityReport: { passed?: boolean; score?: number; issues?: string[]; passedChecks?: string[] };
+  qualityReport: {
+    passed?: boolean;
+    score?: number;
+    issues?: string[];
+    passedChecks?: string[];
+    checks?: Array<{ name: string; passed: boolean; detail?: string }>;
+    generatedAt?: string;
+    version?: string;
+  };
   dataProvenance?: Array<{ source?: string; status?: string }>;
   knowledgeSourceIds?: string[];
   publishedUrl?: string;
-  createdAt?: string;
-  reviews: Array<{ decision: string; comment?: string }>;
-  publishAttempts: Array<{ status: string; remoteUrl?: string; errorMessage?: string }>;
+  createdAt: string;
+  reviews?: Array<{ decision: string; comment?: string }>;
+  publishAttempts?: Array<{ status: string; remoteUrl?: string; errorMessage?: string; finishedAt?: string }>;
 };
-export type Ledger = { balanceMicros: string; heldMicros: string; availableMicros: string; entries: Array<{ id: string; type: string; amountMicros: string; balanceAfterMicros: string; reason: string; createdAt: string }> };
+export type Ledger = { balanceMicros: string; heldMicros: string; availableMicros: string; entries: Array<{ id: string; type: string; amountMicros: string; balanceAfterMicros: string; reason: string; paymentIntentId?: string; metadata?: Record<string, unknown>; createdAt: string }> };

@@ -15,6 +15,7 @@ const setCommonProductionEnvironment = (encryptionKey = Buffer.alloc(32, 7).toSt
   process.env.APP_BASE_URL = 'https://app.example.com';
   process.env.SUPABASE_URL = 'https://project.supabase.co';
   process.env.SENTRY_DSN = 'https://public@example.ingest.sentry.io/1';
+  process.env.VITE_TURNSTILE_SITE_KEY = '1x00000000000000000000AA';
   for (const name of ['DATABASE_URL', 'DATABASE_ADMIN_URL', 'DATABASE_APP_URL', 'DATABASE_WORKER_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'TURNSTILE_SECRET_KEY', 'SMTP_PASSWORD', 'OPENAI_API_KEY', 'GEMINI_API_KEY']) delete process.env[name];
 };
 
@@ -26,6 +27,8 @@ const setWebEnvironment = () => {
 
 const setWorkerEnvironment = () => {
   setCommonProductionEnvironment();
+  delete process.env.SUPABASE_URL;
+  delete process.env.VITE_TURNSTILE_SITE_KEY;
   process.env.DATABASE_WORKER_URL = 'postgresql://app_worker.projectref:password@pooler.example.com:5432/postgres?sslmode=require&connection_limit=5&pool_timeout=10';
 };
 
@@ -108,6 +111,48 @@ describe('production configuration guard', () => {
     process.env.APP_ENCRYPTION_KEY = 'short-key';
     config = await import('./env');
     expect(() => config.assertProductionConfiguration('web')).toThrow('32-byte');
+  });
+
+  it('validates the complete versioned encryption key ring at startup', async () => {
+    setWebEnvironment();
+    process.env.APP_ENCRYPTION_KEY_VERSION = '2';
+    process.env.APP_ENCRYPTION_KEYS = JSON.stringify({ 1: Buffer.alloc(32, 6).toString('base64') });
+    let config = await import('./env');
+    expect(() => config.assertProductionConfiguration('web')).toThrow('current version 2');
+
+    vi.resetModules();
+    setWebEnvironment();
+    const current = Buffer.alloc(32, 7).toString('base64');
+    process.env.APP_ENCRYPTION_KEY_VERSION = '2';
+    process.env.APP_ENCRYPTION_KEYS = JSON.stringify({ 1: Buffer.alloc(32, 6).toString('base64'), 2: current });
+    config = await import('./env');
+    expect(() => config.assertProductionConfiguration('web')).not.toThrow();
+  });
+
+  it('requires a canonical public origin and browser captcha configuration', async () => {
+    setWebEnvironment();
+    delete process.env.VITE_TURNSTILE_SITE_KEY;
+    let config = await import('./env');
+    expect(() => config.assertProductionConfiguration('web')).toThrow('Turnstile');
+
+    vi.resetModules();
+    setWebEnvironment();
+    process.env.APP_BASE_URL = 'http://app.example.com/callback';
+    config = await import('./env');
+    expect(() => config.assertProductionConfiguration('web')).toThrow('public HTTPS origin');
+  });
+
+  it('rejects secrets that belong to the other runtime service', async () => {
+    setWebEnvironment();
+    process.env.OPENAI_API_KEY = 'server-secret';
+    let config = await import('./env');
+    expect(() => config.assertProductionConfiguration('web')).toThrow('Worker-only');
+
+    vi.resetModules();
+    setWorkerEnvironment();
+    process.env.SUPABASE_URL = 'https://project.supabase.co';
+    config = await import('./env');
+    expect(() => config.assertProductionConfiguration('worker')).toThrow('must not be exposed');
   });
 
   it('rejects transaction pooling and unbounded Prisma pools', async () => {

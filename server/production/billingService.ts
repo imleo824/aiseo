@@ -2,6 +2,7 @@ import { CreditHoldStatus, LedgerEntryType, PaymentStatus, Prisma, type PrismaCl
 import { ConflictError, InsufficientCreditsError, NotFoundError, ValidationError } from '../domain/errors';
 import { env } from './env';
 import { retrySerializableOperation, type TransactionClient } from './prisma';
+import { POSTGRES_BIGINT_MAX } from './accounting';
 
 const USDT_MICROS = 1_000_000n;
 const TX_HASH_PATTERN = /^[a-fA-F0-9]{64}$/;
@@ -58,6 +59,16 @@ export const billingService = {
     const paymentPackage = await tx.paymentPackage.findFirst({ where: { id: packageId, active: true } });
     if (!paymentPackage) throw new NotFoundError('充值套餐不存在或已停用');
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('aiseo-payment-amount-allocation'))`;
+    const reusable = await tx.paymentIntent.findFirst({
+      where: {
+        organizationId,
+        packageId: paymentPackage.id,
+        status: PaymentStatus.AWAITING_TRANSFER,
+        expiresAt: { gt: new Date() }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    if (reusable) return paymentResponse(reusable);
     const active = await tx.paymentIntent.findMany({
       where: {
         status: { in: [PaymentStatus.AWAITING_TRANSFER, PaymentStatus.VERIFYING, PaymentStatus.CONFIRMED] },
@@ -95,17 +106,45 @@ export const billingService = {
 
   async submitTransaction(tx: TransactionClient, organizationId: string, paymentIntentId: string, txHash: string) {
     if (!TX_HASH_PATTERN.test(txHash)) throw new ValidationError('TRC20 交易哈希格式无效');
+    const normalizedTxHash = txHash.toLowerCase();
     const payment = await tx.paymentIntent.findFirst({ where: { id: paymentIntentId, organizationId } });
     if (!payment) throw new NotFoundError('充值意图不存在');
+    if (payment.status === PaymentStatus.CREDITED) {
+      if (payment.txHash?.toLowerCase() !== normalizedTxHash) throw new ConflictError('该充值意图已使用其他交易哈希完成入账');
+      return paymentResponse(payment);
+    }
+    if (payment.status === PaymentStatus.REJECTED || payment.status === PaymentStatus.EXPIRED) {
+      throw new ConflictError('充值意图已结束，不能重新提交交易哈希');
+    }
+    if (payment.status === PaymentStatus.VERIFYING || payment.status === PaymentStatus.CONFIRMED) {
+      if (payment.txHash?.toLowerCase() !== normalizedTxHash) throw new ConflictError('充值意图正在核验其他交易哈希');
+      return paymentResponse(payment);
+    }
     if (payment.expiresAt <= new Date()) {
-      await tx.paymentIntent.update({ where: { id: payment.id }, data: { status: PaymentStatus.EXPIRED } });
+      await tx.paymentIntent.updateMany({
+        where: { id: payment.id, organizationId, status: PaymentStatus.AWAITING_TRANSFER },
+        data: { status: PaymentStatus.EXPIRED }
+      });
       throw new ConflictError('充值意图已过期');
     }
-    if (payment.status === PaymentStatus.CREDITED) return paymentResponse(payment);
     try {
-      const updated = await tx.paymentIntent.update({
-        where: { id: payment.id },
-        data: { txHash: txHash.toLowerCase(), status: PaymentStatus.VERIFYING, submittedAt: new Date() }
+      const claimed = await tx.paymentIntent.updateMany({
+        where: { id: payment.id, organizationId, status: PaymentStatus.AWAITING_TRANSFER, txHash: null },
+        data: { txHash: normalizedTxHash, status: PaymentStatus.VERIFYING, submittedAt: new Date() }
+      });
+      if (claimed.count !== 1) {
+        const concurrent = await tx.paymentIntent.findFirst({ where: { id: payment.id, organizationId } });
+        if (concurrent?.txHash?.toLowerCase() === normalizedTxHash && (
+          concurrent.status === PaymentStatus.VERIFYING || concurrent.status === PaymentStatus.CONFIRMED || concurrent.status === PaymentStatus.CREDITED
+        )) {
+          return paymentResponse(concurrent);
+        }
+        throw new ConflictError('充值意图已被其他交易提交');
+      }
+      const updated = await tx.paymentIntent.findFirst({ where: { id: payment.id, organizationId } });
+      if (!updated) throw new NotFoundError('充值意图不存在');
+      await tx.auditEvent.create({
+        data: { organizationId, action: 'PAYMENT_TRANSACTION_SUBMITTED', targetType: 'payment_intent', targetId: payment.id, metadata: { txHash: normalizedTxHash } }
       });
       return paymentResponse(updated);
     } catch (error: unknown) {
@@ -128,10 +167,13 @@ export const billingService = {
           const organization = await tx.organization.findUniqueOrThrow({ where: { id: payment.organizationId } });
           return { credited: false, balanceMicros: organization.creditBalanceMicros.toString() };
         }
-        if (payment.status !== PaymentStatus.VERIFYING && payment.status !== PaymentStatus.CONFIRMED) {
+        if (payment.status !== PaymentStatus.CONFIRMED) {
           throw new ConflictError('充值意图状态不允许入账');
         }
-        await lockOrganizationBalance(tx, payment.organizationId);
+        const lockedOrganization = await lockOrganizationBalance(tx, payment.organizationId);
+        if (lockedOrganization.creditBalanceMicros > POSTGRES_BIGINT_MAX - payment.creditMicros) {
+          throw new ConflictError('充值后余额将超过平台账务上限，请联系人工支持');
+        }
         const organization = await tx.organization.update({
           where: { id: payment.organizationId },
           data: { creditBalanceMicros: { increment: payment.creditMicros } }

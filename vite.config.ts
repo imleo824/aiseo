@@ -12,12 +12,14 @@ export default defineConfig(() => {
       },
     },
     build: {
-      chunkSizeWarningLimit: 1000,
+      chunkSizeWarningLimit: 600,
       rollupOptions: {
         output: {
           manualChunks: {
             'vendor-react': ['react', 'react-dom'],
             'vendor-icons': ['lucide-react'],
+            'vendor-auth': ['@supabase/supabase-js'],
+            'vendor-query': ['@tanstack/react-query'],
           },
         },
       },

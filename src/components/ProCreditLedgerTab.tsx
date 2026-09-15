@@ -18,6 +18,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { ApiService } from '../services/api';
+import { absoluteDecimal, compareDecimals, formatDecimal, sumDecimals } from '../lib/fixedDecimal';
 
 interface ProCreditLedgerTabProps {
   account: TenantAccount | null;
@@ -37,16 +38,15 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
   const [timeFilter, setTimeFilter] = useState<'ALL' | 'TODAY' | 'WEEK' | 'MONTH'>('ALL');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showRatesGuide, setShowRatesGuide] = useState(false);
+  const [pricingError, setPricingError] = useState(false);
 
   // 动态计费标准与业务价格
-  const [systemRate, setSystemRate] = useState<string>('1 USDT = 100 基础积分');
-  const [actionPricing, setActionPricing] = useState<ActionPricingItem[]>([
-    { action: 'CRUISE_PIPELINE', name: '文章生成与发布 (按篇计费)', credits: 100, desc: '单篇标准价 ($1.00/篇)：包含热词分析、长文撰写、质量检测、内链优化与自动发布。', enabled: true },
-    { action: 'COMPETITOR_ANALYSIS', name: '智能挖掘与拓词分析 (按次计费)', credits: 50, desc: '单次标准价 ($0.50/次)：包含核心词拓展、高意图长尾词挖掘、竞品词库分析与搜索量估算。', enabled: true }
-  ]);
+  const [systemRate, setSystemRate] = useState<string>('链上精确金额');
+  const [actionPricing, setActionPricing] = useState<ActionPricingItem[]>([]);
 
   useEffect(() => {
     const api = new ApiService(tenantId);
+    setPricingError(false);
     api.getCreditConfig()
       .then(res => {
         if (res.rate) setSystemRate(res.rate);
@@ -60,7 +60,7 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
           })));
         }
       })
-      .catch(() => {});
+      .catch(() => setPricingError(true));
   }, [tenantId]);
 
   const copyToClipboard = (text: string, id: string) => {
@@ -100,13 +100,8 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
   }, [transactions, selectedType, timeFilter, searchQuery]);
 
   const stats = useMemo(() => {
-    let totalRechargeAmount = 0;
-    let totalConsumeAmount = 0;
-
-    transactions.forEach(tx => {
-      if (tx.type === 'RECHARGE') totalRechargeAmount += tx.amount;
-      if (tx.type === 'CONSUME') totalConsumeAmount += Math.abs(tx.amount);
-    });
+    const totalRechargeAmount = sumDecimals(...transactions.filter(({ type }) => type === 'RECHARGE').map(({ amount }) => amount));
+    const totalConsumeAmount = sumDecimals(...transactions.filter(({ type }) => type === 'CONSUME').map(({ amount }) => absoluteDecimal(amount)));
 
     return {
       totalRechargeAmount,
@@ -124,8 +119,8 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
       `"${new Date(tx.createdAt).toLocaleString('zh-CN')}"`,
       `"${tx.type}"`,
       `"${tx.action}"`,
-      tx.type === 'CONSUME' ? `-${Math.abs(tx.amount)}` : `+${tx.amount}`,
-      tx.balance,
+      compareDecimals(tx.amount, '0') > 0 ? `+${tx.amount}` : tx.amount,
+      tx.balance ?? '',
       tx.usdtAmount || '',
       tx.network || '',
       `"${tx.txHash || ''}"`,
@@ -161,6 +156,13 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
             业务消耗
           </span>
         );
+      case 'ADJUSTMENT':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200/80">
+            <Coins className="w-3 h-3 text-amber-700" />
+            管理员调整
+          </span>
+        );
       default:
         return null;
     }
@@ -176,10 +178,20 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
               <Zap className="w-4 h-4 text-emerald-400 shrink-0" />
               <h3 className="text-sm font-bold text-white">当前各业务实时计费费率标准</h3>
             </div>
-            <span className="text-xs text-slate-400 font-mono">兑换汇率：{systemRate} (TRC20 网络)</span>
+            <span className="text-xs text-slate-400 font-mono">支付计价：{systemRate} (TRC20 网络)</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {pricingError && (
+              <div className="sm:col-span-2 lg:col-span-5 rounded-xl border border-amber-800/60 bg-amber-950/30 p-4 text-xs text-amber-100">
+                计价配置暂不可用，请稍后重试。账本余额与既有流水不受影响。
+              </div>
+            )}
+            {!pricingError && actionPricing.length === 0 && (
+              <div className="sm:col-span-2 lg:col-span-5 rounded-xl border border-slate-800 bg-slate-900/90 p-4 text-xs text-slate-300">
+                当前没有启用的业务计价项。
+              </div>
+            )}
             {actionPricing.map((item, idx) => {
               const colors = [
                 'text-emerald-400',
@@ -195,7 +207,7 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
                   <div>
                     <div className="text-xs font-semibold text-slate-300 mb-1 leading-snug">{item.name}</div>
                     <div className={`text-xl font-black ${colorClass}`}>
-                      {item.credits} <span className="text-xs font-normal text-slate-400">积分/次</span>
+                      {formatDecimal(item.credits)} <span className="text-xs font-normal text-slate-400">积分/次</span>
                     </div>
                   </div>
                   <div className="text-[11px] text-slate-400 leading-relaxed">{item.desc}</div>
@@ -228,14 +240,12 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
               </div>
             </div>
             <div className="text-3xl font-black text-slate-950 tracking-tight">
-              {account?.credits ?? 0}
+              {formatDecimal(account?.credits ?? '0')}
             </div>
           </div>
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="text-slate-500">折合 USDT 估值</span>
-            <span className="font-bold text-slate-800">
-              ≈ {((account?.credits ?? 0) / 100).toFixed(2)} USDT
-            </span>
+            <span className="text-slate-500">余额依据</span>
+            <span className="font-bold text-slate-800">不可变账本</span>
           </div>
         </div>
 
@@ -259,14 +269,12 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
               </div>
             </div>
             <div className="text-3xl font-black text-slate-950 tracking-tight">
-              {account?.totalConsumedCredits ?? stats.totalConsumeAmount} <span className="text-sm font-semibold text-slate-500">积分</span>
+              {formatDecimal(account?.totalConsumedCredits ?? stats.totalConsumeAmount)} <span className="text-sm font-semibold text-slate-500">积分</span>
             </div>
           </div>
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="text-slate-500">折合消耗金额</span>
-            <span className="font-bold text-amber-700">
-              {((account?.totalConsumedCredits ?? stats.totalConsumeAmount) / 100).toFixed(2)} USDT
-            </span>
+            <span className="text-slate-500">统计口径</span>
+            <span className="font-bold text-amber-700">已结算业务用量</span>
           </div>
         </div>
       </div>
@@ -279,7 +287,8 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
               [
                 { key: 'ALL', label: '全部交易' },
                 { key: 'RECHARGE', label: '充值入账' },
-                { key: 'CONSUME', label: '业务消耗' }
+                { key: 'CONSUME', label: '业务消耗' },
+                { key: 'ADJUSTMENT', label: '管理员调整' }
               ] as const
             ).map(tab => (
               <button
@@ -351,7 +360,7 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
         ) : (
           <div className="divide-y divide-slate-100 border border-slate-200/90 rounded-2xl overflow-hidden bg-white shadow-2xs">
             {filteredTransactions.map(tx => {
-              const isPositive = tx.type === 'RECHARGE';
+              const isPositive = compareDecimals(tx.amount, '0') > 0;
 
               return (
                 <div
@@ -361,9 +370,11 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
                   {/* Left: Icon, Type, Description, Metadata */}
                   <div className="flex items-start gap-3.5 min-w-0">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 shadow-2xs ${
-                      tx.type === 'RECHARGE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80' : 'bg-slate-100 text-slate-700 border border-slate-200/80'
+                      tx.type === 'RECHARGE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
+                        : tx.type === 'ADJUSTMENT' ? 'bg-amber-50 text-amber-800 border border-amber-200/80'
+                          : 'bg-slate-100 text-slate-700 border border-slate-200/80'
                     }`}>
-                      {tx.type === 'RECHARGE' ? <ArrowDownLeft className="w-5 h-5" /> : <ArrowUpRight className="w-5 h-5" />}
+                      {tx.type === 'RECHARGE' ? <ArrowDownLeft className="w-5 h-5" /> : tx.type === 'ADJUSTMENT' ? <Coins className="w-5 h-5" /> : <ArrowUpRight className="w-5 h-5" />}
                     </div>
 
                     <div className="min-w-0 flex-1 space-y-1">
@@ -423,17 +434,17 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
                     <div className={`text-base sm:text-lg font-black tracking-tight ${
                       isPositive ? 'text-emerald-700' : 'text-slate-900'
                     }`}>
-                      {isPositive ? `+${tx.amount}` : `-${Math.abs(tx.amount)}`}
+                      {isPositive ? `+${formatDecimal(tx.amount)}` : formatDecimal(tx.amount)}
                     </div>
 
-                    {tx.usdtAmount && (
+                    {tx.usdtAmount !== undefined && (
                       <div className="text-xs font-semibold text-emerald-700">
-                        ({tx.usdtAmount})
+                        ({formatDecimal(tx.usdtAmount)} USDT)
                       </div>
                     )}
 
                     <div className="text-xs text-slate-500 mt-0.5">
-                      变动后余额: <span className="font-bold text-slate-700">{tx.balance}</span>
+                      变动后余额: <span className="font-bold text-slate-700">{tx.balance === undefined ? '未记录' : formatDecimal(tx.balance)}</span>
                     </div>
                   </div>
                 </div>

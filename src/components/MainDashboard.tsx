@@ -156,7 +156,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     }
   }, [persistedGrowthStatus, safeDrafts]);
 
-  // 最近生成的文章列表
+  // 最近交付的增长动作
   const recentArticles = useMemo(() => {
     return safeDrafts.slice(0, 5);
   }, [safeDrafts]);
@@ -216,11 +216,11 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
         setLatestPublishedDraft(publishedDraft);
       }
       showToast(publishedDraft?.status === 'PUBLISHED'
-        ? '文章已成功发布'
+        ? '增长动作已成功发布'
         : publishedDraft?.status === 'QUALITY_FAILED'
           ? '内容未达到质量标准，已自动撤销且不扣费'
           : publishedDraft
-            ? '文章已生成，请到“内容列表与审核”确认发布'
+            ? '可交付结果已生成，请到“内容列表与审核”确认发布'
             : '增长任务已进入后台队列，请稍后刷新页面查看进度');
     } catch (e: unknown) {
       addLog(`[执行异常] ${e instanceof Error ? e.message : String(e)}`);
@@ -246,7 +246,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     if (!onRollback) return;
     try {
       await onRollback(draftId);
-      showToast('文章已下线');
+      showToast('安全回滚任务已进入后台队列');
       if (previewDraft?.id === draftId) setPreviewDraft(null);
       if (latestPublishedDraft?.id === draftId) setLatestPublishedDraft(null);
     } catch {
@@ -330,7 +330,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             {activeSite?.connectorStatus === 'CONNECTED' ? (
               <p className="text-[11px] font-medium text-slate-500">
                 {activeSite.wordpressCompatibilityMode === 'FULL_AUTO' ? '状态：已连接，支持全自动发布'
-                  : activeSite.wordpressCompatibilityMode === 'SAFE_AUTO' ? '状态：已连接，发布前需手动审核确认'
+                  : activeSite.wordpressCompatibilityMode === 'SAFE_AUTO' ? '状态：已连接，系统将只选择已验证的安全动作'
                     : activeSite.wordpressCompatibilityMode === 'ANALYSIS_ONLY' ? '状态：只读，仅用于内容诊断与分析'
                       : activeSite.wordpressCompatibilityMode === 'BLOCKED' ? '状态：未授权，无法连接到站点'
                         : '状态：等待开始增长时自动验证'}
@@ -339,7 +339,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               <div className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-50/80 border border-amber-200/90 text-xs text-amber-950">
                 <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                 <span className="leading-relaxed">
-                  此站点尚未授权。请前往「我的 WordPress 站点」点击授权连接，验证通过后即可一键生成和发布文章。
+                  此站点尚未授权。请前往「我的增长站点」完成 WordPress 授权，验证通过后即可一键启动增长。
                 </span>
               </div>
             ) : null}
@@ -489,13 +489,13 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               {executionActive ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></div>
-                  <span>正在智能生成并排版文章，请稍候...</span>
+                  <span>正在分析并执行最佳增长动作，请稍候...</span>
                 </>
               ) : (
                 <>
                   <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
                   <span className="truncate">
-                    {activeSite?.connectorStatus !== 'CONNECTED' ? '请先授权连接 WordPress 网站' : '立即生成并发布 SEO 文章'}
+                    {activeSite?.connectorStatus !== 'CONNECTED' ? '请先授权连接 WordPress 网站' : '一键启动站点增长'}
                   </span>
                   <ArrowRight className="w-4 h-4 shrink-0" />
                 </>
@@ -548,7 +548,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             </div>
 
             <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-100/90 text-emerald-800 border border-emerald-300/80 self-start sm:self-auto">
-              质量评分: {latestPublishedDraft.qualityGate?.overallScore ?? '未返回'}
+              {latestPublishedDraft.qualityGate ? `质量评分: ${latestPublishedDraft.qualityGate.overallScore}` : '质量报告未返回'}
             </span>
           </div>
 
@@ -599,7 +599,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
         </div>
       )}
 
-      {/* 底部：最近发布的文章列表 */}
+      {/* 底部：最近交付的增长动作 */}
       {recentArticles.length > 0 && (
         <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
