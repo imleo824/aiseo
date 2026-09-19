@@ -51,6 +51,11 @@ ALTER TABLE public.content_drafts
   ALTER COLUMN status SET DEFAULT 'GENERATING';
 
 ALTER TABLE public.growth_actions ALTER COLUMN status DROP DEFAULT;
+-- PostgreSQL reparses partial-index predicates while changing a column type.
+-- The predicate constants below are bound to the old enum, so retaining the
+-- index during the intermediate text cast would compare text to that enum and
+-- abort the migration. Recreate the same invariant after the new enum exists.
+DROP INDEX IF EXISTS public.growth_actions_one_active_site_mutation_idx;
 ALTER TABLE public.growth_actions ALTER COLUMN status TYPE text USING status::text;
 DROP TYPE public."GrowthActionStatus";
 CREATE TYPE public."GrowthActionStatus" AS ENUM (
@@ -67,6 +72,8 @@ CREATE TYPE public."GrowthActionStatus" AS ENUM (
 ALTER TABLE public.growth_actions
   ALTER COLUMN status TYPE public."GrowthActionStatus" USING status::public."GrowthActionStatus",
   ALTER COLUMN status SET DEFAULT 'PLANNED';
+CREATE UNIQUE INDEX growth_actions_one_active_site_mutation_idx ON public.growth_actions(site_id)
+  WHERE status IN ('EXECUTING', 'VERIFYING');
 
 ALTER TABLE public.publish_attempts ALTER COLUMN status DROP DEFAULT;
 ALTER TABLE public.publish_attempts ALTER COLUMN status TYPE text USING status::text;

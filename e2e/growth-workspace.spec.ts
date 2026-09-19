@@ -13,28 +13,42 @@ const stages = (active = false) => [
   { id: 'stage-5', runId, siteId, stage: 'LEARN', status: 'PENDING', processedCount: 0, evidence: [] }
 ];
 
-const installAuthenticatedSession = async (page: Page) => {
-  await page.addInitScript(({ expiresAt }) => {
-    const session = {
-      access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1MDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDUiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImV4cCI6NDA3MDkwODgwMH0.signature',
-      refresh_token: 'playwright-refresh-token',
-      expires_in: 3600,
-      expires_at: expiresAt,
-      token_type: 'bearer',
-      user: {
-        id: '50000000-0000-4000-8000-000000000005',
-        aud: 'authenticated',
-        role: 'authenticated',
-        email: 'owner@example.test',
-        email_confirmed_at: '2026-09-01T00:00:00.000Z',
-        app_metadata: { provider: 'email', providers: ['email'] },
-        user_metadata: {},
-        identities: [],
-        created_at: '2026-09-01T00:00:00.000Z'
-      }
-    };
-    localStorage.setItem('sb-test-auth-token', JSON.stringify(session));
-  }, { expiresAt: Math.floor(Date.now() / 1000) + 86_400 });
+const accessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1MDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDUiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImV4cCI6NDA3MDkwODgwMH0.signature';
+const authUser = {
+  id: '50000000-0000-4000-8000-000000000005',
+  aud: 'authenticated',
+  role: 'authenticated',
+  email: 'owner@example.test',
+  email_confirmed_at: '2026-09-01T00:00:00.000Z',
+  app_metadata: { provider: 'email', providers: ['email'] },
+  user_metadata: {},
+  identities: [],
+  created_at: '2026-09-01T00:00:00.000Z'
+};
+
+const installAuthApi = async (page: Page) => {
+  await page.route('**/auth/v1/token?grant_type=password', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        access_token: accessToken,
+        refresh_token: 'playwright-refresh-token',
+        expires_in: 86_400,
+        expires_at: Math.floor(Date.now() / 1000) + 86_400,
+        token_type: 'bearer',
+        user: authUser
+      })
+    });
+  });
+};
+
+const openAuthenticatedWorkspace = async (page: Page) => {
+  await page.goto('/');
+  await page.getByLabel('工作邮箱').fill('owner@example.test');
+  await page.getByLabel('密码').fill('playwright-password');
+  await page.getByRole('button', { name: '继续', exact: true }).click();
+  await expect(page.getByText('手动执行', { exact: true }).first()).toBeVisible();
 };
 
 const installBusinessApi = async (page: Page) => {
@@ -49,8 +63,8 @@ const installBusinessApi = async (page: Page) => {
     const reply = (data: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify({ data }) });
 
     if (method === 'GET' && path === '/api/v1/me') return reply({
-      profile: { id: '50000000-0000-4000-8000-000000000005', email: 'owner@example.test', displayName: 'tenant-a', platformRole: 'USER' },
-      organizations: [{ id: organizationId, name: 'Tenant A', creditBalanceMicros: '11090000000', role: 'OWNER' }]
+      profile: { id: '50000000-0000-4000-8000-000000000005', email: 'owner@example.test', displayName: 'tenant-a', platformRole: 'USER', createdAt: '2026-09-01T00:00:00.000Z' },
+      organizations: [{ id: organizationId, name: 'Tenant A', creditBalanceMicros: '11090000000', totalRechargedMicros: '11090000000', totalConsumedMicros: '0', role: 'OWNER' }]
     });
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/sites`) return reply([{
       id: siteId, name: 'TechPulse Media', domain: 'https://example.com', language: 'zh-CN', wordpressStatus: 'CONNECTED', wordpressUser: 'editor', wordpressVerifiedAt: '2026-09-01T00:00:00.000Z', createdAt: '2026-09-01T00:00:00.000Z', integrations: []
@@ -83,7 +97,7 @@ const installBusinessApi = async (page: Page) => {
 };
 
 test.beforeEach(async ({ page }) => {
-  await installAuthenticatedSession(page);
+  await installAuthApi(page);
 });
 
 for (const scenario of [
@@ -93,8 +107,7 @@ for (const scenario of [
 ] as const) {
   test(`${scenario.name}可以一键创建可恢复的真实任务`, async ({ page }) => {
     const fixture = await installBusinessApi(page);
-    await page.goto('/');
-    await expect(page.getByText('手动执行', { exact: true }).first()).toBeVisible();
+    await openAuthenticatedWorkspace(page);
     await expect(page.locator('select').filter({ hasText: 'TechPulse Media' })).toHaveValue(siteId);
     if (scenario.tab) await page.getByRole('button', { name: scenario.tab }).click();
     await page.getByPlaceholder(scenario.placeholder).fill(scenario.value);
@@ -113,7 +126,7 @@ for (const scenario of [
 
 test('关键词、参考文章与竞品可以组合成同一个增长程序', async ({ page }) => {
   const fixture = await installBusinessApi(page);
-  await page.goto('/');
+  await openAuthenticatedWorkspace(page);
   await page.getByPlaceholder(/企业级高可用架构/).fill('企业 CRM SEO\nCRM 获客');
   await page.getByRole('button', { name: '参考文章' }).click();
   await page.getByPlaceholder(/example.com\/article-a/).fill('https://reference.example.com/research');
@@ -134,7 +147,7 @@ test('关键词、参考文章与竞品可以组合成同一个增长程序', as
 
 test('持续增长与一次性执行使用同一套组合输入契约', async ({ page }) => {
   const fixture = await installBusinessApi(page);
-  await page.goto('/');
+  await openAuthenticatedWorkspace(page);
   await page.getByRole('button', { name: '自动执行', exact: true }).click();
   await page.getByRole('button', { name: '新建自动计划' }).click();
   await page.getByPlaceholder('每行一个，可输入多个').fill('wordpress seo\n内容增长');
