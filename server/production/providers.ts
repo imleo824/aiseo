@@ -322,14 +322,14 @@ export const dataForSeoProvider = {
 export const validateTrc20TransferRecord = (
   transfer: ProviderRecord,
   input: { recipientAddress: string; expectedAmountMicros: bigint; notBefore: Date; notAfter: Date },
-  tokenContract = env.trc20UsdtContract
+  expectedAssetContract = env.trc20UsdtContract
 ) => {
   const tokenInfo = isRecord(transfer.token_info) ? transfer.token_info : null;
   const timestamp = Number(transfer.block_timestamp);
   if (!tokenInfo || !Number.isSafeInteger(timestamp) || !transfer.transaction_id || !transfer.from || !transfer.to) {
     throw new ExternalServiceError('TronGrid 返回的交易结构不完整');
   }
-  if (transfer.to !== input.recipientAddress || tokenInfo.address !== tokenContract) {
+  if (transfer.to !== input.recipientAddress || tokenInfo.address !== expectedAssetContract) {
     throw new TerminalPaymentVerificationError('交易收款地址或 USDT 合约不匹配');
   }
   if (!/^\d+$/.test(String(transfer.value)) || BigInt(String(transfer.value)) !== input.expectedAmountMicros) {

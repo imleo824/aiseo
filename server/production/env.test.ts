@@ -129,17 +129,28 @@ describe('production configuration guard', () => {
     expect(() => config.assertProductionConfiguration('web')).not.toThrow();
   });
 
-  it('requires a canonical public origin and browser captcha configuration', async () => {
+  it('requires a canonical public Web origin while optional captcha fails closed', async () => {
     setWebEnvironment();
     delete process.env.VITE_TURNSTILE_SITE_KEY;
     let config = await import('./env');
-    expect(() => config.assertProductionConfiguration('web')).toThrow('Turnstile');
+    expect(() => config.assertProductionConfiguration('web')).not.toThrow();
+    expect(config.productionConfigurationStatus('web').runtime.turnstile).toBe(false);
+    expect(config.productionConfigurationWarnings('web')).toContain('VITE_TURNSTILE_SITE_KEY is not set; protected signup cannot complete.');
 
     vi.resetModules();
     setWebEnvironment();
     process.env.APP_BASE_URL = 'http://app.example.com/callback';
     config = await import('./env');
     expect(() => config.assertProductionConfiguration('web')).toThrow('public HTTPS origin');
+  });
+
+  it('does not require an unexposed Worker to have a public Web origin', async () => {
+    setWorkerEnvironment();
+    delete process.env.APP_BASE_URL;
+    delete process.env.RAILWAY_PUBLIC_DOMAIN;
+    const config = await import('./env');
+    expect(config.env.appBaseUrl).toBe('http://localhost:3000');
+    expect(() => config.assertProductionConfiguration('worker')).not.toThrow();
   });
 
   it('rejects secrets that belong to the other runtime service', async () => {

@@ -165,7 +165,11 @@ export const productionConfigurationWarnings = (service: ServiceKind): string[] 
 export const assertProductionConfiguration = (service: ServiceKind): void => {
   if (env.runtime !== 'production') return;
   assertEncryptionConfiguration();
-  assertHttpsOrigin(env.appBaseUrl, 'APP_BASE_URL');
+  // APP_BASE_URL is a Web concern (public links and OAuth callbacks). An
+  // unexposed Worker intentionally has neither a public Railway domain nor a
+  // callback origin, so validating the development fallback there would make
+  // a correctly isolated Worker impossible to start.
+  if (service === 'web') assertHttpsOrigin(env.appBaseUrl, 'APP_BASE_URL');
   assertSampleRate('SENTRY_TRACES_SAMPLE_RATE');
   assertSampleRate('VITE_SENTRY_TRACES_SAMPLE_RATE');
   if (env.trc20RecipientAddress && !isValidTronBase58(env.trc20RecipientAddress)) {
@@ -193,7 +197,10 @@ export const assertProductionConfiguration = (service: ServiceKind): void => {
     if (env.supabaseUrl || env.supabasePublishableKey || env.turnstileSiteKey || raw('VITE_SENTRY_DSN')) throw new Error('Browser and Supabase Auth configuration must not be exposed to the Worker service');
   }
   if (!env.redisUrl) throw new Error('REDIS_URL is required in production');
-  if (service === 'web' && (!env.supabaseUrl || !env.supabasePublishableKey || !env.turnstileSiteKey)) throw new Error('Required Supabase Auth and Turnstile configuration is missing for web');
+  // Supabase Auth remains mandatory. Turnstile is enforced by Supabase when
+  // configured; without its public site key the registration UI fails closed,
+  // while sign-in and the authenticated product remain available.
+  if (service === 'web' && (!env.supabaseUrl || !env.supabasePublishableKey)) throw new Error('Required Supabase Auth configuration is missing for web');
   if (service === 'web') assertHttpsOrigin(env.supabaseUrl, 'SUPABASE_URL');
   if (!env.sentryDsn) throw new Error('SENTRY_DSN is required in production');
   try {
