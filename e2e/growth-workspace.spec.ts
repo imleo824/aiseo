@@ -100,6 +100,19 @@ test.beforeEach(async ({ page }) => {
   await installAuthApi(page);
 });
 
+test('登录注册页只展示有效的必要内容', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('PRODUCTION', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '可接受使用' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'USDT 规则' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '服务条款' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '隐私政策' })).toBeVisible();
+  await page.getByRole('button', { name: '创建新账号' }).click();
+  await expect(page.getByLabel('姓名')).toHaveCount(0);
+  await expect(page.getByLabel('工作邮箱')).toBeVisible();
+  await expect(page.getByLabel('密码')).toBeVisible();
+});
+
 for (const scenario of [
   { name: '关键词', tab: null, placeholder: /企业级高可用架构/, type: 'KEYWORD', value: '企业 CRM SEO' },
   { name: '参考文章', tab: '参考文章', placeholder: /example.com\/article-a/, type: 'REFERENCE_URL', value: 'https://reference.example.com/research' },

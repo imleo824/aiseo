@@ -1,5 +1,5 @@
 const links = [
-  ['服务条款', '/legal/TERMS.md'], ['隐私政策', '/legal/PRIVACY.md'], ['可接受使用', '/legal/ACCEPTABLE_USE.md'], ['USDT 规则', '/legal/USDT_PAYMENT.md'], ['AI 内容责任', '/legal/AI_CONTENT.md']
+  ['服务条款', '/legal/TERMS.md'], ['隐私政策', '/legal/PRIVACY.md'], ['AI 内容责任', '/legal/AI_CONTENT.md']
 ] as const;
 
 export function LegalLinks() {

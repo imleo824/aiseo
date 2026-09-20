@@ -43,7 +43,6 @@ export function AuthScreen() {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot' | 'recovery'>(recovery ? 'recovery' : 'login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -62,7 +61,6 @@ export function AuthScreen() {
           password,
           options: {
             captchaToken: captchaToken || undefined,
-            data: { display_name: displayName },
             emailRedirectTo: window.location.origin
           }
         });
@@ -87,10 +85,7 @@ export function AuthScreen() {
     <main className="min-h-[100dvh] bg-slate-50/80 text-slate-900 flex items-center justify-center p-4 sm:p-6 lg:p-8">
       <div className="w-full max-w-md bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold tracking-wider uppercase text-slate-500">TuiTui 推推</span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200/80">PRODUCTION</span>
-          </div>
+          <span className="text-xs font-bold tracking-wider uppercase text-slate-500">TuiTui 推推</span>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-950 mt-2">
             {mode === 'login' ? '登录工作区' : mode === 'signup' ? '创建新账号' : mode === 'forgot' ? '找回账号密码' : '设置新密码'}
           </h1>
@@ -100,21 +95,6 @@ export function AuthScreen() {
         </div>
 
         <form onSubmit={submit} className="space-y-4">
-          {mode === 'signup' && (
-            <div className="space-y-1.5">
-              <label htmlFor="auth-display-name" className="block text-xs font-semibold text-slate-700">姓名</label>
-              <input
-                id="auth-display-name"
-                className="input-field"
-                autoComplete="name"
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-                placeholder="例如：张工"
-                required
-              />
-            </div>
-          )}
-
           {mode !== 'recovery' && (
             <div className="space-y-1.5">
               <label htmlFor="auth-email" className="block text-xs font-semibold text-slate-700">工作邮箱</label>
