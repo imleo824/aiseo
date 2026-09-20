@@ -194,7 +194,11 @@ export const assertProductionConfiguration = (service: ServiceKind): void => {
     if (env.databaseUrl) throw new Error('DATABASE_APP_URL must not be exposed to the Worker service');
     expectedDatabaseRole(env.workerDatabaseUrl, 'app_worker', 'DATABASE_WORKER_URL');
     if (env.supabaseServiceRoleKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY must not be exposed to the Worker service; account erasure is isolated in Supabase Edge Functions');
-    if (env.supabaseUrl || env.supabasePublishableKey || env.turnstileSiteKey || raw('VITE_SENTRY_DSN')) throw new Error('Browser and Supabase Auth configuration must not be exposed to the Worker service');
+    // SUPABASE_URL is a public project origin, not a credential. It is safe to
+    // share with the Worker and is useful for provider callbacks and isolated
+    // Edge Function endpoints. Browser/API keys and browser-only controls stay
+    // forbidden so the Worker cannot impersonate a browser or an admin client.
+    if (env.supabasePublishableKey || env.turnstileSiteKey || raw('VITE_SENTRY_DSN')) throw new Error('Browser and Supabase Auth credentials must not be exposed to the Worker service');
   }
   if (!env.redisUrl) throw new Error('REDIS_URL is required in production');
   // Supabase Auth remains mandatory. Turnstile is enforced by Supabase when

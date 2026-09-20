@@ -51,6 +51,7 @@ describe('production configuration guard', () => {
 
   it('allows Worker to receive only its database role and no Supabase credentials', async () => {
     setWorkerEnvironment();
+    process.env.SUPABASE_URL = 'https://project.supabase.co';
     const config = await import('./env');
     expect(() => config.assertProductionConfiguration('worker')).not.toThrow();
     expect(config.productionConfigurationStatus('worker').runtime).toMatchObject({ service: 'worker', database: true, databaseBackedApi: true });
@@ -161,7 +162,7 @@ describe('production configuration guard', () => {
 
     vi.resetModules();
     setWorkerEnvironment();
-    process.env.SUPABASE_URL = 'https://project.supabase.co';
+    process.env.VITE_TURNSTILE_SITE_KEY = 'browser-only-site-key';
     config = await import('./env');
     expect(() => config.assertProductionConfiguration('worker')).toThrow('must not be exposed');
   });
