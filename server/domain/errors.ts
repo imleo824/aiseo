@@ -37,6 +37,11 @@ export class ValidationError extends AppError {
   public readonly errorCode = 'VALIDATION_FAILED';
 }
 
+export class RequestTooLargeError extends AppError {
+  public readonly statusCode = 413;
+  public readonly errorCode = 'REQUEST_TOO_LARGE';
+}
+
 /** A confirmed on-chain transfer that can never satisfy its payment intent. */
 export class TerminalPaymentVerificationError extends AppError {
   public readonly statusCode = 400;

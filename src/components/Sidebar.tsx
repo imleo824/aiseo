@@ -12,7 +12,8 @@ import {
   LogIn,
   Cpu,
   ShieldCheck,
-  Bot
+  Bot,
+  Database
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -81,6 +82,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           id: 'CREDIT_LEDGER',
           label: '我的账单',
           icon: <Wallet className="w-4 h-4" />
+        },
+        {
+          id: 'ACCOUNT_DATA',
+          label: '账号与数据',
+          icon: <Database className="w-4 h-4" />
         },
       ]
     }

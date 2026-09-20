@@ -9,7 +9,8 @@ const forbidden = [
   'createMockDatabase',
   'tenant_db.json',
   'MockRedis',
-  'MockQueue'
+  'MockQueue',
+  'DRMONE'
 ];
 
 const files = [];
@@ -29,4 +30,4 @@ for (const file of files) {
   if (match) throw new Error(`Forbidden production fallback ${match} found in ${file}`);
 }
 
-process.stdout.write(`Verified ${files.length} production bundle files: no demo, synthetic-data, JSON-database or memory-queue fallback.\n`);
+process.stdout.write(`Verified ${files.length} production bundle files: no demo, synthetic-data, JSON-database, memory-queue or encrypted-document fallback.\n`);

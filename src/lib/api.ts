@@ -61,6 +61,13 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<ApiEnve
     const response = await fetch(`/api/v1${path}`, { ...init, headers, credentials: 'omit', signal: controller.signal });
     const payload = await response.json().catch(() => ({})) as ApiEnvelope<T> & ApiErrorEnvelope;
     if (!response.ok) {
+      if (response.status === 401) {
+        // getSession() can still return a locally cached JWT after the server
+        // has revoked its session. Clear only this browser's stale session so
+        // AuthProvider returns to the login screen instead of leaving the user
+        // trapped on an unrecoverable "workspace unavailable" view.
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+      }
       if (managedWriteFingerprint && response.status >= 400 && response.status < 500 && ![408, 409, 429].includes(response.status)) {
         clearPendingWriteKey(managedWriteFingerprint);
       }

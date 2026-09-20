@@ -124,7 +124,7 @@ export function AuthScreen() {
                 className="input-field"
                 type="password"
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                minLength={10}
+                minLength={mode === 'login' ? undefined : 10}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="••••••••••"

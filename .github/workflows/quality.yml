@@ -84,7 +84,9 @@ jobs:
         run: |
           docker exec supabase_db_aiseo psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER ROLE app_backend LOGIN PASSWORD 'ci_backend_password'; ALTER ROLE app_worker LOGIN PASSWORD 'ci_worker_password';"
           SUPABASE_PUBLISHABLE_KEY=$(npx --yes supabase@2.81.3 status -o json | jq -r '.ANON_KEY')
+          SUPABASE_SERVICE_ROLE_KEY=$(npx --yes supabase@2.81.3 status -o json | jq -r '.SERVICE_ROLE_KEY')
           test -n "$SUPABASE_PUBLISHABLE_KEY"
+          test -n "$SUPABASE_SERVICE_ROLE_KEY"
           NODE_ENV=test SERVICE_KIND=worker DATABASE_WORKER_URL='postgresql://app_worker:ci_worker_password@127.0.0.1:54322/postgres?schema=public&sslmode=disable&connection_limit=2&pool_timeout=10&application_name=aiseo-ci-worker' node dist/entrypoint.cjs > worker.log 2>&1 &
           WORKER_PID=$!
           NODE_ENV=test SERVICE_KIND=web PORT=4180 DATABASE_APP_URL='postgresql://app_backend:ci_backend_password@127.0.0.1:54322/postgres?schema=public&sslmode=disable&connection_limit=2&pool_timeout=10&application_name=aiseo-ci-web' SUPABASE_URL='http://127.0.0.1:54321' SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" node dist/entrypoint.cjs > web.log 2>&1 &
@@ -93,12 +95,15 @@ jobs:
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:4180/api/health/ready > ready.json; then
               jq -e '.data.status == "READY"' ready.json
-              exit 0
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat ready.json 2>/dev/null || true
+              exit 1
             fi
             sleep 2
           done
-          cat ready.json 2>/dev/null || true
-          exit 1
+          APP_BASE_URL='http://127.0.0.1:4180' SUPABASE_URL='http://127.0.0.1:54321' SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" node scripts/verify-runtime-contract.mjs
 
   e2e:
     runs-on: ubuntu-latest

@@ -195,6 +195,16 @@ export class ApiService {
     if (error) throw error;
   }
 
+  public async exportPersonalData() {
+    return (await productionApi.get<Record<string, unknown>>('/me/export')).data;
+  }
+
+  public async requestAccountDeletion(confirmEmail: string) {
+    const result = (await productionApi.delete<{ deletionRequested: boolean; purgeAfter: string; sessionsRevoked: boolean }>('/me', { confirmEmail })).data;
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+    return result;
+  }
+
   public async listTenants() {
     const { me } = await this.resolveWorkspace();
     if (me.profile.platformRole !== 'PLATFORM_ADMIN') return { success: true, tenants: [] };

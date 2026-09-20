@@ -1,6 +1,6 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { ZodError, type ZodType } from 'zod';
-import { AppError, ValidationError } from '../domain/errors';
+import { AppError, RequestTooLargeError, ValidationError } from '../domain/errors';
 import { logger } from '../utils/logger';
 
 export type ApiMeta = { nextCursor?: string; traceId?: string };
@@ -29,10 +29,20 @@ export const parseBody = <T>(schema: ZodType<T>, request: Request): T => {
   return parsed.data;
 };
 
+type BodyParserError = Error & { type?: unknown };
+
+export const normalizeHttpError = (error: unknown): unknown => {
+  if (error instanceof ZodError) return new ValidationError('请求参数无效', error.flatten());
+  if (error instanceof Error) {
+    const parserError = error as BodyParserError;
+    if (parserError.type === 'entity.parse.failed') return new ValidationError('请求正文不是有效的 JSON');
+    if (parserError.type === 'entity.too.large') return new RequestTooLargeError('请求正文超过 1 MB 限制');
+  }
+  return error;
+};
+
 export const errorHandler = (error: unknown, request: Request, response: Response, _next: NextFunction): void => {
-  const normalized = error instanceof ZodError
-    ? new ValidationError('请求参数无效', error.flatten())
-    : error;
+  const normalized = normalizeHttpError(error);
   const appError = normalized instanceof AppError ? normalized : undefined;
   const statusCode = appError?.statusCode ?? 500;
   if (statusCode >= 500) {

@@ -46,7 +46,7 @@ const installAuthApi = async (page: Page) => {
 const openAuthenticatedWorkspace = async (page: Page) => {
   await page.goto('/');
   await page.getByLabel('工作邮箱').fill('owner@example.test');
-  await page.getByLabel('密码').fill('playwright-password');
+  await page.getByLabel('密码').fill('short123');
   await page.getByRole('button', { name: '继续', exact: true }).click();
   await expect(page.getByText('手动执行', { exact: true }).first()).toBeVisible();
 };
@@ -71,6 +71,12 @@ const installBusinessApi = async (page: Page) => {
     }]);
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/drafts`) return reply([]);
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/ledger`) return reply({ balanceMicros: '11090000000', heldMicros: '0', availableMicros: '11090000000', entries: [] });
+    if (method === 'GET' && path === '/api/v1/me/export') return reply({
+      schemaVersion: 'personal-data-export-1',
+      exportedAt: '2026-09-20T00:00:00.000Z',
+      scope: 'CURRENT_PROFILE_ONLY',
+      profile: { id: authUser.id, email: authUser.email }
+    });
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/sites/${siteId}/growth-programs`) return reply([]);
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/sites/${siteId}/growth-status`) return reply(started ? {
       program: { id: programId, siteId, mode: 'ONCE', inputs: [{ id: 'input-1', type: 'KEYWORD', value: 'enterprise crm', position: 0 }], status: 'ACTIVE', deliveredRunCount: 0, consecutiveWins: 0, createdAt: '2026-09-06T00:00:00.000Z' },
@@ -111,6 +117,15 @@ test('登录注册页只展示有效的必要内容', async ({ page }) => {
   await expect(page.getByLabel('姓名')).toHaveCount(0);
   await expect(page.getByLabel('工作邮箱')).toBeVisible();
   await expect(page.getByLabel('密码')).toBeVisible();
+});
+
+test('公开法律文件可读且不暴露加密乱码', async ({ page }) => {
+  await page.goto('/legal/terms');
+  await expect(page.getByRole('heading', { name: 'TuiTui 推推服务条款', level: 1 })).toBeVisible();
+  await expect(page.getByText('DRMONE')).toHaveCount(0);
+  await expect(page.getByText(/不承诺特定关键词排名/)).toBeVisible();
+  await page.getByRole('link', { name: '返回登录' }).click();
+  await expect(page.getByRole('heading', { name: '登录工作区' })).toBeVisible();
 });
 
 for (const scenario of [
@@ -177,4 +192,24 @@ test('持续增长与一次性执行使用同一套组合输入契约', async ({
       { type: 'COMPETITOR_SITE', value: 'https://competitor.example.com' }
     ]
   });
+});
+
+test('账号数据页可导出数据且删除操作必须精确确认邮箱', async ({ page }) => {
+  await installBusinessApi(page);
+  await openAuthenticatedWorkspace(page);
+  await page.getByRole('button', { name: '账号与数据' }).click();
+  await expect(page.getByRole('heading', { name: '账号与数据' })).toBeVisible();
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: '下载数据副本' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^tuitui-personal-data-\d{4}-\d{2}-\d{2}\.json$/);
+  await expect(page.getByText('个人数据导出文件已生成。')).toBeVisible();
+
+  const deleteButton = page.getByRole('button', { name: '永久删除账号' });
+  await expect(deleteButton).toBeDisabled();
+  await page.getByLabel(/输入当前邮箱以确认/).fill('someone-else@example.test');
+  await expect(deleteButton).toBeDisabled();
+  await page.getByLabel(/输入当前邮箱以确认/).fill('owner@example.test');
+  await expect(deleteButton).toBeEnabled();
 });

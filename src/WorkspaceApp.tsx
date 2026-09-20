@@ -22,6 +22,7 @@ const ProTenantManagementTab = lazy(() => import('./components/ProTenantManageme
 const ProSystemPaymentTab = lazy(() => import('./components/ProSystemPaymentTab').then(({ ProSystemPaymentTab }) => ({ default: ProSystemPaymentTab })));
 const ProSystemBillingTab = lazy(() => import('./components/ProSystemBillingTab').then(({ ProSystemBillingTab }) => ({ default: ProSystemBillingTab })));
 const ProSystemServicesTab = lazy(() => import('./components/ProSystemServicesTab').then(({ ProSystemServicesTab }) => ({ default: ProSystemServicesTab })));
+const AccountDataTab = lazy(() => import('./components/AccountDataTab').then(({ AccountDataTab }) => ({ default: AccountDataTab })));
 
 const getDefaultLanguage = (): Language => {
   if (typeof navigator !== 'undefined' && navigator.language) {
@@ -83,6 +84,11 @@ export default function WorkspaceApp() {
         return {
           title: '我的账单与积分',
           desc: '查看您的积分余额、充值记录以及全流程生成、发布的扣费明细'
+        };
+      case 'ACCOUNT_DATA':
+        return {
+          title: '账号与数据',
+          desc: '导出个人数据或提交账号删除请求'
         };
       case 'PRICING_CONFIG':
         return {
@@ -296,6 +302,10 @@ export default function WorkspaceApp() {
               tenantId={activeTenantId}
               onOpenRecharge={() => setIsRechargeOpen(true)}
             />
+          )}
+
+          {activeNav === 'ACCOUNT_DATA' && (
+            <AccountDataTab account={account} tenantId={activeTenantId} />
           )}
 
           {activeNav === 'SYSTEM_SERVICES_CONFIG' && (

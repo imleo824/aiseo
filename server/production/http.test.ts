@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { cursorPage } from './http';
+import { RequestTooLargeError, ValidationError } from '../domain/errors';
+import { cursorPage, normalizeHttpError } from './http';
 
 describe('cursor pagination boundary', () => {
   it('bounds page size and accepts only UUID cursors', () => {
@@ -11,5 +12,27 @@ describe('cursor pagination boundary', () => {
 
   it.each(['not-a-uuid', '1 OR 1=1', ['uuid']])('rejects malformed cursors: %s', (cursor) => {
     expect(() => cursorPage(cursor, 50)).toThrow('分页游标无效');
+  });
+});
+
+describe('HTTP parser error boundary', () => {
+  it('returns a client validation error for malformed JSON instead of a 500', () => {
+    const error = Object.assign(new SyntaxError('Unexpected token'), { type: 'entity.parse.failed' });
+    const normalized = normalizeHttpError(error);
+    expect(normalized).toBeInstanceOf(ValidationError);
+    expect((normalized as ValidationError).statusCode).toBe(400);
+    expect((normalized as ValidationError).message).toBe('请求正文不是有效的 JSON');
+  });
+
+  it('returns 413 when the body parser rejects an oversized request', () => {
+    const error = Object.assign(new Error('request entity too large'), { type: 'entity.too.large' });
+    const normalized = normalizeHttpError(error);
+    expect(normalized).toBeInstanceOf(RequestTooLargeError);
+    expect((normalized as RequestTooLargeError).statusCode).toBe(413);
+  });
+
+  it('does not trust arbitrary status fields on unknown errors', () => {
+    const error = Object.assign(new Error('untrusted'), { status: 400 });
+    expect(normalizeHttpError(error)).toBe(error);
   });
 });
