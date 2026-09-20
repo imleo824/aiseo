@@ -1,0 +1,6 @@
+alter table public.keywords validate constraint keywords_site_fk;
+alter table public.tenant_articles validate constraint tenant_articles_site_fk;
+alter table public.tenant_article_publish_logs validate constraint tenant_article_publish_logs_site_fk;
+alter table public.tenant_article_publish_logs validate constraint tenant_article_publish_logs_article_fk;
+alter table public.tenant_leads validate constraint tenant_leads_site_fk;
+alter table public.tenant_leads validate constraint tenant_leads_article_fk;;
