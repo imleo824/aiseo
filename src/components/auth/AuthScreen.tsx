@@ -44,18 +44,24 @@ export function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaEpoch, setCaptchaEpoch] = useState(0);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { if (recovery) setMode('recovery'); }, [recovery]);
+  const captchaRequired = Boolean(turnstileSiteKey && mode !== 'recovery');
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setMessage('');
     try {
+      if (captchaRequired && !captchaToken) throw new Error('请先完成人机验证');
       if (mode === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+          options: { captchaToken: captchaToken || undefined }
+        });
         if (error) throw error;
       } else if (mode === 'signup') {
-        if (turnstileSiteKey && !captchaToken) throw new Error('请先完成人机验证');
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -67,7 +73,10 @@ export function AuthScreen() {
         if (error) throw error;
         setMessage('验证邮件已发送。完成邮箱验证后即可登录并连接站点。');
       } else if (mode === 'forgot') {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin,
+          captchaToken: captchaToken || undefined
+        });
         if (error) throw error;
         setMessage('密码重置邮件已发送。');
       } else {
@@ -78,7 +87,13 @@ export function AuthScreen() {
         setMode('login');
       }
     } catch (error) { setMessage(error instanceof Error ? error.message : '操作失败'); }
-    finally { setBusy(false); }
+    finally {
+      setBusy(false);
+      if (captchaRequired) {
+        setCaptchaToken(null);
+        setCaptchaEpoch((value) => value + 1);
+      }
+    }
   };
 
   return (
@@ -133,7 +148,7 @@ export function AuthScreen() {
             </div>
           )}
 
-          {mode === 'signup' && <Turnstile onToken={setCaptchaToken} />}
+          {mode !== 'recovery' && <Turnstile key={`${mode}-${captchaEpoch}`} onToken={setCaptchaToken} />}
 
           {message && (
             <div

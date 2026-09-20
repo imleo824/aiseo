@@ -50,7 +50,14 @@ await expectStatus(await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
 const signIn = await expectStatus(await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
   method: 'POST',
   headers: { apikey: publishableKey, 'content-type': 'application/json' },
-  body: JSON.stringify({ email, password })
+  body: JSON.stringify({
+    email,
+    password,
+    // The local Supabase project deliberately keeps CAPTCHA enabled. Its CI
+    // secret is Cloudflare's official always-pass test secret, which only
+    // accepts this documented dummy token.
+    gotrue_meta_security: { captcha_token: 'XXXX.DUMMY.TOKEN.XXXX' }
+  })
 }), 200, 'sign in through Supabase Auth');
 if (typeof signIn.access_token !== 'string' || !signIn.access_token) throw new Error('Supabase sign-in did not return an access token');
 const token = signIn.access_token;

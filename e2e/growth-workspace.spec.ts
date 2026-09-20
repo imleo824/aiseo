@@ -198,7 +198,7 @@ test('账号数据页可导出数据且删除操作必须精确确认邮箱', as
   await installBusinessApi(page);
   await openAuthenticatedWorkspace(page);
   await page.getByRole('button', { name: '账号与数据' }).click();
-  await expect(page.getByRole('heading', { name: '账号与数据' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '导出个人数据' })).toBeVisible();
 
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: '下载数据副本' }).click();
