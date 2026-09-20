@@ -111,7 +111,7 @@ for (const scenario of [
     await expect(page.locator('select').filter({ hasText: 'TechPulse Media' })).toHaveValue(siteId);
     if (scenario.tab) await page.getByRole('button', { name: scenario.tab }).click();
     await page.getByPlaceholder(scenario.placeholder).fill(scenario.value);
-    await page.getByRole('button', { name: /开始执行|针对|以参考文章/ }).click();
+    await page.getByRole('button', { name: /一键启动站点增长/ }).click();
     await expect.poll(() => fixture.submitted()).toEqual({ mode: 'ONCE', inputs: [{ type: scenario.type, value: scenario.value }] });
     expect(fixture.idempotencyKey()).toMatch(/^[0-9a-f-]{36}$/i);
     await expect(page.getByText('正在用真实搜索数据评分候选机会。')).toBeVisible();
@@ -132,7 +132,7 @@ test('关键词、参考文章与竞品可以组合成同一个增长程序', as
   await page.getByPlaceholder(/example.com\/article-a/).fill('https://reference.example.com/research');
   await page.getByRole('button', { name: '对标竞品' }).click();
   await page.getByPlaceholder(/competitor-a.com/).fill('https://competitor-a.example.com\nhttps://competitor-b.example.com');
-  await page.getByRole('button', { name: /组合全部增长线索/ }).click();
+  await page.getByRole('button', { name: /一键启动站点增长/ }).click();
   await expect.poll(() => fixture.submitted()).toEqual({
     mode: 'ONCE',
     inputs: [
