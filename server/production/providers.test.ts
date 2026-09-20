@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectPaginatedRows, keywordCandidateFromItem, selectGscProperty, targetRankFromSerp, validateTrc20TransferRecord } from './providers';
+import { buildInstantPageBatches, collectPaginatedRows, keywordCandidateFromItem, MAX_TECHNICAL_AUDIT_PAGES, selectGscProperty, selectTechnicalAuditUrls, targetRankFromSerp, validateTrc20TransferRecord } from './providers';
 
 describe('DataForSEO response contracts', () => {
   it('parses top-level keyword suggestion metrics', () => {
@@ -70,6 +70,28 @@ describe('provider pagination', () => {
       ? Array.from({ length: rowLimit }, (_, offset) => startRow + offset)
       : [], 2, 4);
     expect(rows).toEqual([0, 1, 2, 3]);
+  });
+});
+
+describe('DataForSEO Instant Pages request limits', () => {
+  it('never sends more than five URLs from the same domain in one request', () => {
+    const urls = Array.from({ length: 23 }, (_, index) => `https://example.com/page-${index}`);
+    const batches = buildInstantPageBatches(urls);
+    expect(batches.flat()).toEqual(urls);
+    expect(batches.every((batch) => batch.length <= 5)).toBe(true);
+  });
+
+  it('packs mixed domains up to twenty tasks without exceeding the per-domain limit', () => {
+    const urls = Array.from({ length: 4 }, (_, domain) =>
+      Array.from({ length: 5 }, (_, page) => `https://site-${domain}.example/page-${page}`)
+    ).flat();
+    expect(buildInstantPageBatches(urls)).toEqual([urls]);
+  });
+
+  it('uses a deterministic bounded HTTPS sample and preserves the first URL', () => {
+    const urls = Array.from({ length: MAX_TECHNICAL_AUDIT_PAGES + 10 }, (_, index) => `https://example.com/page-${index}`);
+    expect(selectTechnicalAuditUrls([urls[0], urls[0], ...urls])).toEqual(urls.slice(0, MAX_TECHNICAL_AUDIT_PAGES));
+    expect(() => selectTechnicalAuditUrls(['http://example.com'])).toThrow('只允许 HTTPS');
   });
 });
 

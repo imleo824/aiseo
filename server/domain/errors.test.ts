@@ -7,6 +7,7 @@ import {
   InsufficientCreditsError,
   NotFoundError,
   RateLimitError,
+  ServiceUnavailableError,
   UnauthorizedError,
   ValidationError
 } from './errors';
@@ -17,6 +18,7 @@ describe('application error contract', () => {
     [ValidationError, 400, 'VALIDATION_FAILED'],
     [ConflictError, 409, 'RESOURCE_CONFLICT'],
     [CircuitBreakerError, 503, 'CIRCUIT_BREAKER_OPEN'],
+    [ServiceUnavailableError, 503, 'SERVICE_UNAVAILABLE'],
     [ExternalServiceError, 502, 'EXTERNAL_SERVICE_ERROR'],
     [RateLimitError, 429, 'RATE_LIMIT_EXCEEDED'],
     [UnauthorizedError, 401, 'UNAUTHORIZED'],

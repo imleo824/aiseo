@@ -48,4 +48,17 @@ describe('unified growth policy', () => {
     expect(selected).toMatchObject({ type: GrowthActionType.DIAGNOSE_ONLY, mutatesWordPress: false });
     expect(selected.reason).toContain('没有可证明安全');
   });
+
+  it('does not mutate a healthy page merely to produce an action', () => {
+    const selected = selectGrowthAction({
+      robotsBlocksAll: false,
+      targetUrl: 'https://example.com/page',
+      target: { contentLength: 4_500, modifiedAt: '2026-08-01T00:00:00Z' },
+      contentCoverage: 0.92,
+      relevantInternalLinkCount: 0,
+      now: new Date('2026-09-01T00:00:00Z')
+    });
+    expect(selected).toMatchObject({ type: GrowthActionType.DIAGNOSE_ONLY, mutatesWordPress: false });
+    expect(selected.reason).toContain('没有达到任何可验证的修改阈值');
+  });
 });

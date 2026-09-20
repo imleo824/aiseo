@@ -53,6 +53,11 @@ export class CircuitBreakerError extends AppError {
   public readonly errorCode = 'CIRCUIT_BREAKER_OPEN';
 }
 
+export class ServiceUnavailableError extends AppError {
+  public readonly statusCode = 503;
+  public readonly errorCode = 'SERVICE_UNAVAILABLE';
+}
+
 export class ExternalServiceError extends AppError {
   public readonly statusCode = 502;
   public readonly errorCode = 'EXTERNAL_SERVICE_ERROR';

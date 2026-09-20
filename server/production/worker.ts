@@ -398,7 +398,7 @@ const processGrowthRun = async (jobRunId: string): Promise<string> => {
     });
     const externalInputs = run.program.inputs.filter((input) => input.type !== GrowthInputType.KEYWORD);
     const [pageAudits, externalResults] = await Promise.all([
-      dataForSeoProvider.auditPages(targetContext.pages.map(({ url }) => url)),
+      dataForSeoProvider.auditPages([targetContext.normalizedUrl, ...targetContext.pages.map(({ url }) => url)]),
       Promise.allSettled(externalInputs.map(async (input): Promise<ExternalGrowthSource> => ({
           type: input.type as ExternalGrowthSource['type'],
           inputId: input.id,
@@ -1803,7 +1803,9 @@ const reconcile = async (): Promise<void> => {
     }
   }
 
-  const claimedPrograms = await workerPrisma.$transaction((tx) => tx.$queryRaw<Array<{ id: string }>>`
+  const executionProvidersReady = capabilities.dataForSeo && capabilities.contentAi;
+  const claimedPrograms = executionProvidersReady
+    ? await workerPrisma.$transaction((tx) => tx.$queryRaw<Array<{ id: string }>>`
     WITH due AS (
       SELECT id FROM public.growth_programs
       WHERE mode = 'CONTINUOUS' AND status = 'ACTIVE' AND next_run_at <= now()
@@ -1816,7 +1818,8 @@ const reconcile = async (): Promise<void> => {
     SET locked_until = now() + interval '5 minutes'
     FROM due WHERE program.id = due.id
     RETURNING program.id
-  `, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      `, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+    : [];
   for (const { id } of claimedPrograms) {
     try {
       await workerPrisma.$transaction(async (tx) => {

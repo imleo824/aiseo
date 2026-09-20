@@ -53,6 +53,56 @@ const dataForSeoBatch = async (path: string, payloads: Record<string, unknown>[]
   return tasks;
 };
 
+const MAX_INSTANT_PAGE_TASKS_PER_REQUEST = 20;
+const MAX_INSTANT_PAGE_TASKS_PER_DOMAIN = 5;
+export const MAX_TECHNICAL_AUDIT_PAGES = 50;
+
+export const selectTechnicalAuditUrls = (urls: string[], maximum = MAX_TECHNICAL_AUDIT_PAGES): string[] => {
+  if (!Number.isInteger(maximum) || maximum < 1 || maximum > 500) throw new ValidationError('页面审计上限必须在 1 到 500 之间');
+  const selected: string[] = [];
+  const seen = new Set<string>();
+  for (const value of urls) {
+    let parsed: URL;
+    try {
+      parsed = new URL(value);
+    } catch {
+      throw new ValidationError(`页面审计 URL 无效: ${value}`);
+    }
+    if (parsed.protocol !== 'https:') throw new ValidationError(`页面审计只允许 HTTPS URL: ${value}`);
+    parsed.hash = '';
+    const normalized = parsed.toString();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    selected.push(normalized);
+    if (selected.length === maximum) break;
+  }
+  return selected;
+};
+
+/** DataForSEO Instant Pages permits 20 tasks/request but at most 5 identical domains. */
+export const buildInstantPageBatches = (urls: string[]): string[][] => {
+  const pending = [...urls];
+  const batches: string[][] = [];
+  while (pending.length) {
+    const domainCounts = new Map<string, number>();
+    const batch: string[] = [];
+    for (let index = 0; index < pending.length && batch.length < MAX_INSTANT_PAGE_TASKS_PER_REQUEST;) {
+      const hostname = new URL(pending[index]).hostname.toLocaleLowerCase();
+      const count = domainCounts.get(hostname) || 0;
+      if (count >= MAX_INSTANT_PAGE_TASKS_PER_DOMAIN) {
+        index += 1;
+        continue;
+      }
+      batch.push(pending[index]);
+      pending.splice(index, 1);
+      domainCounts.set(hostname, count + 1);
+    }
+    if (!batch.length) throw new ValidationError('无法为页面审计构建合规批次');
+    batches.push(batch);
+  }
+  return batches;
+};
+
 const nestedRecord = (value: unknown, key: string): ProviderRecord =>
   isRecord(value) && isRecord(value[key]) ? value[key] as ProviderRecord : {};
 
@@ -299,20 +349,23 @@ export const dataForSeoProvider = {
   },
 
   async auditPages(urls: string[]): Promise<Array<{ url: string; evidence: Record<string, unknown> }>> {
-    const unique = [...new Set(urls)];
-    if (unique.length > 500) {
-      throw new ValidationError('站点超过 500 个公开页面，已停止自动修改；请使用企业级分批审计流程');
-    }
+    // The complete WordPress inventory remains in SiteSnapshot. Instant Pages is
+    // deliberately a bounded, deterministic technical sample so large sites do
+    // not create unbounded cost or make every growth run time out.
+    const unique = selectTechnicalAuditUrls(urls);
+    const batches = buildInstantPageBatches(unique);
     const audits: Array<{ url: string; evidence: Record<string, unknown> }> = [];
-    for (let index = 0; index < unique.length; index += 20) {
-      const batchUrls = unique.slice(index, index + 20);
-      const tasks = await dataForSeoBatch('on_page/instant_pages', batchUrls.map((url) => ({
-        url,
-        enable_javascript: false,
-        load_resources: false
-      })));
-      tasks.forEach((task, offset) => {
-        audits.push({ url: batchUrls[offset], evidence: task.result?.[0] || {} });
+    for (let index = 0; index < batches.length; index += 4) {
+      const group = batches.slice(index, index + 4);
+      const groupTasks = await Promise.all(group.map((batchUrls) => dataForSeoBatch(
+        'on_page/instant_pages',
+        batchUrls.map((url) => ({ url, enable_javascript: false, load_resources: false }))
+      )));
+      group.forEach((batchUrls, groupIndex) => {
+        const tasks = groupTasks[groupIndex];
+        tasks.forEach((task, offset) => {
+          audits.push({ url: batchUrls[offset], evidence: task.result?.[0] || {} });
+        });
       });
     }
     return audits;

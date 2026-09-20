@@ -203,12 +203,12 @@ export const selectGrowthAction = (input: {
       reason: '现有内容仍新且覆盖充分，最小有效动作是补充相关内部链接',
       mutatesWordPress: true
     });
-  candidates.push({
-      type: GrowthActionType.CONTENT_REFRESH,
-      riskLevel: 'B',
-      reason: '已有页面需要按当前搜索意图刷新，且没有更小的可验证动作',
-      mutatesWordPress: true
-    });
+  if (!candidates.length) return {
+    type: GrowthActionType.DIAGNOSE_ONLY,
+    riskLevel: 'A',
+    reason: '当前页面没有达到任何可验证的修改阈值，本轮仅记录诊断、不写入 WordPress、不扣费',
+    mutatesWordPress: false
+  };
   const firstChoice = candidates[0];
   const selected = candidates.find((candidate) => input.supportsAction?.(candidate.type).supported !== false);
   if (selected) return selected === firstChoice ? selected : {

@@ -2,7 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { DraftStatus, GrowthActionStatus, GrowthInputType, GrowthProgramMode, GrowthProgramStatus, GrowthRunStatus, GrowthRunTrigger, JobType, OrganizationRole, Prisma, ReviewDecision, SiteConnectionStatus } from '@prisma/client';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../domain/errors';
+import { ConflictError, ForbiddenError, NotFoundError, ServiceUnavailableError, ValidationError } from '../domain/errors';
 import { revokeOwnSessions, revalidateSensitiveSession, requireAuth } from './auth';
 import { billingService, lockOrganizationBalance } from './billingService';
 import { asyncRoute, cursorPage, parseBody, sendData } from './http';
@@ -84,9 +84,9 @@ const assertExecutionProviders = async (tx: TransactionClient): Promise<void> =>
   const capabilities = heartbeat?.capabilities && typeof heartbeat.capabilities === 'object' && !Array.isArray(heartbeat.capabilities)
     ? heartbeat.capabilities as Record<string, unknown>
     : {};
-  if (!online) throw new ConflictError('Worker 当前离线，无法接受正式执行任务');
-  if (capabilities.dataForSeo !== true) throw new ConflictError('DataForSEO 尚未在 Worker 配置，无法获取真实 SEO 数据');
-  if (capabilities.contentAi !== true) throw new ConflictError('OpenAI/Gemini 尚未在 Worker 配置，无法生成正式内容');
+  if (!online) throw new ServiceUnavailableError('执行服务当前离线，请稍后重试；本次未创建任务、未扣费');
+  if (capabilities.dataForSeo !== true) throw new ServiceUnavailableError('真实 SEO 数据服务当前不可用，请稍后重试；本次未创建任务、未扣费');
+  if (capabilities.contentAi !== true) throw new ServiceUnavailableError('内容生成服务当前不可用，请稍后重试；本次未创建任务、未扣费');
 };
 
 const idempotencyKey = (request: Request): string => requireIdempotencyKey(request.header('idempotency-key'));
@@ -681,6 +681,7 @@ const changeProgramStatus = (status: GrowthProgramStatus) => asyncRoute(async (r
       const program = await tx.growthProgram.findFirst({ where: { id: programId, organizationId: orgId } });
       if (!program) throw new NotFoundError('增长程序不存在');
       if (program.mode === GrowthProgramMode.ONCE && status === GrowthProgramStatus.ACTIVE) throw new ConflictError('一次性程序不能恢复；请创建一次新的执行');
+      if (status === GrowthProgramStatus.ACTIVE) await assertExecutionProviders(tx);
       const updated = await tx.growthProgram.update({ where: { id: programId }, data: { status, nextRunAt: status === GrowthProgramStatus.ACTIVE ? new Date() : program.nextRunAt, lockedUntil: null, lastError: null }, include: { inputs: { orderBy: { position: 'asc' } } } });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: status === GrowthProgramStatus.PAUSED ? 'GROWTH_PROGRAM_PAUSED' : 'GROWTH_PROGRAM_RESUMED', targetType: 'growth_program', targetId: programId } });
       return { statusCode: 200, data: { program: updated } };
