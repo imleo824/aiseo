@@ -17,6 +17,11 @@
     overscroll-behavior-y: none;
   }
 
+  :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid #0f172a;
+    outline-offset: 2px;
+  }
+
   /* Custom smooth scrollbar */
   ::-webkit-scrollbar {
     width: 5px;
@@ -27,6 +32,17 @@
   }
   ::-webkit-scrollbar-thumb {
     @apply bg-slate-300/80 hover:bg-slate-400 rounded-full transition-colors;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 

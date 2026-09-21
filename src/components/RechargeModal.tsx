@@ -3,6 +3,7 @@ import { Check, Coins, Copy, ShieldCheck, X, RefreshCw, AlertCircle, ArrowRight 
 import { ApiService } from '../services/api';
 import type { CustomPaymentPricing, TenantAccount, UsdtPackage } from '../types/seo';
 import { decimalToMicros, formatDecimal, microsToDecimal } from '../lib/fixedDecimal';
+import { useDialogInteraction } from '../hooks/useDialogInteraction';
 
 type PaymentIntent = {
   id: string;
@@ -28,6 +29,8 @@ type Props = {
 export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenantId, initialConfig }) => {
   const api = useMemo(() => new ApiService(tenantId), [tenantId]);
   const intentRequestId = useRef(0);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const paymentDetailsRef = useRef<HTMLDivElement>(null);
   const [packages, setPackages] = useState<UsdtPackage[]>([]);
   const [customPricing, setCustomPricing] = useState<CustomPaymentPricing | null>(null);
   const [selectionMode, setSelectionMode] = useState<'PACKAGE' | 'CUSTOM'>('PACKAGE');
@@ -42,6 +45,12 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
   const [copiedAmount, setCopiedAmount] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const { dialogRef, onBackdropMouseDown } = useDialogInteraction({
+    open: isOpen,
+    onClose,
+    closeDisabled: loadingIntent || submittingHash,
+    initialFocusRef: closeButtonRef
+  });
 
   const selected = useMemo(() => packages.find(({ id }) => id === selectedPkgId), [packages, selectedPkgId]);
 
@@ -164,7 +173,7 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
     setError(null);
     try {
       await api.submitPaymentTransaction(intent.id, cleanHash);
-      setSuccess('交易已提交至链上核验引擎。系统将校验 TRC20 合约转账、收款地址与精确金额，核验通过后积分自动入账。');
+      setSuccess('交易已提交。核验通过后积分会自动到账。');
       setTxHash('');
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : '交易提交失败，请核对哈希是否正确');
@@ -189,14 +198,25 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
 
   const expectedAmount = intent?.expectedAmountUsdt || '';
 
+  useEffect(() => {
+    if (!intent) return;
+    paymentDetailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [intent]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150"
+      onMouseDown={onBackdropMouseDown}
+    >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="recharge-dialog-title"
+        aria-busy={loadingPackages || loadingIntent || submittingHash}
+        tabIndex={-1}
         className="w-full max-w-lg bg-white border border-slate-200/90 rounded-2xl shadow-2xl overflow-hidden max-h-[92dvh] flex flex-col animate-in zoom-in-95 duration-150"
       >
         {/* Header */}
@@ -213,9 +233,11 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
             </div>
           </div>
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+            disabled={loadingIntent || submittingHash}
+            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer disabled:cursor-wait disabled:opacity-40"
             aria-label="关闭充值面板"
           >
             <X className="w-5 h-5" />
@@ -250,6 +272,13 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
             </div>
 
             <div className="grid grid-cols-2 gap-2">
+              {loadingPackages && Array.from({ length: 2 }, (_, index) => (
+                <div key={index} aria-hidden="true" className="min-h-[84px] animate-pulse rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="h-3 w-16 rounded bg-slate-200" />
+                  <div className="mt-3 h-5 w-24 rounded bg-slate-200" />
+                  <div className="mt-2 h-3 w-20 rounded bg-slate-200" />
+                </div>
+              ))}
               {packages.map((pkg) => {
                 const isSelected = selectionMode === 'PACKAGE' && selectedPkgId === pkg.id;
                 return (
@@ -324,6 +353,12 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
                       setCustomAmount(event.target.value.replace(/\D/g, ''));
                       resetPaymentDetails();
                     }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && customAmountValid && !loadingIntent) {
+                        event.preventDefault();
+                        void handleCreateIntent();
+                      }
+                    }}
                     placeholder={`最低 ${formatDecimal(customPricing.minUsdt)} USDT`}
                     className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3.5 py-2.5 font-mono text-sm font-bold text-slate-950 outline-none focus:ring-2 focus:ring-slate-950/20"
                   />
@@ -344,9 +379,9 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
           </div>
 
           {/* 2. Direct payment details panel */}
-          <div className="space-y-3 rounded-2xl border border-slate-200/90 bg-slate-50/80 p-4">
+          <div ref={paymentDetailsRef} className="space-y-3 rounded-2xl border border-slate-200/90 bg-slate-50/80 p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-900">2. 按链上精确金额转账</span>
+              <span className="text-xs font-bold text-slate-900">2. 按下面的信息转账</span>
               <span className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
                 <ShieldCheck className="w-3.5 h-3.5" />
                 TRC20 主网
@@ -363,7 +398,7 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
                 {/* Exact Amount Card */}
                 <div className="rounded-xl bg-white border border-slate-200/90 p-3.5 space-y-1">
                   <div className="flex items-center justify-between text-[11px] text-slate-500">
-                    <span>精确应付金额 (含唯一对账微额)</span>
+                    <span>应付金额</span>
                     <button
                       type="button"
                       onClick={() => void copyAmount()}
@@ -379,7 +414,7 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
                   </div>
                   <p className="flex items-start gap-1.5 text-[11px] text-rose-600 font-medium pt-0.5">
                     <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>请务必转账上述包含小数点的精确金额。金额不一致时系统不会自动入账，需联系人工支持处理。</span>
+                    <span>请按上面的金额准确转账，否则无法自动到账。</span>
                   </p>
                 </div>
 
@@ -423,7 +458,7 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
             <form onSubmit={submitHash} className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <label htmlFor="tron-hash" className="block text-xs font-bold text-slate-900">
-                  3. 转账完成后，填入 64 位交易哈希 (TxHash)
+                  3. 转账完成后，粘贴交易哈希
                 </label>
               </div>
               <input
@@ -445,7 +480,7 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
                   </>
                 ) : (
                   <>
-                    <span>提交交易哈希并等待核验</span>
+                    <span>提交并等待到账</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}

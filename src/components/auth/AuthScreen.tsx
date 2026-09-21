@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { getSupabaseBrowserClient } from '../../lib/supabase';
 import { useAuth } from '../../auth/AuthProvider';
 import { LegalLinks } from '../LegalLinks';
+import { AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -46,24 +47,39 @@ export function AuthScreen() {
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [captchaEpoch, setCaptchaEpoch] = useState(0);
   const [message, setMessage] = useState('');
+  const [messageKind, setMessageKind] = useState<'success' | 'error'>('success');
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { if (recovery) setMode('recovery'); }, [recovery]);
   const captchaRequired = Boolean(turnstileSiteKey && mode !== 'recovery');
+  const changeMode = (nextMode: typeof mode) => {
+    setMode(nextMode);
+    setMessage('');
+    setMessageKind('success');
+    setPassword('');
+    setShowPassword(false);
+    setCaptchaToken(null);
+    setCaptchaEpoch((value) => value + 1);
+  };
   const submit = async (event: FormEvent) => {
-    event.preventDefault(); setBusy(true); setMessage('');
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setMessage('');
+    const normalizedEmail = email.trim().toLowerCase();
     try {
       if (captchaRequired && !captchaToken) throw new Error('请先完成人机验证');
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({
-          email,
+          email: normalizedEmail,
           password,
           options: { captchaToken: captchaToken || undefined }
         });
         if (error) throw error;
       } else if (mode === 'signup') {
         const { error } = await supabase.auth.signUp({
-          email,
+          email: normalizedEmail,
           password,
           options: {
             captchaToken: captchaToken || undefined,
@@ -71,22 +87,28 @@ export function AuthScreen() {
           }
         });
         if (error) throw error;
+        setMessageKind('success');
         setMessage('验证邮件已发送。完成邮箱验证后即可登录并连接站点。');
       } else if (mode === 'forgot') {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
           redirectTo: window.location.origin,
           captchaToken: captchaToken || undefined
         });
         if (error) throw error;
+        setMessageKind('success');
         setMessage('密码重置邮件已发送。');
       } else {
         const { error } = await supabase.auth.updateUser({ password });
         if (error) throw error;
+        setMessageKind('success');
         setMessage('密码已更新，请重新登录。');
         await supabase.auth.signOut({ scope: 'global' });
         setMode('login');
       }
-    } catch (error) { setMessage(error instanceof Error ? error.message : '操作失败'); }
+    } catch (error) {
+      setMessageKind('error');
+      setMessage(error instanceof Error ? error.message : '操作失败');
+    }
     finally {
       setBusy(false);
       if (captchaRequired) {
@@ -105,11 +127,11 @@ export function AuthScreen() {
             {mode === 'login' ? '登录工作区' : mode === 'signup' ? '创建新账号' : mode === 'forgot' ? '找回账号密码' : '设置新密码'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            {mode === 'login' ? '输入凭证进入搜索增长工作区' : mode === 'signup' ? '注册账号并配置自动化增长策略' : mode === 'forgot' ? '我们将向您的邮箱发送重置链接' : '请输入您的全新登录密码'}
+            {mode === 'login' ? '登录后管理您的网站增长' : mode === 'signup' ? '创建账号后即可连接网站' : mode === 'forgot' ? '我们会向您的邮箱发送重置链接' : '请输入新的登录密码'}
           </p>
         </div>
 
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={submit} aria-busy={busy} className="space-y-4">
           {mode !== 'recovery' && (
             <div className="space-y-1.5">
               <label htmlFor="auth-email" className="block text-xs font-semibold text-slate-700">工作邮箱</label>
@@ -134,17 +156,28 @@ export function AuthScreen() {
                   <span className="text-[11px] text-slate-400">最少 10 个字符</span>
                 )}
               </div>
-              <input
-                id="auth-password"
-                className="input-field"
-                type="password"
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                minLength={mode === 'login' ? undefined : 10}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="••••••••••"
-                required
-              />
+              <div className="relative">
+                <input
+                  id="auth-password"
+                  className="input-field pr-12"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  minLength={mode === 'login' ? undefined : 10}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="••••••••••"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  className="absolute inset-y-0 right-0 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-r-xl text-slate-400 transition hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-900"
+                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                  aria-pressed={showPassword}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
           )}
 
@@ -152,10 +185,16 @@ export function AuthScreen() {
 
           {message && (
             <div
-              role="alert"
-              className="rounded-xl bg-slate-50 border border-slate-200/90 p-3 text-xs sm:text-sm text-slate-700 leading-relaxed"
+              role={messageKind === 'error' ? 'alert' : 'status'}
+              aria-live={messageKind === 'error' ? 'assertive' : 'polite'}
+              className={`flex items-start gap-2 rounded-xl border p-3 text-xs leading-relaxed sm:text-sm ${messageKind === 'error'
+                ? 'border-rose-200 bg-rose-50 text-rose-800'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}
             >
-              {message}
+              {messageKind === 'error'
+                ? <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}
+              <span>{message}</span>
             </div>
           )}
 
@@ -164,14 +203,22 @@ export function AuthScreen() {
             disabled={busy}
             className="btn-primary w-full text-sm font-bold min-h-[44px] shadow-xs"
           >
-            {busy ? '正在处理…' : '继续'}
+            {busy
+              ? '正在处理…'
+              : mode === 'login'
+                ? '登录'
+                : mode === 'signup'
+                  ? '创建账号'
+                  : mode === 'forgot'
+                    ? '发送重置邮件'
+                    : '更新密码'}
           </button>
 
           <div className="flex items-center justify-between pt-1 text-xs text-slate-600 border-t border-slate-100">
             {mode !== 'login' && (
               <button
                 type="button"
-                onClick={() => setMode('login')}
+                onClick={() => changeMode('login')}
                 className="py-2 text-slate-600 hover:text-slate-950 font-medium transition cursor-pointer min-h-[40px] flex items-center"
               >
                 ← 返回登录
@@ -181,14 +228,14 @@ export function AuthScreen() {
               <>
                 <button
                   type="button"
-                  onClick={() => setMode('signup')}
+                  onClick={() => changeMode('signup')}
                   className="py-2 text-slate-950 font-semibold hover:underline transition cursor-pointer min-h-[40px] flex items-center"
                 >
                   创建新账号
                 </button>
                 <button
                   type="button"
-                  onClick={() => setMode('forgot')}
+                  onClick={() => changeMode('forgot')}
                   className="py-2 text-slate-500 hover:text-slate-800 transition cursor-pointer min-h-[40px] flex items-center"
                 >
                   忘记密码？

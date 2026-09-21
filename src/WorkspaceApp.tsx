@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { NavItem, Language } from './types/seo';
 import { Sidebar } from './components/Sidebar';
@@ -26,6 +26,22 @@ const ProSystemBillingTab = lazy(() => import('./components/ProSystemBillingTab'
 const ProSystemServicesTab = lazy(() => import('./components/ProSystemServicesTab').then(({ ProSystemServicesTab }) => ({ default: ProSystemServicesTab })));
 const AccountDataTab = lazy(() => import('./components/AccountDataTab').then(({ AccountDataTab }) => ({ default: AccountDataTab })));
 
+const NAV_ITEMS = new Set<NavItem>([
+  'DASHBOARD', 'AUTOPILOT_TASKS', 'SITE_MANAGEMENT', 'AUDIT_LEDGER', 'CREDIT_LEDGER',
+  'ACCOUNT_DATA', 'PRICING_CONFIG', 'SYSTEM_SERVICES_CONFIG', 'TENANT_MANAGEMENT',
+  'SYSTEM_PAYMENT_MANAGEMENT', 'SYSTEM_BILLING_MANAGEMENT'
+]);
+const ADMIN_NAV_ITEMS = new Set<NavItem>([
+  'PRICING_CONFIG', 'SYSTEM_SERVICES_CONFIG', 'TENANT_MANAGEMENT',
+  'SYSTEM_PAYMENT_MANAGEMENT', 'SYSTEM_BILLING_MANAGEMENT'
+]);
+
+const navFromLocation = (): NavItem => {
+  if (typeof window === 'undefined') return 'DASHBOARD';
+  const requested = new URLSearchParams(window.location.search).get('view') as NavItem | null;
+  return requested && NAV_ITEMS.has(requested) ? requested : 'DASHBOARD';
+};
+
 const getDefaultLanguage = (): Language => {
   if (typeof navigator !== 'undefined' && navigator.language) {
     const lang = navigator.language.toLowerCase();
@@ -37,7 +53,7 @@ const getDefaultLanguage = (): Language => {
 
 export default function WorkspaceApp() {
   const [activeTenantId, setActiveTenantId] = useState<string>('');
-  const [activeNav, setActiveNav] = useState<NavItem>('DASHBOARD');
+  const [activeNav, setActiveNav] = useState<NavItem>(navFromLocation);
   const [globalLanguage, setGlobalLanguage] = useState<Language>(getDefaultLanguage());
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -54,6 +70,7 @@ export default function WorkspaceApp() {
     allTenants,
     growthStatuses,
     loading,
+    refreshing,
     loadError,
     actions
   } = useTenantData(activeTenantId, globalLanguage, (newTid) => {
@@ -68,32 +85,56 @@ export default function WorkspaceApp() {
     retry: 1
   });
 
+  const navigateTo = useCallback((nextNav: NavItem, replace = false) => {
+    setActiveNav(nextNav);
+    setIsMobileMenuOpen(false);
+    const url = new URL(window.location.href);
+    if (nextNav === 'DASHBOARD') url.searchParams.delete('view');
+    else url.searchParams.set('view', nextNav);
+    window.history[replace ? 'replaceState' : 'pushState']({ view: nextNav }, '', url);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'auto' }));
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      setActiveNav(navFromLocation());
+      setIsMobileMenuOpen(false);
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (account && account.role !== 'ADMIN' && ADMIN_NAV_ITEMS.has(activeNav)) navigateTo('DASHBOARD', true);
+  }, [account?.role, activeNav, navigateTo]);
+
   const getPageInfo = () => {
     switch (activeNav) {
       case 'DASHBOARD':
         return {
-          title: '一键手动增长',
-          desc: '提供关键词、参考文章或竞品站点，系统自动选择并执行最值得做的安全 SEO 动作'
+          title: '手动执行',
+          desc: '提供一个线索，系统自动分析并执行'
         };
       case 'SITE_MANAGEMENT':
         return {
-          title: '我的增长站点',
-          desc: '连接并管理 WordPress 站点，查看授权、兼容能力与效果验证状态'
+          title: '我的站点',
+          desc: '连接和管理您的 WordPress 网站'
         };
       case 'AUTOPILOT_TASKS':
         return {
-          title: '自动定时增长',
-          desc: '系统按真实新证据调度增长动作；没有合格机会时自动跳过且不扣费'
+          title: '自动执行',
+          desc: '系统定期寻找机会并自动执行'
         };
       case 'AUDIT_LEDGER':
         return {
-          title: '内容列表与审核',
-          desc: '查看增长动作、可交付内容、发布状态与需要人工确认的任务'
+          title: '我的内容',
+          desc: '查看内容、发布状态和待确认项目'
         };
       case 'CREDIT_LEDGER':
         return {
-          title: '我的账单与积分',
-          desc: '查看您的积分余额、充值记录以及全流程生成、发布的扣费明细'
+          title: '账单明细',
+          desc: '查看充值和使用记录'
         };
       case 'ACCOUNT_DATA':
         return {
@@ -137,16 +178,17 @@ export default function WorkspaceApp() {
 
   if (loading && !account) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
-        <div className="text-center space-y-3 font-mono">
-          <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <div className="text-xs text-slate-400 font-medium">正在同步客户工作区与积分账户数据...</div>
+      <main className="min-h-[100dvh] bg-slate-50/80 grid place-items-center p-6" aria-busy="true">
+        <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-950 rounded-full animate-spin mx-auto" />
+          <div className="mt-3 text-sm text-slate-600 font-medium">正在加载工作区…</div>
+          <div className="mt-1 text-xs text-slate-400">正在恢复您的数据</div>
         </div>
-      </div>
+      </main>
     );
   }
 
-  if (loadError && !loading) {
+  if (loadError && !loading && !account) {
     return (
       <main className="min-h-screen grid place-items-center bg-slate-50/80 p-6">
         <section className="bg-white border border-slate-200/90 rounded-2xl max-w-lg p-6 sm:p-8 space-y-4 shadow-2xs" role="alert">
@@ -189,7 +231,7 @@ export default function WorkspaceApp() {
         sites={sites}
         tasks={tasks}
         activeNav={activeNav}
-        onSelectNav={setActiveNav}
+        onSelectNav={navigateTo}
         isOpenMobile={isMobileMenuOpen}
         onCloseMobile={() => setIsMobileMenuOpen(false)}
         account={account}
@@ -200,7 +242,7 @@ export default function WorkspaceApp() {
       <div className="flex-1 flex flex-col min-w-0 min-h-[100dvh]">
 
         {/* Workspace Top Header Bar */}
-        <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/90 px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex items-center justify-between sticky top-0 z-30 shadow-2xs transition-all">
+        <header className="relative bg-white/95 backdrop-blur-md border-b border-slate-200/90 px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex items-center justify-between sticky top-0 z-30 shadow-2xs transition-all">
           <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
 
             {/* Mobile Hamburger Toggle Button */}
@@ -255,16 +297,40 @@ export default function WorkspaceApp() {
               </select>
             </div>
           </div>
+          {refreshing && (
+            <div role="status" aria-live="polite" className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-slate-100">
+              <span className="block h-full w-1/3 animate-pulse rounded-full bg-emerald-500" />
+              <span className="sr-only">正在同步最新数据</span>
+            </div>
+          )}
         </header>
 
         {/* Main Workspace Content Views */}
         <main className="flex-1 p-3 sm:p-5 lg:p-8 pb-24 md:pb-10 w-full max-w-7xl mx-auto">
-          <Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">正在加载工作区…</div>}>
+          {loadError && (
+            <div role="alert" className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <strong className="font-bold">部分最新数据暂时未同步。</strong>
+                <span className="ml-1 text-amber-800">页面已保留上一次可用内容，可以继续查看。</span>
+              </div>
+              <button type="button" onClick={() => void actions.loadTenantData()} className="min-h-[38px] shrink-0 rounded-lg bg-amber-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-amber-800">
+                立即重试
+              </button>
+            </div>
+          )}
+          <Suspense fallback={(
+            <div aria-busy="true" className="space-y-4 py-2">
+              <div className="h-36 animate-pulse rounded-2xl border border-slate-200 bg-white" />
+              <div className="h-52 animate-pulse rounded-2xl border border-slate-200 bg-white" />
+            </div>
+          )}>
           {activeNav === 'DASHBOARD' && (
             <MainDashboard
+              key={activeTenantId || account.id}
               sites={sites}
               drafts={drafts}
               growthStatuses={growthStatuses}
+              workspaceId={activeTenantId || account.id}
               onRollback={actions.handleRollback}
               onStartGrowthProgram={actions.handleStartGrowthProgram}
               onOpenOnboarding={() => setIsOnboardingOpen(true)}
@@ -290,7 +356,7 @@ export default function WorkspaceApp() {
               onCreateTask={actions.handleCreateTask}
               onToggleTask={actions.handleToggleTask}
               onRunTaskNow={actions.handleRunTaskNow}
-              onOpenSiteManagement={() => setActiveNav('SITE_MANAGEMENT')}
+              onOpenSiteManagement={() => navigateTo('SITE_MANAGEMENT')}
             />
           )}
 
@@ -301,7 +367,7 @@ export default function WorkspaceApp() {
               onApprovePublish={actions.handleApprovePublish}
               onRejectDraft={actions.handleRejectDraft}
               onRetryPublish={actions.handleRetryPublish}
-              onStartGrowth={() => setActiveNav('DASHBOARD')}
+              onStartGrowth={() => navigateTo('DASHBOARD')}
             />
           )}
 
@@ -361,8 +427,9 @@ export default function WorkspaceApp() {
       {/* Mobile Bottom Navigation Bar (Visible on mobile screens) */}
       <MobileBottomNav
         activeNav={activeNav}
-        onSelectNav={setActiveNav}
+        onSelectNav={navigateTo}
         onOpenMobileDrawer={() => setIsMobileMenuOpen(true)}
+        isDrawerOpen={isMobileMenuOpen}
         sites={sites}
         tasks={tasks}
         account={account}

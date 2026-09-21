@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { WordPressSite, AutomatedTask } from '../types/seo';
 import type { GrowthInput } from '../types/api';
 import {
@@ -14,6 +14,7 @@ import {
   Tag,
   FileText
 } from 'lucide-react';
+import { useDialogInteraction } from '../hooks/useDialogInteraction';
 
 const splitKeywords = (value: string): string[] => value
   .split(/[\n,，;；]+/)
@@ -67,6 +68,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastKind, setToastKind] = useState<'success' | 'info' | 'error'>('info');
 
   // Modal Form State
   const [siteId, setSiteId] = useState('');
@@ -74,15 +76,23 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
   const [referenceInputs, setReferenceInputs] = useState('');
   const [competitorInputs, setCompetitorInputs] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const { dialogRef, onBackdropMouseDown } = useDialogInteraction({
+    open: isModalOpen,
+    onClose: () => setIsModalOpen(false),
+    closeDisabled: isSubmitting,
+    initialFocusRef: closeButtonRef
+  });
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, kind: 'success' | 'info' | 'error' = 'info') => {
+    setToastKind(kind);
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
   const handleOpenCreateModal = () => {
     if (!eligibleSites.length) {
-      showToast('请先授权连接一个 WordPress 站点');
+      showToast('请先连接一个 WordPress 站点', 'error');
       return;
     }
     setSiteId(eligibleSites[0].id);
@@ -100,7 +110,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
       ...splitUrls(competitorInputs).map((value): GrowthInput => ({ type: 'COMPETITOR_SITE', value }))
     ];
     if (!siteId || !inputs.length) {
-      showToast('请选择站点并至少输入一种增长线索');
+      showToast('请选择站点并至少填写一种线索', 'error');
       return;
     }
 
@@ -122,10 +132,10 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
         status: 'ACTIVE'
       });
 
-      showToast('持续增长程序已创建');
+      showToast('自动计划已创建', 'success');
       setIsModalOpen(false);
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '创建失败，请重试');
+      showToast(error instanceof Error ? error.message : '创建失败，请重试', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -136,12 +146,12 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
     try {
       const result = await onRunTaskNow(taskId);
       if (result && result.success === false) {
-        showToast(result.message || '任务未完成发布，请查看审计日志');
+        showToast(result.message || '本次没有完成，请查看原因', 'error');
       } else {
         showToast((result && 'message' in result ? result.message : undefined) || '计划任务已完成执行');
       }
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '执行异常，请稍后重试');
+      showToast(error instanceof Error ? error.message : '执行失败，请稍后重试', 'error');
     } finally {
       setRunningTaskId(null);
     }
@@ -150,9 +160,9 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
   const handleToggleStatus = async (task: AutomatedTask) => {
     try {
       await onToggleTask(task.id, task.status);
-      showToast(task.status === 'ACTIVE' ? '任务已暂停' : '任务已开启');
+      showToast(task.status === 'ACTIVE' ? '计划已暂停' : '计划已开启', 'success');
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '操作失败');
+      showToast(error instanceof Error ? error.message : '操作失败', 'error');
     }
   };
 
@@ -160,8 +170,8 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
     <div className="w-full space-y-6 sm:space-y-8 animate-in fade-in duration-200">
 
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-lg shadow-xl flex items-center space-x-2 text-sm font-medium animate-in fade-in slide-in-from-bottom-2 border border-slate-700">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+        <div role={toastKind === 'error' ? 'alert' : 'status'} aria-live={toastKind === 'error' ? 'assertive' : 'polite'} className={`fixed bottom-24 left-3 right-3 z-50 text-white px-4 py-2.5 rounded-xl shadow-xl flex items-center space-x-2 text-sm font-medium animate-in fade-in slide-in-from-bottom-2 border sm:bottom-6 sm:left-auto sm:right-6 sm:max-w-md ${toastKind === 'error' ? 'bg-rose-950 border-rose-800' : 'bg-slate-900 border-slate-700'}`}>
+          <CheckCircle2 className={`w-4 h-4 ${toastKind === 'error' ? 'text-rose-300' : toastKind === 'success' ? 'text-emerald-400' : 'text-sky-300'}`} />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -316,14 +326,16 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div role="dialog" aria-modal="true" aria-labelledby="autopilot-dialog-title" className="bg-white border border-slate-200/90 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl animate-in zoom-in-95 duration-150">
+        <div onMouseDown={onBackdropMouseDown} className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="autopilot-dialog-title" aria-busy={isSubmitting} tabIndex={-1} className="bg-white border border-slate-200/90 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl animate-in zoom-in-95 duration-150">
             <div className="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60 sticky top-0 z-10">
               <h3 id="autopilot-dialog-title" className="font-bold text-slate-950 text-base">新建自动计划</h3>
               <button
+                ref={closeButtonRef}
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                disabled={isSubmitting}
+                className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer disabled:opacity-40 disabled:cursor-wait"
                 aria-label="关闭窗口"
               >
                 <X className="w-5 h-5" />
@@ -358,17 +370,18 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                   <label className="text-xs font-bold text-slate-700">竞品站点</label>
                   <textarea value={competitorInputs} onChange={(event) => setCompetitorInputs(event.target.value)} rows={2} placeholder="每行一个完整 HTTPS 地址，可不填" className="w-full resize-none px-3.5 py-2.5 bg-slate-50/80 border border-slate-200/90 rounded-xl focus:bg-white focus:outline-none focus:border-slate-400 text-sm text-slate-800 placeholder:text-slate-400 transition-colors" />
                 </div>
-                <p className="text-xs text-slate-500 leading-relaxed">三类线索可任意组合，至少填写一种。系统自动扩展主题、判断市场和选择安全动作。</p>
+                <p className="text-xs text-slate-500 leading-relaxed">可填写一种或多种，系统会自动分析并选择下一步。</p>
               </div>
 
               <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3.5 text-xs leading-5 text-indigo-950 font-medium">
-                无需设置执行时间。系统只在发现新的、可验证的机会时安排动作；没有合格机会会跳过本轮且不扣费。
+                无需设置时间。系统发现合适机会时自动执行；没有机会就不操作、不扣费。
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
+                  disabled={isSubmitting}
                   className="px-4 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-100 active:bg-slate-200 rounded-xl transition min-h-[44px] cursor-pointer"
                 >
                   取消
@@ -378,7 +391,7 @@ export const ProAutopilotTasksTab: React.FC<ProAutopilotTasksTabProps> = ({
                   disabled={isSubmitting}
                   className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs sm:text-sm rounded-xl font-bold transition shadow-2xs min-h-[44px] cursor-pointer disabled:opacity-50"
                 >
-                  {isSubmitting ? '启动中...' : '启动持续增长'}
+                  {isSubmitting ? '正在启动…' : '创建计划'}
                 </button>
               </div>
             </form>

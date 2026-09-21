@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Language, SiteType, WordPressSite } from '../types/seo';
 import {
   X,
   Globe,
   Key
 } from 'lucide-react';
+import { useDialogInteraction } from '../hooks/useDialogInteraction';
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -32,14 +33,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const domainInput = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    domainInput.current?.focus();
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape' && !submitting) onClose(); };
-    document.addEventListener('keydown', closeOnEscape);
-    return () => document.removeEventListener('keydown', closeOnEscape);
-  }, [isOpen, onClose, submitting]);
+  const { dialogRef, onBackdropMouseDown } = useDialogInteraction({
+    open: isOpen,
+    onClose,
+    closeDisabled: submitting,
+    initialFocusRef: domainInput
+  });
 
   if (!isOpen) return null;
 
@@ -70,8 +69,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div role="dialog" aria-modal="true" aria-labelledby="add-site-dialog-title" className="bg-white border border-slate-200/90 rounded-2xl max-w-lg w-full my-auto max-h-[92dvh] flex flex-col shadow-xl animate-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto" onMouseDown={onBackdropMouseDown}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="add-site-dialog-title" aria-busy={submitting} tabIndex={-1} className="bg-white border border-slate-200/90 rounded-2xl max-w-lg w-full my-auto max-h-[92dvh] flex flex-col shadow-xl animate-in zoom-in-95 duration-150">
 
         {/* Header */}
         <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10 bg-white rounded-t-2xl">
@@ -80,14 +79,15 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <Globe className="w-4 h-4 text-slate-700" />
             </div>
             <div>
-              <h3 id="add-site-dialog-title" className="font-bold text-base text-slate-900">添加新站点</h3>
+              <h3 id="add-site-dialog-title" className="font-bold text-base text-slate-900">连接 WordPress</h3>
             </div>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition min-h-[44px] min-w-[44px] flex items-center justify-center"
+            disabled={submitting}
+            className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition min-h-[44px] min-w-[44px] flex items-center justify-center disabled:cursor-wait disabled:opacity-40"
             aria-label="关闭"
           >
             <X className="w-4 h-4" />
@@ -122,7 +122,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <div className="font-bold text-slate-900 flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <Key className="w-3.5 h-3.5 text-slate-700" />
-                <span>WordPress 官方授权</span>
+                <span>安全授权</span>
               </div>
               <span className="text-[11px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-lg font-semibold border border-emerald-200/90">
                 无需安装插件
@@ -130,7 +130,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             </div>
 
             <p className="text-[11px] leading-5 text-slate-600 font-medium">
-              只需输入域名。系统会跳转到您的 WordPress 站点完成一次官方授权；授权完成后，首次执行会自动理解站点语言、内容结构、编辑器及安全动作范围。无需向 AISEO 输入 WordPress 账号或密码。
+              输入域名后会跳转到您的 WordPress 确认授权。无需在这里填写 WordPress 账号或密码。
             </p>
           </div>
 
@@ -139,7 +139,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="btn-secondary min-h-[44px] px-4 cursor-pointer"
+              disabled={submitting}
+              className="btn-secondary min-h-[44px] px-4 cursor-pointer disabled:cursor-wait disabled:opacity-50"
             >
               取消
             </button>

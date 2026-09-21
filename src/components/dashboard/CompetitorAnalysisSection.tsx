@@ -21,6 +21,7 @@ export const CompetitorAnalysisSection: React.FC<CompetitorAnalysisSectionProps>
 
       <div className="relative">
         <textarea
+          aria-label="竞品网站地址，每行一个"
           value={competitorInput}
           onChange={(e) => onCompetitorInputChange(e.target.value)}
           placeholder={'每行一个竞品站点，例如：\nhttps://competitor-a.com\nhttps://competitor-b.com'}
@@ -31,14 +32,15 @@ export const CompetitorAnalysisSection: React.FC<CompetitorAnalysisSectionProps>
           <button
             type="button"
             onClick={() => onCompetitorInputChange('')}
-            className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md cursor-pointer"
+            aria-label="清空竞品网站地址"
+            className="absolute right-1.5 top-1.5 min-h-[36px] min-w-[44px] text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-lg cursor-pointer"
           >
             清空
           </button>
         )}
       </div>
       <p className="text-[11px] text-slate-500 font-medium">
-        系统会组合多个竞品的内容缺口和排名词，再使用 DataForSEO 验证真实需求与竞争度。
+        系统会自动分析竞品内容，并寻找适合您网站的机会。
       </p>
     </div>
   );

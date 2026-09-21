@@ -15,6 +15,7 @@ import {
   Bot,
   Database
 } from 'lucide-react';
+import { useDialogInteraction } from '../hooks/useDialogInteraction';
 
 interface SidebarProps {
   sites: WordPressSite[];
@@ -39,6 +40,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLogout
 }) => {
   const safeSites = sites || [];
+  const { dialogRef: mobileDialogRef, onBackdropMouseDown } = useDialogInteraction({
+    open: isOpenMobile,
+    onClose: onCloseMobile || (() => undefined)
+  });
 
   const navGroups: {
     title: string;
@@ -174,6 +179,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <button
                     key={item.id}
                     onClick={() => handleNavClick(item.id)}
+                    aria-current={isActive ? 'page' : undefined}
                     className={`w-full flex items-center justify-between px-3 py-2 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all duration-150 cursor-pointer min-h-[44px] sm:min-h-[38px] ${
                       isActive
                         ? 'bg-slate-950 text-white shadow-xs font-semibold'
@@ -210,6 +216,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <button
                     key={item.id}
                     onClick={() => handleNavClick(item.id)}
+                    aria-current={isActive ? 'page' : undefined}
                     className={`w-full flex items-center justify-between px-3 py-2 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all duration-150 cursor-pointer min-h-[44px] sm:min-h-[38px] ${
                       isActive
                         ? 'bg-slate-950 text-white shadow-xs font-semibold'
@@ -268,6 +275,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 type="button"
                 onClick={onLogout}
+                aria-label="退出登录"
                 className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors shrink-0 min-h-[36px] min-w-[36px] flex items-center justify-center"
                 title="退出登录"
               >
@@ -302,11 +310,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-            onClick={onCloseMobile}
+            onMouseDown={onBackdropMouseDown}
           />
 
           {/* Drawer Panel */}
-          <div className="relative w-4/5 max-w-xs bg-white h-full shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-200">
+          <div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label="主导航菜单" tabIndex={-1} className="relative w-4/5 max-w-xs bg-white h-full shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-200">
             {navContent}
           </div>
         </div>

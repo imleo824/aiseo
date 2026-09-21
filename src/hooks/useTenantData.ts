@@ -69,6 +69,8 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
     (growthStatusQuery.data || []).map(({ siteId, status }) => [siteId, status])
   ) as Record<string, GrowthStatus>, [growthStatusQuery.data]);
   const loading = accountQuery.isLoading || (Boolean(account) && [sitesQuery, draftsQuery, tasksQuery, transactionsQuery].some((query) => query.isLoading));
+  const refreshing = !loading && [accountQuery, sitesQuery, draftsQuery, tasksQuery, transactionsQuery, tenantsQuery, growthStatusQuery]
+    .some((query) => query.isFetching);
   const loadError = [accountQuery, sitesQuery, draftsQuery, tasksQuery, transactionsQuery, tenantsQuery, growthStatusQuery]
     .find((query) => query.isError)?.error;
 
@@ -173,7 +175,7 @@ export function useTenantData(activeTenantId: string, globalLanguage: Language, 
   };
 
   return {
-    sites, tasks, drafts, account, transactions, allTenants, growthStatuses, loading, loadError,
+    sites, tasks, drafts, account, transactions, allTenants, growthStatuses, loading, refreshing, loadError,
     actions: {
       loadTenantData: invalidateTenantResources,
       handleLogout,

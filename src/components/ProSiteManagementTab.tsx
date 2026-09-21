@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { WordPressSite, SiteType } from '../types/seo';
 import { GscConnectionModal } from './GscConnectionModal';
 import {
@@ -15,6 +15,7 @@ import {
   X,
   RefreshCw
 } from 'lucide-react';
+import { useDialogInteraction } from '../hooks/useDialogInteraction';
 
 interface ProSiteManagementTabProps {
   sites: WordPressSite[];
@@ -54,6 +55,13 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
   const [connectionTesting, setConnectionTesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const editCloseButtonRef = useRef<HTMLButtonElement>(null);
+  const { dialogRef: editDialogRef, onBackdropMouseDown: onEditBackdropMouseDown } = useDialogInteraction({
+    open: Boolean(editingSiteId),
+    onClose: () => setEditingSiteId(null),
+    closeDisabled: isSaving || connectionTesting,
+    initialFocusRef: editCloseButtonRef
+  });
 
   const compatibilityLabel = (site: WordPressSite) => {
     switch (site.wordpressCompatibilityMode) {
@@ -214,7 +222,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
               <div className="space-y-1">
                 <h4 className="text-sm font-bold text-slate-900">暂未接入任何站点</h4>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  接入您的网站后，系统即可开始自动化 SEO 词库拓展、质量审计与安全发布（首期支持 WordPress）。
+                  连接 WordPress 后即可开始自动分析和执行。
                 </p>
               </div>
               <div className="pt-2">
@@ -246,7 +254,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                           </span>
 
                           <span className="text-xs text-slate-600 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-lg font-medium">
-                            执行时自动判断语言与目标市场
+                            自动识别语言和市场
                           </span>
 
                           <a
@@ -264,7 +272,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                           {site.connectorStatus === 'CONNECTED' || site.connectorStatus === 'CHECKING' ? (
                             <span className="text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-lg flex items-center gap-1 font-semibold">
                               <Key className="w-3 h-3" />
-                              WordPress {site.connectorStatus === 'CONNECTED' ? '连接已验证' : '凭证待验证'}
+                              WordPress {site.connectorStatus === 'CONNECTED' ? '已连接' : '连接检查中'}
                             </span>
                           ) : null}
                           {site.connectorStatus === 'CONNECTED' && (
@@ -337,8 +345,8 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
       </div>
 
       {editingSiteId && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200/90 rounded-2xl max-w-2xl w-full my-8 max-h-[92vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-150">
+        <div onMouseDown={onEditBackdropMouseDown} className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div ref={editDialogRef} role="dialog" aria-modal="true" aria-labelledby="edit-site-dialog-title" aria-busy={isSaving || connectionTesting} tabIndex={-1} className="bg-white border border-slate-200/90 rounded-2xl max-w-2xl w-full my-8 max-h-[92vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-150">
 
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/90 flex items-center justify-between sticky top-0 z-10 rounded-t-2xl">
@@ -347,16 +355,18 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                   <Sliders className="w-4 h-4 text-emerald-400" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-slate-900">
+                  <h3 id="edit-site-dialog-title" className="font-bold text-base text-slate-900">
                     编辑站点配置
                   </h3>
                 </div>
               </div>
 
               <button
+                ref={editCloseButtonRef}
                 type="button"
                 onClick={() => setEditingSiteId(null)}
-                className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-200/60 transition cursor-pointer"
+                disabled={isSaving || connectionTesting}
+                className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-200/60 transition cursor-pointer disabled:opacity-40 disabled:cursor-wait"
                 aria-label="关闭配置窗口"
               >
                 <X className="w-5 h-5" />
@@ -413,7 +423,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                 <div className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center justify-between pb-2 border-b border-slate-100">
                   <div className="flex items-center gap-1.5">
                     <Key className="w-4 h-4 text-blue-600" />
-                    <span>2. WordPress 授权状态</span>
+                    <span>2. 连接状态</span>
                   </div>
                 </div>
 
@@ -421,7 +431,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/70 pb-2">
                     <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                       <Layers className="w-3.5 h-3.5 text-blue-600" />
-                      <span>凭证由 WordPress 官方授权流程管理，不在本页显示或编辑</span>
+                      <span>WordPress 安全授权</span>
                     </span>
                     <button
                       type="button"
@@ -430,11 +440,11 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
                       className="px-3 py-1.5 bg-white border border-slate-200/90 hover:bg-slate-50 text-slate-700 text-xs rounded-lg font-semibold flex items-center gap-1.5 disabled:opacity-50 min-h-[32px] cursor-pointer transition shadow-2xs shrink-0 self-start sm:self-auto"
                     >
                       <RefreshCw className={`w-3 h-3 ${connectionTesting ? 'animate-spin' : ''}`} />
-                      <span>{connectionTesting ? '检测中…' : '重新检测兼容性'}</span>
+                      <span>{connectionTesting ? '正在检查…' : '重新检查连接'}</span>
                     </button>
                   </div>
 
-                  <p className="text-xs leading-relaxed text-slate-600">系统按当前 WordPress、编辑器和 SEO 插件的真实 REST 能力选择安全动作；不会安装、升级或配置客户插件。</p>
+                  <p className="text-xs leading-relaxed text-slate-600">系统会自动识别可安全执行的操作，不会改动或安装插件。</p>
                 </div>
               </div>
 
@@ -443,7 +453,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
             <div className="p-4 px-6 border-t border-slate-100 bg-slate-50/80 flex items-center justify-end gap-3 sticky bottom-0 rounded-b-2xl">
               <button
                 type="button"
-                disabled={isSaving}
+                disabled={isSaving || connectionTesting}
                 onClick={() => setEditingSiteId(null)}
                 className="px-4 py-2.5 rounded-xl border border-slate-200/90 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100 text-xs sm:text-sm font-semibold transition min-h-[40px] cursor-pointer disabled:opacity-50"
               >

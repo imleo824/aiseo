@@ -7,6 +7,7 @@ import {
   PipelineStepStatus
 } from '../types/seo';
 import type { GrowthInput, GrowthStatus } from '../types/api';
+import { emptyWorkspaceGrowthDraft, parseWorkspaceGrowthDraft } from '../lib/workspaceDraft';
 import { PipelineVisualizer } from './dashboard/PipelineVisualizer';
 import { DraftPreviewModal } from './dashboard/DraftPreviewModal';
 import { CompetitorAnalysisSection } from './dashboard/CompetitorAnalysisSection';
@@ -29,6 +30,7 @@ import {
 interface MainDashboardProps {
   sites: WordPressSite[];
   drafts: ArticleDraft[];
+  workspaceId: string;
   growthStatuses?: Record<string, GrowthStatus>;
   onRollback?: (draftId: string) => Promise<void>;
   onStartGrowthProgram: (
@@ -75,6 +77,7 @@ const splitUrlSignals = (value: string): string[] => value
 export const MainDashboard: React.FC<MainDashboardProps> = ({
   sites = [],
   drafts = [],
+  workspaceId,
   growthStatuses = {},
   onRollback,
   onStartGrowthProgram,
@@ -82,9 +85,18 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 }) => {
   const safeSites = useMemo(() => sites || [], [sites]);
   const safeDrafts = useMemo(() => drafts || [], [drafts]);
+  const draftStorageKey = `aiseo:growth-draft:v1:${workspaceId}`;
+  const savedDraft = useMemo(() => {
+    if (typeof window === 'undefined') return emptyWorkspaceGrowthDraft();
+    try {
+      return parseWorkspaceGrowthDraft(window.sessionStorage.getItem(draftStorageKey));
+    } catch {
+      return emptyWorkspaceGrowthDraft();
+    }
+  }, [draftStorageKey]);
 
   // 第 1 步：选站点
-  const [selectedSiteId, setSelectedSiteId] = useState<string>(() => safeSites[0]?.id || '');
+  const [selectedSiteId, setSelectedSiteId] = useState<string>(() => savedDraft.selectedSiteId || safeSites[0]?.id || '');
 
   React.useEffect(() => {
     if (safeSites.length > 0 && (!selectedSiteId || !safeSites.some(s => s.id === selectedSiteId))) {
@@ -93,12 +105,30 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   }, [safeSites, selectedSiteId]);
 
   // 三种增长线索：关键词、参考文章、竞品站点。
-  const [mode, setMode] = useState<'KEYWORD' | 'REWRITE' | 'COMPETITOR'>('KEYWORD');
-  const [keywordInput, setKeywordInput] = useState<string>('');
-  const [rewriteInput, setRewriteInput] = useState<string>('');
+  const [mode, setMode] = useState<'KEYWORD' | 'REWRITE' | 'COMPETITOR'>(savedDraft.mode);
+  const [keywordInput, setKeywordInput] = useState<string>(savedDraft.keywordInput);
+  const [rewriteInput, setRewriteInput] = useState<string>(savedDraft.rewriteInput);
 
   // 竞品攻防
-  const [competitorInput, setCompetitorInput] = useState<string>('');
+  const [competitorInput, setCompetitorInput] = useState<string>(savedDraft.competitorInput);
+
+  React.useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      try {
+        window.sessionStorage.setItem(draftStorageKey, JSON.stringify({
+          version: 1,
+          selectedSiteId,
+          mode,
+          keywordInput,
+          rewriteInput,
+          competitorInput
+        }));
+      } catch {
+        // Browser storage can be unavailable in strict privacy modes; the form still works in memory.
+      }
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [competitorInput, draftStorageKey, keywordInput, mode, rewriteInput, selectedSiteId]);
 
   // 执行状态
   const [isRunning, setIsRunning] = useState<boolean>(false);
@@ -112,8 +142,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   // 预览模态框与提示
   const [previewDraft, setPreviewDraft] = useState<ArticleDraft | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastKind, setToastKind] = useState<'success' | 'info' | 'error'>('info');
 
-  const showToast = useCallback((msg: string) => {
+  const showToast = useCallback((msg: string, kind: 'success' | 'info' | 'error' = 'info') => {
+    setToastKind(kind);
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   }, []);
@@ -182,7 +214,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     }
     const targetSiteId = selectedSiteId || safeSites[0]?.id;
     if (!targetSiteId && safeSites.length === 0) {
-      showToast('请先配置目标站点');
+      showToast('请先连接一个站点', 'error');
       return;
     }
 
@@ -220,8 +252,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
         : publishedDraft?.status === 'QUALITY_FAILED'
           ? '内容未达到质量标准，已自动撤销且不扣费'
           : publishedDraft
-            ? '可交付结果已生成，请到“内容列表与审核”确认发布'
-            : '增长任务已进入后台队列，请稍后刷新页面查看进度');
+            ? '内容已生成，请到“我的内容”确认发布'
+            : '任务已开始，进度会自动更新', publishedDraft?.status === 'PUBLISHED' ? 'success' : publishedDraft?.status === 'QUALITY_FAILED' ? 'error' : 'info');
     } catch (e: unknown) {
       addLog(`[执行异常] ${e instanceof Error ? e.message : String(e)}`);
       setPipelineStepStates((previous) => {
@@ -233,7 +265,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
         }
         return failedStates;
       });
-      showToast(e instanceof Error ? e.message : '执行失败，请查看任务日志');
+      showToast(e instanceof Error ? e.message : '执行失败，请稍后重试', 'error');
     } finally {
       if (!acceptedByServer) {
         setIsRunning(false);
@@ -246,11 +278,11 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     if (!onRollback) return;
     try {
       await onRollback(draftId);
-      showToast('安全回滚任务已进入后台队列');
+      showToast('下线操作已提交', 'success');
       if (previewDraft?.id === draftId) setPreviewDraft(null);
       if (latestPublishedDraft?.id === draftId) setLatestPublishedDraft(null);
     } catch {
-      showToast('操作失败');
+      showToast('操作失败，请稍后重试', 'error');
     }
   };
 
@@ -259,8 +291,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-lg shadow-xl flex items-center space-x-2 text-sm font-medium animate-in fade-in slide-in-from-bottom-2 border border-slate-700">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+        <div role={toastKind === 'error' ? 'alert' : 'status'} aria-live={toastKind === 'error' ? 'assertive' : 'polite'} className={`fixed bottom-24 left-3 right-3 z-50 text-white px-4 py-2.5 rounded-xl shadow-xl flex items-center space-x-2 text-sm font-medium animate-in fade-in slide-in-from-bottom-2 border sm:bottom-6 sm:left-auto sm:right-6 sm:max-w-md ${toastKind === 'error' ? 'bg-rose-950 border-rose-800' : 'bg-slate-900 border-slate-700'}`}>
+          {toastKind === 'error'
+            ? <AlertCircle className="w-4 h-4 text-rose-300" />
+            : <CheckCircle2 className={`w-4 h-4 ${toastKind === 'success' ? 'text-emerald-400' : 'text-sky-300'}`} />}
           <span>{toastMessage}</span>
         </div>
       )}
@@ -312,6 +346,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                   <Globe className="w-4 h-4 text-slate-500" />
                 </div>
                 <select
+                  aria-label="选择增长站点"
                   value={selectedSiteId || (safeSites.length > 0 ? safeSites[0].id : '')}
                   onChange={(e) => setSelectedSiteId(e.target.value)}
                   className="w-full pl-10 pr-10 py-2.5 bg-slate-50/80 hover:bg-slate-100/80 border border-slate-200/90 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:border-slate-400 focus:bg-white transition cursor-pointer appearance-none shadow-2xs min-h-[42px]"
@@ -329,17 +364,17 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             )}
             {activeSite?.connectorStatus === 'CONNECTED' ? (
               <p className="text-[11px] font-medium text-slate-500">
-                {activeSite.wordpressCompatibilityMode === 'FULL_AUTO' ? '状态：已连接，支持全自动发布'
-                  : activeSite.wordpressCompatibilityMode === 'SAFE_AUTO' ? '状态：已连接，系统将只选择已验证的安全动作'
-                    : activeSite.wordpressCompatibilityMode === 'ANALYSIS_ONLY' ? '状态：只读，仅用于内容诊断与分析'
-                      : activeSite.wordpressCompatibilityMode === 'BLOCKED' ? '状态：未授权，无法连接到站点'
-                        : '状态：等待开始增长时自动验证'}
+                {activeSite.wordpressCompatibilityMode === 'FULL_AUTO' ? '已连接，可以自动执行'
+                  : activeSite.wordpressCompatibilityMode === 'SAFE_AUTO' ? '已连接，系统会自动选择安全操作'
+                    : activeSite.wordpressCompatibilityMode === 'ANALYSIS_ONLY' ? '当前只能分析，不能修改网站'
+                      : activeSite.wordpressCompatibilityMode === 'BLOCKED' ? '连接不可用，请重新授权'
+                        : '开始执行前会自动检查连接'}
               </p>
             ) : activeSite ? (
               <div className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-50/80 border border-amber-200/90 text-xs text-amber-950">
                 <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                 <span className="leading-relaxed">
-                  此站点尚未授权。请前往「我的增长站点」完成 WordPress 授权，验证通过后即可一键启动增长。
+                  此站点尚未连接，请先到“我的站点”授权 WordPress。
                 </span>
               </div>
             ) : null}
@@ -349,13 +384,16 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
           <div className="space-y-3 pt-1">
             <label className="text-base sm:text-lg font-extrabold text-slate-950 flex items-center gap-2.5">
               <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-slate-950 text-white flex items-center justify-center text-xs sm:text-sm font-bold shadow-2xs">2</span>
-              <span>选择主题</span>
+              <span>提供线索</span>
             </label>
 
             {/* 3 种模式切换 Tab */}
-            <div className="grid grid-cols-3 p-1 bg-slate-100/90 rounded-xl gap-1 border border-slate-200/70">
+            <div role="tablist" aria-label="增长线索类型" className="grid grid-cols-3 p-1 bg-slate-100/90 rounded-xl gap-1 border border-slate-200/70">
               <button
                 type="button"
+                role="tab"
+                aria-selected={mode === 'KEYWORD'}
+                aria-controls="growth-input-keyword"
                 onClick={() => setMode('KEYWORD')}
                 className={`px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer min-h-[42px] ${
                   mode === 'KEYWORD'
@@ -364,12 +402,15 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 }`}
               >
                 <KeyRound className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                <span className="hidden sm:inline">自定义关键词</span>
+                <span className="hidden sm:inline">关键词</span>
                 <span className="inline sm:hidden">关键词</span>
               </button>
 
               <button
                 type="button"
+                role="tab"
+                aria-selected={mode === 'REWRITE'}
+                aria-controls="growth-input-reference"
                 onClick={() => setMode('REWRITE')}
                 className={`px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer min-h-[42px] ${
                   mode === 'REWRITE'
@@ -384,6 +425,9 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
               <button
                 type="button"
+                role="tab"
+                aria-selected={mode === 'COMPETITOR'}
+                aria-controls="growth-input-competitor"
                 onClick={() => setMode('COMPETITOR')}
                 className={`px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer min-h-[42px] ${
                   mode === 'COMPETITOR'
@@ -392,18 +436,18 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 }`}
               >
                 <Swords className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                <span className="hidden sm:inline">对标竞品</span>
-                <span className="inline sm:hidden">对标竞品</span>
+                <span className="hidden sm:inline">竞品网站</span>
+                <span className="inline sm:hidden">竞品</span>
               </button>
             </div>
 
             <p className="text-[11px] text-slate-500 px-1 font-medium">
-              三类线索可组合且支持多个值；全部留空时，系统会从已连接站点自动发现机会。
+              可以填写一种或多种；全部留空时，系统会自动分析网站。
             </p>
 
             {/* 模式 1：自定义关键词 */}
             {mode === 'KEYWORD' && (
-              <div className="space-y-2.5 animate-in fade-in duration-150 bg-slate-50/70 p-3.5 sm:p-4 rounded-xl border border-slate-200/90 shadow-2xs">
+              <div id="growth-input-keyword" role="tabpanel" className="space-y-2.5 animate-in fade-in duration-150 bg-slate-50/70 p-3.5 sm:p-4 rounded-xl border border-slate-200/90 shadow-2xs">
                 <div className="flex items-center justify-between text-xs text-slate-500">
                   <span className="font-semibold text-slate-700 flex items-center gap-1.5">
                     <Search className="w-3.5 h-3.5 text-slate-500" />
@@ -412,6 +456,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 </div>
                 <div className="relative">
                   <textarea
+                    aria-label="关键词或主题，每行一个"
                     value={keywordInput}
                     onChange={(e) => setKeywordInput(e.target.value)}
                     placeholder={'例如：\n企业级高可用架构\n云原生容灾方案'}
@@ -422,7 +467,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                     <button
                       type="button"
                       onClick={() => setKeywordInput('')}
-                      className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md cursor-pointer"
+                      aria-label="清空关键词"
+                      className="absolute right-1.5 top-1.5 min-h-[36px] min-w-[44px] text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-lg cursor-pointer"
                     >
                       清空
                     </button>
@@ -433,7 +479,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
             {/* 模式 2：参考文章只用于提取事实、结构和信息缺口 */}
             {mode === 'REWRITE' && (
-              <div className="space-y-2.5 animate-in fade-in duration-150 bg-slate-50/70 p-3.5 sm:p-4 rounded-xl border border-slate-200/90 shadow-2xs">
+              <div id="growth-input-reference" role="tabpanel" className="space-y-2.5 animate-in fade-in duration-150 bg-slate-50/70 p-3.5 sm:p-4 rounded-xl border border-slate-200/90 shadow-2xs">
                 <div className="flex items-center justify-between text-xs text-slate-500">
                   <span className="font-semibold text-slate-700 flex items-center gap-1.5">
                     <Link2 className="w-3.5 h-3.5 text-slate-500" />
@@ -442,6 +488,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 </div>
                 <div className="relative">
                   <textarea
+                    aria-label="参考文章地址，每行一个"
                     value={rewriteInput}
                     onChange={(e) => setRewriteInput(e.target.value)}
                     placeholder={'每行一个完整地址，例如：\nhttps://example.com/article-a\nhttps://example.com/article-b'}
@@ -452,7 +499,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                     <button
                       type="button"
                       onClick={() => setRewriteInput('')}
-                      className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-md cursor-pointer"
+                      aria-label="清空参考文章地址"
+                      className="absolute right-1.5 top-1.5 min-h-[36px] min-w-[44px] text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded-lg cursor-pointer"
                     >
                       清空
                     </button>
@@ -463,10 +511,12 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
             {/* 模式 3：对标竞争对手 */}
             {mode === 'COMPETITOR' && (
-              <CompetitorAnalysisSection
-                competitorInput={competitorInput}
-                onCompetitorInputChange={setCompetitorInput}
-              />
+              <div id="growth-input-competitor" role="tabpanel">
+                <CompetitorAnalysisSection
+                  competitorInput={competitorInput}
+                  onCompetitorInputChange={setCompetitorInput}
+                />
+              </div>
             )}
           </div>
 
@@ -489,13 +539,13 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               {executionActive ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></div>
-                  <span>正在分析并执行最佳增长动作，请稍候...</span>
+                  <span>系统正在自动执行…</span>
                 </>
               ) : (
                 <>
                   <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
                   <span className="truncate">
-                    {activeSite?.connectorStatus !== 'CONNECTED' ? '请先授权连接 WordPress 网站' : '一键启动站点增长'}
+                    {activeSite?.connectorStatus !== 'CONNECTED' ? '请先连接 WordPress' : '开始执行'}
                   </span>
                   <ArrowRight className="w-4 h-4 shrink-0" />
                 </>
@@ -521,8 +571,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               </svg>
             </div>
             <span className="text-xs font-bold text-slate-500 tracking-wider uppercase bg-white px-4 z-10 text-center">
-              <span className="hidden sm:inline">5 阶段真实增长链路 · 发布完成即交付，效果观察独立继续</span>
-              <span className="inline sm:hidden">5 阶段真实进度</span>
+              <span>执行进度</span>
             </span>
           </div>
 
@@ -548,7 +597,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             </div>
 
             <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-100/90 text-emerald-800 border border-emerald-300/80 self-start sm:self-auto">
-              {latestPublishedDraft.qualityGate ? `质量评分: ${latestPublishedDraft.qualityGate.overallScore}` : '质量报告未返回'}
+              {latestPublishedDraft.qualityGate ? '已通过质量检查' : '等待质量检查'}
             </span>
           </div>
 
@@ -626,7 +675,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                         {actionLabel(growthAction?.type)}
                       </span>
                       <span className={`px-2.5 py-0.5 rounded-lg text-xs font-semibold border ${draft.qualityGate ? 'bg-emerald-50 text-emerald-700 border-emerald-200/90' : 'bg-slate-100 text-slate-600 border-slate-200/90'}`}>
-                        {draft.qualityGate ? `${draft.qualityGate.overallScore} 分` : '未质检'}
+                        {draft.qualityGate ? '质量检查通过' : '等待检查'}
                       </span>
                       {draftSite && (
                         <span className="text-xs text-slate-500 flex items-center gap-1 font-mono">

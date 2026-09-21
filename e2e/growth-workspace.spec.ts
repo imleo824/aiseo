@@ -47,8 +47,8 @@ const installAuthApi = async (page: Page) => {
 const openAuthenticatedWorkspace = async (page: Page) => {
   await page.goto('/');
   await page.getByLabel('工作邮箱').fill('owner@example.test');
-  await page.getByLabel('密码').fill('short123');
-  await page.getByRole('button', { name: '继续', exact: true }).click();
+  await page.getByLabel('密码', { exact: true }).fill('short123');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.getByText('手动执行', { exact: true }).first()).toBeVisible();
 };
 
@@ -140,10 +140,14 @@ test('登录注册页只展示有效的必要内容', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'USDT 规则' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: '服务条款' })).toBeVisible();
   await expect(page.getByRole('link', { name: '隐私政策' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '显示密码' })).toBeVisible();
+  await page.getByRole('button', { name: '显示密码' }).click();
+  await expect(page.getByLabel('密码', { exact: true })).toHaveAttribute('type', 'text');
   await page.getByRole('button', { name: '创建新账号' }).click();
   await expect(page.getByLabel('姓名')).toHaveCount(0);
   await expect(page.getByLabel('工作邮箱')).toBeVisible();
-  await expect(page.getByLabel('密码')).toBeVisible();
+  await expect(page.getByLabel('密码', { exact: true })).toBeVisible();
 });
 
 test('公开法律文件可读且不暴露加密乱码', async ({ page }) => {
@@ -176,10 +180,39 @@ test('充值页先选择套餐或自定义金额，提交后展示完整转账�
   expect(fixture.paymentIntentBody()).toEqual({ customAmountMicros: '80000000' });
 });
 
+test('导航、浏览器返回与未提交的增长线索都能恢复', async ({ page }) => {
+  await installBusinessApi(page);
+  await openAuthenticatedWorkspace(page);
+  const keywordInput = page.getByLabel('关键词或主题，每行一个');
+  await keywordInput.fill('需要保留的增长线索');
+
+  await page.getByRole('button', { name: '我的站点' }).first().click();
+  await expect(page).toHaveURL(/\?view=SITE_MANAGEMENT$/);
+  await expect(page.getByText('站点列表 (1)')).toBeVisible();
+
+  await page.goBack();
+  await expect(page).not.toHaveURL(/view=/);
+  await expect(keywordInput).toHaveValue('需要保留的增长线索');
+
+  await page.reload();
+  await expect(page.getByLabel('关键词或主题，每行一个')).toHaveValue('需要保留的增长线索');
+});
+
+test('充值弹窗支持键盘关闭并把焦点交还触发按钮', async ({ page }) => {
+  await installBusinessApi(page);
+  await openAuthenticatedWorkspace(page);
+  const rechargeButton = page.getByRole('button', { name: '充值', exact: true });
+  await rechargeButton.click();
+  await expect(page.getByRole('button', { name: '关闭充值面板' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'USDT 充值' })).toHaveCount(0);
+  await expect(rechargeButton).toBeFocused();
+});
+
 for (const scenario of [
   { name: '关键词', tab: null, placeholder: /企业级高可用架构/, type: 'KEYWORD', value: '企业 CRM SEO' },
   { name: '参考文章', tab: '参考文章', placeholder: /example.com\/article-a/, type: 'REFERENCE_URL', value: 'https://reference.example.com/research' },
-  { name: '竞品站点', tab: '对标竞品', placeholder: /competitor-a.com/, type: 'COMPETITOR_SITE', value: 'https://competitor.example.com' }
+  { name: '竞品站点', tab: '竞品网站', placeholder: /competitor-a.com/, type: 'COMPETITOR_SITE', value: 'https://competitor.example.com' }
 ] as const) {
   test(`${scenario.name}可以一键创建可恢复的真实任务`, async ({ page }) => {
     const fixture = await installBusinessApi(page);
@@ -187,7 +220,7 @@ for (const scenario of [
     await expect(page.locator('select').filter({ hasText: 'TechPulse Media' })).toHaveValue(siteId);
     if (scenario.tab) await page.getByRole('button', { name: scenario.tab }).click();
     await page.getByPlaceholder(scenario.placeholder).fill(scenario.value);
-    await page.getByRole('button', { name: /一键启动站点增长/ }).click();
+    await page.getByRole('button', { name: '开始执行', exact: true }).click();
     await expect.poll(() => fixture.submitted()).toEqual({ mode: 'ONCE', inputs: [{ type: scenario.type, value: scenario.value }] });
     expect(fixture.idempotencyKey()).toMatch(/^[0-9a-f-]{36}$/i);
     await expect(page.getByText('正在用真实搜索数据评分候选机会。')).toBeVisible();
@@ -195,8 +228,8 @@ for (const scenario of [
     await page.reload();
     await expect(page.getByText('正在用真实搜索数据评分候选机会。')).toBeVisible();
     await page.getByRole('button', { name: /了解网站/ }).click();
-    await expect(page.getByText('了解网站 · 真实执行证据')).toBeVisible();
-    await expect(page.getByText('SITE_SNAPSHOT', { exact: true })).toBeVisible();
+    await expect(page.getByText('了解网站详情')).toBeVisible();
+    await expect(page.getByText('已记录依据 1', { exact: true })).toBeVisible();
   });
 }
 
@@ -206,9 +239,9 @@ test('关键词、参考文章与竞品可以组合成同一个增长程序', as
   await page.getByPlaceholder(/企业级高可用架构/).fill('企业 CRM SEO\nCRM 获客');
   await page.getByRole('button', { name: '参考文章' }).click();
   await page.getByPlaceholder(/example.com\/article-a/).fill('https://reference.example.com/research');
-  await page.getByRole('button', { name: '对标竞品' }).click();
+  await page.getByRole('button', { name: '竞品网站' }).click();
   await page.getByPlaceholder(/competitor-a.com/).fill('https://competitor-a.example.com\nhttps://competitor-b.example.com');
-  await page.getByRole('button', { name: /一键启动站点增长/ }).click();
+  await page.getByRole('button', { name: '开始执行', exact: true }).click();
   await expect.poll(() => fixture.submitted()).toEqual({
     mode: 'ONCE',
     inputs: [
@@ -230,7 +263,7 @@ test('持续增长与一次性执行使用同一套组合输入契约', async ({
   const urlInputs = page.getByPlaceholder('每行一个完整 HTTPS 地址，可不填');
   await urlInputs.nth(0).fill('https://reference.example.com/guide');
   await urlInputs.nth(1).fill('https://competitor.example.com');
-  await page.getByRole('button', { name: '启动持续增长' }).click();
+  await page.getByRole('button', { name: '创建计划' }).click();
   await expect.poll(() => fixture.submitted()).toEqual({
     mode: 'CONTINUOUS',
     inputs: [
@@ -260,4 +293,22 @@ test('账号数据页可导出数据且删除操作必须精确确认邮箱', as
   await expect(deleteButton).toBeDisabled();
   await page.getByLabel(/输入当前邮箱以确认/).fill('owner@example.test');
   await expect(deleteButton).toBeEnabled();
+});
+
+test('移动端更多菜单可用键盘关闭并恢复页面状态', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installBusinessApi(page);
+  await openAuthenticatedWorkspace(page);
+
+  const moreButton = page.getByRole('button', { name: '打开更多功能' });
+  await moreButton.click();
+  await expect(moreButton).toHaveAttribute('aria-expanded', 'true');
+  const drawer = page.getByRole('dialog', { name: '主导航菜单' });
+  await expect(drawer).toBeVisible();
+  await expect(page.locator('body')).toHaveCSS('overflow', 'hidden');
+
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+  await expect(moreButton).toHaveAttribute('aria-expanded', 'false');
+  await expect(moreButton).toBeFocused();
 });

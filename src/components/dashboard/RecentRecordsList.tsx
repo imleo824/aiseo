@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { ArticleDraft, WordPressSite } from '../../types/seo';
 import {
   Globe,
@@ -11,6 +11,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { SafeArticleContent } from '../SafeArticleContent';
+import { useDialogInteraction } from '../../hooks/useDialogInteraction';
 
 interface RecentRecordsListProps {
   drafts?: ArticleDraft[];
@@ -54,6 +55,23 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
   const [isRejecting, setIsRejecting] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [activeDraftModal, setActiveDraftModal] = useState<ArticleDraft | null>(null);
+  const previewCloseButtonRef = useRef<HTMLButtonElement>(null);
+  const rejectCloseButtonRef = useRef<HTMLButtonElement>(null);
+  const previewBusy = Boolean(activeDraftModal && (
+    publishingDraftId === activeDraftModal.id || retryingDraftId === activeDraftModal.id
+  ));
+  const { dialogRef: previewDialogRef, onBackdropMouseDown: onPreviewBackdropMouseDown } = useDialogInteraction({
+    open: Boolean(activeDraftModal),
+    onClose: () => setActiveDraftModal(null),
+    closeDisabled: previewBusy,
+    initialFocusRef: previewCloseButtonRef
+  });
+  const { dialogRef: rejectDialogRef, onBackdropMouseDown: onRejectBackdropMouseDown } = useDialogInteraction({
+    open: Boolean(rejectTarget),
+    onClose: () => setRejectTarget(null),
+    closeDisabled: isRejecting,
+    initialFocusRef: rejectCloseButtonRef
+  });
 
   const showLocalToast = (msg: string) => {
     setToastMsg(msg);
@@ -468,17 +486,19 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
 
       {/* Modal Preview */}
       {activeDraftModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200/90 rounded-2xl max-w-2xl w-full max-h-[88vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-150">
+        <div onMouseDown={onPreviewBackdropMouseDown} className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div ref={previewDialogRef} role="dialog" aria-modal="true" aria-labelledby="draft-record-preview-title" aria-busy={previewBusy} tabIndex={-1} className="bg-white border border-slate-200/90 rounded-2xl max-w-2xl w-full max-h-[88vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-150">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
               <div className="min-w-0 pr-3">
-                <h3 className="font-bold text-slate-900 text-base truncate">{activeDraftModal.title}</h3>
-                <div className="text-xs text-slate-500 mt-0.5">{activeDraftModal.qualityGate ? `质量评分: ${activeDraftModal.qualityGate.overallScore} 分` : '尚无可验证的质量报告'}</div>
+                <h3 id="draft-record-preview-title" className="font-bold text-slate-900 text-base truncate">{activeDraftModal.title}</h3>
+                <div className="text-xs text-slate-500 mt-0.5">{activeDraftModal.qualityGate ? '已通过质量检查' : '等待质量检查'}</div>
               </div>
               <button
+                ref={previewCloseButtonRef}
                 type="button"
                 onClick={() => setActiveDraftModal(null)}
-                className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-200/60 transition cursor-pointer"
+                disabled={previewBusy}
+                className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-200/60 transition cursor-pointer disabled:opacity-40 disabled:cursor-wait"
                 aria-label="关闭预览"
               >
                 <X className="w-5 h-5" />
@@ -504,7 +524,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
               {activeDraftModal.status === 'PENDING_APPROVAL' && onRejectDraft && (
                 <button
                   type="button"
-                  onClick={() => { setRejectTarget(activeDraftModal); setRejectionReason(''); }}
+                  onClick={() => { setRejectTarget(activeDraftModal); setActiveDraftModal(null); setRejectionReason(''); }}
                   className="px-4 py-2.5 bg-white text-rose-700 border border-rose-200 rounded-xl text-xs sm:text-sm font-semibold hover:bg-rose-50 transition min-h-[40px] cursor-pointer"
                 >
                   拒绝交付
@@ -534,6 +554,7 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveDraftModal(null)}
+                disabled={previewBusy}
                 className="px-5 py-2.5 bg-slate-950 text-white rounded-xl text-xs sm:text-sm font-bold hover:bg-slate-800 active:bg-slate-900 transition min-h-[40px] shadow-xs cursor-pointer"
               >
                 关闭
@@ -544,14 +565,14 @@ export const RecentRecordsList: React.FC<RecentRecordsListProps> = ({
       )}
 
       {rejectTarget && (
-        <div className="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div role="dialog" aria-modal="true" aria-labelledby="reject-draft-title" className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div onMouseDown={onRejectBackdropMouseDown} className="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div ref={rejectDialogRef} role="dialog" aria-modal="true" aria-labelledby="reject-draft-title" aria-busy={isRejecting} tabIndex={-1} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 id="reject-draft-title" className="font-bold text-slate-950">拒绝本次交付</h3>
                 <p className="mt-1 text-xs text-slate-500">拒绝后不会写入 WordPress；已生成的可交付内容不退还积分。</p>
               </div>
-              <button type="button" onClick={() => setRejectTarget(null)} aria-label="关闭拒绝确认" className="w-9 h-9 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center cursor-pointer">
+              <button ref={rejectCloseButtonRef} type="button" onClick={() => setRejectTarget(null)} disabled={isRejecting} aria-label="关闭拒绝确认" className="w-10 h-10 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center cursor-pointer disabled:opacity-40 disabled:cursor-wait">
                 <X className="w-4 h-4" />
               </button>
             </div>

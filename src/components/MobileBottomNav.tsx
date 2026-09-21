@@ -11,6 +11,7 @@ interface MobileBottomNavProps {
   activeNav: NavItem;
   onSelectNav: (nav: NavItem) => void;
   onOpenMobileDrawer: () => void;
+  isDrawerOpen?: boolean;
   sites?: WordPressSite[];
   tasks?: AutomatedTask[];
   account?: TenantAccount | null;
@@ -20,6 +21,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   activeNav,
   onSelectNav,
   onOpenMobileDrawer,
+  isDrawerOpen = false,
   sites = [],
   account
 }) => {
@@ -59,6 +61,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               key={item.id}
               type="button"
               onClick={() => onSelectNav(item.id)}
+              aria-current={isActive ? 'page' : undefined}
               className={`flex-1 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all duration-150 relative cursor-pointer min-h-[50px] active:scale-95 ${
                 isActive
                   ? 'text-slate-950 font-bold'
@@ -88,6 +91,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         <button
           type="button"
           onClick={onOpenMobileDrawer}
+          aria-haspopup="dialog"
+          aria-expanded={isDrawerOpen}
+          aria-label="打开更多功能"
           className={`flex-1 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all duration-150 relative cursor-pointer min-h-[50px] active:scale-95 ${
             isOtherActive
               ? 'text-slate-950 font-bold'

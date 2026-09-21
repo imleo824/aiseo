@@ -25,7 +25,7 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
   executionLogs,
   stageDetails = []
 }) => {
-  const [showLogs, setShowLogs] = React.useState<boolean>(true);
+  const [showLogs, setShowLogs] = React.useState<boolean>(false);
   const [expandedStage, setExpandedStage] = React.useState<number | null>(null);
 
   const stageIcons: Record<number, React.ReactNode> = {
@@ -153,7 +153,7 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
         return (
           <div className="rounded-xl border border-slate-200/90 bg-white p-4 text-sm space-y-3 shadow-2xs">
             <div className="flex items-center justify-between gap-3">
-              <div className="font-bold text-slate-900">{stage.title} · 真实执行证据</div>
+              <div className="font-bold text-slate-900">{stage.title}详情</div>
               <div className="text-xs text-slate-500 font-medium">
                 已处理 {detail.processedCount}{typeof detail.totalCount === 'number' ? ` / ${detail.totalCount}` : ''}
               </div>
@@ -168,7 +168,7 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
               <div className="flex flex-wrap gap-2">
                 {detail.evidence.map((evidence, index) => (
                   <span key={`${String(evidence.type || 'EVIDENCE')}-${index}`} className="rounded-lg bg-slate-100 border border-slate-200/80 px-2.5 py-1 text-xs font-mono text-slate-700 font-semibold">
-                    {String(evidence.type || 'EVIDENCE')}
+                    已记录依据 {index + 1}
                   </span>
                 ))}
               </div>
@@ -186,7 +186,7 @@ export const PipelineVisualizer: React.FC<PipelineVisualizerProps> = ({
           >
             <div className="flex items-center gap-2.5">
               <TerminalIcon className="w-4 h-4 text-emerald-400" />
-              <span className="font-semibold text-slate-200">流水线执行日志</span>
+              <span className="font-semibold text-slate-200">详细记录</span>
               {isRunning && (
                 <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 text-xs font-semibold animate-pulse">
                   运行中

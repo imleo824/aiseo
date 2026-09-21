@@ -16,9 +16,9 @@ const connectedSite = {
 
 describe('first-version execution dashboard contract', () => {
   it('keeps the original three-step layout while showing the five real worker stages', () => {
-    const html = renderToStaticMarkup(<MainDashboard sites={[connectedSite]} drafts={[]} onStartGrowthProgram={async () => undefined} />);
+    const html = renderToStaticMarkup(<MainDashboard workspaceId="test-workspace" sites={[connectedSite]} drafts={[]} onStartGrowthProgram={async () => undefined} />);
     expect(html).toContain('选择站点');
-    expect(html).toContain('选择主题');
+    expect(html).toContain('提供线索');
     expect(html).toContain('开始执行');
     expect(html).toContain('了解网站');
     expect(html).toContain('发现机会');
