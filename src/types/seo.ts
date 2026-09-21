@@ -30,6 +30,13 @@ export interface UsdtPackage {
   credits: string;
 }
 
+export interface CustomPaymentPricing {
+  active: boolean;
+  minUsdt: string;
+  maxUsdt: string;
+  creditsPerUsdt: string;
+}
+
 export type CreditTransactionType = 'RECHARGE' | 'CONSUME' | 'ADJUSTMENT';
 
 export type CreditActionType =

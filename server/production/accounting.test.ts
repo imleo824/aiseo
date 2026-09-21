@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   packageBaseMicrosSchema,
+  customPaymentPricingSchema,
   pricingConfigurationSchema,
   positiveAccountingMicrosSchema,
   POSTGRES_BIGINT_MAX,
@@ -26,6 +27,27 @@ describe('accounting wire schemas', () => {
     expect(packageBaseMicrosSchema.parse('200000000')).toBe('200000000');
     expect(packageBaseMicrosSchema.safeParse('200000001').success).toBe(false);
     expect(packageBaseMicrosSchema.safeParse(POSTGRES_BIGINT_MAX.toString()).success).toBe(false);
+  });
+
+  it('requires bounded whole-USDT custom pricing and an exact credit rate', () => {
+    expect(customPaymentPricingSchema.parse({
+      active: true,
+      minAmountMicros: '10000000',
+      maxAmountMicros: '10000000000',
+      creditsPerUsdtMicros: '100000000'
+    }).active).toBe(true);
+    expect(customPaymentPricingSchema.safeParse({
+      active: true,
+      minAmountMicros: '10000001',
+      maxAmountMicros: '10000000000',
+      creditsPerUsdtMicros: '100000000'
+    }).success).toBe(false);
+    expect(customPaymentPricingSchema.safeParse({
+      active: true,
+      minAmountMicros: '20000000',
+      maxAmountMicros: '10000000',
+      creditsPerUsdtMicros: '100000000'
+    }).success).toBe(false);
   });
 
   it('rejects duplicate identifiers in an atomic pricing update', () => {

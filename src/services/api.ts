@@ -7,6 +7,7 @@ import {
   TenantAccount,
   CreditTransaction,
   UsdtPackage,
+  CustomPaymentPricing,
 } from "../types/seo";
 import { api as productionApi } from '../lib/api';
 import { getSupabaseBrowserClient } from '../lib/supabase';
@@ -25,6 +26,11 @@ const positiveMicros = (value: string, label: string): string => {
   const micros = decimalToMicros(value);
   if (BigInt(micros) <= 0n) throw new Error(`${label}必须大于 0`);
   return micros;
+};
+
+const positiveWholeUsdtMicros = (value: string, label: string): string => {
+  if (!/^[1-9]\d*$/.test(value.trim())) throw new Error(`${label}必须是正整数 USDT`);
+  return positiveMicros(value, label);
 };
 
 const toWorkspaceSite = (site: ProductionSite): WordPressSite => {
@@ -216,15 +222,21 @@ export class ApiService {
   public async getCreditConfig() {
     const { me } = await this.resolveWorkspace();
     const endpoint = me.profile.platformRole === 'PLATFORM_ADMIN' ? '/admin/pricing' : '/pricing';
-    const pricing = (await productionApi.get<{ packages: Array<{ id: string; name: string; baseAmountMicros: string; creditMicros: string; active: boolean }>; actions: Array<{ action: string; name: string; description: string; creditMicros: string; active: boolean }> }>(endpoint)).data;
+    const pricing = (await productionApi.get<{ packages: Array<{ id: string; name: string; baseAmountMicros: string; creditMicros: string; active: boolean }>; actions: Array<{ action: string; name: string; description: string; creditMicros: string; active: boolean }>; customPricing: { active: boolean; minAmountMicros: string; maxAmountMicros: string; creditsPerUsdtMicros: string } }>(endpoint)).data;
     return {
       success: true,
       rate: '链上精确金额',
       trc20Address: '',
       wallets: {},
       packages: pricing.packages.filter((item) => item.active).map((item) => ({ id: item.id, name: item.name, usdtAmount: microsToDecimal(item.baseAmountMicros), credits: microsToDecimal(item.creditMicros) })),
+      customPricing: {
+        active: pricing.customPricing.active,
+        minUsdt: microsToDecimal(pricing.customPricing.minAmountMicros),
+        maxUsdt: microsToDecimal(pricing.customPricing.maxAmountMicros),
+        creditsPerUsdt: microsToDecimal(pricing.customPricing.creditsPerUsdtMicros)
+      } satisfies CustomPaymentPricing,
       actionPricing: pricing.actions.map((item) => ({ action: item.action, name: item.name, credits: microsToDecimal(item.creditMicros), desc: item.description, enabled: item.active })),
-      paymentAvailable: pricing.packages.some((item) => item.active),
+      paymentAvailable: pricing.packages.some((item) => item.active) || pricing.customPricing.active,
       paymentNotice: '创建充值订单后显示唯一 TRC20 应付金额与收款地址。'
     };
   }
@@ -234,13 +246,20 @@ export class ApiService {
     trc20Address?: string;
     actionPricing?: Array<{ action: string; name: string; credits: string; desc: string; enabled?: boolean }>;
     packages?: UsdtPackage[];
+    customPricing?: CustomPaymentPricing;
   }) {
     const packages = (data.packages || []).map((item, sortOrder) => {
       if (!/^[1-9]\d*$/.test(item.usdtAmount.trim())) throw new Error('充值套餐基础金额必须是正整数 USDT');
       return { id: item.id, name: item.name, baseAmountMicros: positiveMicros(item.usdtAmount, '充值金额'), creditMicros: positiveMicros(item.credits, '到账积分'), active: true, sortOrder };
     });
     const actions = (data.actionPricing || []).map((item) => ({ action: item.action, name: item.name, description: item.desc, creditMicros: positiveMicros(item.credits, '业务积分单价'), active: item.enabled !== false }));
-    await productionApi.put('/admin/pricing', { packages, actions });
+    const customPricing = data.customPricing ? {
+      active: data.customPricing.active,
+      minAmountMicros: positiveWholeUsdtMicros(data.customPricing.minUsdt, '自定义充值下限'),
+      maxAmountMicros: positiveWholeUsdtMicros(data.customPricing.maxUsdt, '自定义充值上限'),
+      creditsPerUsdtMicros: positiveMicros(data.customPricing.creditsPerUsdt, '每 USDT 到账积分')
+    } : undefined;
+    await productionApi.put('/admin/pricing', { packages, actions, ...(customPricing ? { customPricing } : {}) });
     return { success: true, message: '定价已写入正式数据库并记录审计事件', config: data };
   }
 
@@ -258,9 +277,9 @@ export class ApiService {
     }) };
   }
 
-  public async createPaymentIntent(packageId: string) {
+  public async createPaymentIntent(input: { packageId: string } | { customAmountMicros: string }) {
     const { organizationId } = await this.resolveWorkspace();
-    return (await productionApi.post<{ paymentIntent: { id: string; packageId: string; network: 'TRC20'; recipientAddress: string; baseAmountUsdt: string; expectedAmountUsdt: string; creditMicros: string; status: string; expiresAt: string } }>(`/organizations/${organizationId}/payment-intents`, { packageId })).data.paymentIntent;
+    return (await productionApi.post<{ paymentIntent: { id: string; packageId: string | null; pricingSource: 'PACKAGE' | 'CUSTOM'; network: 'TRC20'; recipientAddress: string; baseAmountUsdt: string; expectedAmountUsdt: string; creditMicros: string; status: string; expiresAt: string } }>(`/organizations/${organizationId}/payment-intents`, input)).data.paymentIntent;
   }
 
   public async submitPaymentTransaction(paymentIntentId: string, txHash: string) {

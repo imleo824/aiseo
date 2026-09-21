@@ -18,7 +18,7 @@ import { growthProgramService } from './growthProgramService';
 import { parsePublishingConfirmationPolicy, PUBLISH_CONFIRMATION_SETTING_KEY } from './publishingPolicy';
 import { compatibilityProfileResponse, persistWordPressCompatibility, scanWordPressCompatibility } from './wordpressCompatibility';
 import { normalizeSiteDomain } from './siteDomain';
-import { positiveAccountingMicrosSchema, pricingConfigurationSchema, signedAccountingMicrosSchema } from './accounting';
+import { CUSTOM_PAYMENT_PRICING_SETTING_KEY, packageBaseMicrosSchema, parseCustomPaymentPricing, positiveAccountingMicrosSchema, pricingConfigurationSchema, signedAccountingMicrosSchema } from './accounting';
 import { continuousCadenceDays } from './growthPolicy';
 
 const roleRank: Record<OrganizationRole, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2, OWNER: 3 };
@@ -264,9 +264,10 @@ apiRouter.get('/pricing', asyncRoute(async (request, response) => {
   const profileId = userId(request);
   const pricing = await withRequestScope({ profileId }, async (tx) => Promise.all([
     tx.paymentPackage.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
-    tx.actionPrice.findMany({ where: { active: true }, orderBy: { action: 'asc' } })
+    tx.actionPrice.findMany({ where: { active: true }, orderBy: { action: 'asc' } }),
+    tx.systemSetting.findUnique({ where: { key: CUSTOM_PAYMENT_PRICING_SETTING_KEY } })
   ]));
-  sendData(response, { packages: pricing[0], actions: pricing[1] });
+  sendData(response, { packages: pricing[0], actions: pricing[1], customPricing: parseCustomPaymentPricing(pricing[2]?.value) });
 }));
 
 apiRouter.get('/me/export', asyncRoute(async (request, response) => {
@@ -1044,10 +1045,13 @@ apiRouter.get('/organizations/:organizationId/payment-intents', asyncRoute(async
 
 apiRouter.post('/organizations/:organizationId/payment-intents', asyncRoute(async (request, response) => {
   await revalidateSensitiveSession(request);
-  const profileId = userId(request), orgId = organizationId(request), key = idempotencyKey(request), input = parseBody(z.object({ packageId: z.string().min(1).max(80) }), request);
+  const profileId = userId(request), orgId = organizationId(request), key = idempotencyKey(request), input = parseBody(z.union([
+    z.object({ packageId: z.string().min(1).max(80), customAmountMicros: z.never().optional() }).strict(),
+    z.object({ customAmountMicros: packageBaseMicrosSchema, packageId: z.never().optional() }).strict()
+  ]), request);
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
-    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => ({ statusCode: 201, data: { paymentIntent: await billingService.createPaymentIntent(tx, orgId, input.packageId) } }) });
+    return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: input, execute: async () => ({ statusCode: 201, data: { paymentIntent: await billingService.createPaymentIntent(tx, orgId, input) } }) });
   });
   sendData(response, outcome.data, outcome.statusCode);
 }));
@@ -1146,8 +1150,8 @@ apiRouter.get('/admin/organizations', asyncRoute(async (request, response) => {
 
 apiRouter.get('/admin/pricing', asyncRoute(async (request, response) => {
   const profileId = userId(request);
-  const pricing = await withRequestScope({ profileId }, async (tx) => { await assertPlatformAdmin(tx, profileId); return Promise.all([tx.paymentPackage.findMany({ orderBy: { sortOrder: 'asc' } }), tx.actionPrice.findMany({ orderBy: { action: 'asc' } })]); });
-  sendData(response, { packages: pricing[0], actions: pricing[1] });
+  const pricing = await withRequestScope({ profileId }, async (tx) => { await assertPlatformAdmin(tx, profileId); return Promise.all([tx.paymentPackage.findMany({ orderBy: { sortOrder: 'asc' } }), tx.actionPrice.findMany({ orderBy: { action: 'asc' } }), tx.systemSetting.findUnique({ where: { key: CUSTOM_PAYMENT_PRICING_SETTING_KEY } })]); });
+  sendData(response, { packages: pricing[0], actions: pricing[1], customPricing: parseCustomPaymentPricing(pricing[2]?.value) });
 }));
 
 apiRouter.put('/admin/pricing', asyncRoute(async (request, response) => {
@@ -1181,6 +1185,11 @@ apiRouter.put('/admin/pricing', asyncRoute(async (request, response) => {
       await tx.actionPrice.updateMany({
         where: { action: { notIn: input.actions.map(({ action }) => action) }, active: true },
         data: { active: false }
+      });
+      await tx.systemSetting.upsert({
+        where: { key: CUSTOM_PAYMENT_PRICING_SETTING_KEY },
+        create: { key: CUSTOM_PAYMENT_PRICING_SETTING_KEY, value: input.customPricing },
+        update: { value: input.customPricing }
       });
       await tx.auditEvent.create({
         data: {

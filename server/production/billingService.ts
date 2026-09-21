@@ -3,9 +3,15 @@ import { ConflictError, InsufficientCreditsError, NotFoundError, ValidationError
 import { env } from './env';
 import { retrySerializableOperation, type TransactionClient } from './prisma';
 import { POSTGRES_BIGINT_MAX } from './accounting';
+import { CUSTOM_PAYMENT_PRICING_SETTING_KEY, parseCustomPaymentPricing } from './accounting';
 
 const USDT_MICROS = 1_000_000n;
 const TX_HASH_PATTERN = /^[a-fA-F0-9]{64}$/;
+const CANONICAL_MICROS_PATTERN = /^[1-9]\d{0,18}$/;
+
+export type PaymentIntentPricingInput =
+  | { packageId: string; customAmountMicros?: never }
+  | { packageId?: never; customAmountMicros: string };
 
 export const lockOrganizationBalance = async (tx: TransactionClient, organizationId: string) => {
   await tx.$queryRaw`
@@ -34,7 +40,8 @@ export const formatMicrosFixed = (amount: bigint, scale = USDT_MICROS): string =
 
 const paymentResponse = (payment: {
   id: string;
-  packageId: string;
+  packageId: string | null;
+  pricingSource: string;
   recipientAddress: string;
   baseAmountMicros: bigint;
   expectedAmountMicros: bigint;
@@ -44,6 +51,7 @@ const paymentResponse = (payment: {
 }) => ({
   id: payment.id,
   packageId: payment.packageId,
+  pricingSource: payment.pricingSource,
   network: 'TRC20' as const,
   recipientAddress: payment.recipientAddress,
   baseAmountUsdt: formatMicros(payment.baseAmountMicros),
@@ -54,15 +62,59 @@ const paymentResponse = (payment: {
 });
 
 export const billingService = {
-  async createPaymentIntent(tx: TransactionClient, organizationId: string, packageId: string) {
+  async createPaymentIntent(tx: TransactionClient, organizationId: string, input: PaymentIntentPricingInput) {
     if (!env.trc20RecipientAddress) throw new ValidationError('平台尚未配置 TRC20 收款地址');
-    const paymentPackage = await tx.paymentPackage.findFirst({ where: { id: packageId, active: true } });
-    if (!paymentPackage) throw new NotFoundError('充值套餐不存在或已停用');
+    let packageId: string | null = null;
+    let baseAmountMicros: bigint;
+    let creditMicros: bigint;
+    let pricingSource: 'PACKAGE' | 'CUSTOM';
+    let pricingSnapshot: Prisma.InputJsonValue;
+
+    if ('packageId' in input && input.packageId) {
+      const paymentPackage = await tx.paymentPackage.findFirst({ where: { id: input.packageId, active: true } });
+      if (!paymentPackage) throw new NotFoundError('充值套餐不存在或已停用');
+      packageId = paymentPackage.id;
+      baseAmountMicros = paymentPackage.baseAmountMicros;
+      creditMicros = paymentPackage.creditMicros;
+      pricingSource = 'PACKAGE';
+      pricingSnapshot = {
+        packageId: paymentPackage.id,
+        packageName: paymentPackage.name,
+        baseAmountMicros: paymentPackage.baseAmountMicros.toString(),
+        creditMicros: paymentPackage.creditMicros.toString()
+      };
+    } else {
+      const rawAmount = input.customAmountMicros;
+      if (!CANONICAL_MICROS_PATTERN.test(rawAmount)) throw new ValidationError('自定义充值金额格式无效');
+      baseAmountMicros = BigInt(rawAmount);
+      if (baseAmountMicros % USDT_MICROS !== 0n) throw new ValidationError('自定义充值金额必须是整数 USDT');
+      const setting = await tx.systemSetting.findUnique({ where: { key: CUSTOM_PAYMENT_PRICING_SETTING_KEY } });
+      if (!setting) throw new ValidationError('平台尚未配置自定义充值规则');
+      const pricing = parseCustomPaymentPricing(setting.value);
+      if (!pricing.active) throw new ValidationError('平台当前未开放自定义金额充值');
+      if (baseAmountMicros < BigInt(pricing.minAmountMicros) || baseAmountMicros > BigInt(pricing.maxAmountMicros)) {
+        throw new ValidationError(`自定义充值金额必须在 ${formatMicros(BigInt(pricing.minAmountMicros))}–${formatMicros(BigInt(pricing.maxAmountMicros))} USDT 之间`);
+      }
+      const wholeUsdt = baseAmountMicros / USDT_MICROS;
+      const rateMicros = BigInt(pricing.creditsPerUsdtMicros);
+      if (wholeUsdt > POSTGRES_BIGINT_MAX / rateMicros) throw new ValidationError('自定义充值金额超过账务安全范围');
+      creditMicros = wholeUsdt * rateMicros;
+      pricingSource = 'CUSTOM';
+      pricingSnapshot = {
+        baseAmountMicros: baseAmountMicros.toString(),
+        creditsPerUsdtMicros: pricing.creditsPerUsdtMicros,
+        creditMicros: creditMicros.toString(),
+        settingUpdatedAt: setting.updatedAt.toISOString()
+      };
+    }
+
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('aiseo-payment-amount-allocation'))`;
     const reusable = await tx.paymentIntent.findFirst({
       where: {
         organizationId,
-        packageId: paymentPackage.id,
+        packageId,
+        pricingSource,
+        baseAmountMicros,
         status: PaymentStatus.AWAITING_TRANSFER,
         expiresAt: { gt: new Date() }
       },
@@ -72,14 +124,14 @@ export const billingService = {
     const active = await tx.paymentIntent.findMany({
       where: {
         status: { in: [PaymentStatus.AWAITING_TRANSFER, PaymentStatus.VERIFYING, PaymentStatus.CONFIRMED] },
-        baseAmountMicros: paymentPackage.baseAmountMicros
+        baseAmountMicros
       },
       select: { expectedAmountMicros: true }
     });
     const used = new Set(active.map(({ expectedAmountMicros }) => expectedAmountMicros.toString()));
     let expectedAmountMicros: bigint | undefined;
     for (let suffix = 1n; suffix < USDT_MICROS; suffix += 1n) {
-      const candidate = paymentPackage.baseAmountMicros + suffix;
+      const candidate = baseAmountMicros + suffix;
       if (!used.has(candidate.toString())) {
         expectedAmountMicros = candidate;
         break;
@@ -89,17 +141,19 @@ export const billingService = {
     const payment = await tx.paymentIntent.create({
       data: {
         organizationId,
-        packageId: paymentPackage.id,
+        packageId,
+        pricingSource,
+        pricingSnapshot,
         tokenContract: env.trc20UsdtContract,
         recipientAddress: env.trc20RecipientAddress,
-        baseAmountMicros: paymentPackage.baseAmountMicros,
+        baseAmountMicros,
         expectedAmountMicros,
-        creditMicros: paymentPackage.creditMicros,
+        creditMicros,
         expiresAt: new Date(Date.now() + env.paymentIntentMinutes * 60_000)
       }
     });
     await tx.auditEvent.create({
-      data: { organizationId, action: 'PAYMENT_INTENT_CREATED', targetType: 'payment_intent', targetId: payment.id }
+      data: { organizationId, action: 'PAYMENT_INTENT_CREATED', targetType: 'payment_intent', targetId: payment.id, metadata: { pricingSource, packageId } }
     });
     return paymentResponse(payment);
   },

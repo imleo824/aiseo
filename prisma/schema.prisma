@@ -1117,7 +1117,9 @@ model ActionPrice {
 model PaymentIntent {
   id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId       String         @map("organization_id") @db.Uuid
-  packageId            String         @map("package_id")
+  packageId            String?        @map("package_id")
+  pricingSource        String         @default("PACKAGE") @map("pricing_source")
+  pricingSnapshot      Json           @default("{}") @map("pricing_snapshot")
   network              String         @default("TRC20")
   tokenContract        String         @map("token_contract")
   recipientAddress     String         @map("recipient_address")
@@ -1134,7 +1136,7 @@ model PaymentIntent {
   createdAt            DateTime       @default(now()) @map("created_at")
   updatedAt            DateTime       @updatedAt @map("updated_at")
   organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  package              PaymentPackage @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  package              PaymentPackage? @relation(fields: [packageId], references: [id], onDelete: Restrict)
   ledgerEntries        LedgerEntry[]
 
   @@index([organizationId, status, createdAt])

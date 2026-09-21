@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { NavItem, Language } from './types/seo';
 import { Sidebar } from './components/Sidebar';
 import { MainDashboard } from './components/MainDashboard';
@@ -12,6 +13,7 @@ import {
   Coins
 } from 'lucide-react';
 import { useTenantData } from './hooks/useTenantData';
+import { ApiService } from './services/api';
 
 const ProAuditLedgerTab = lazy(() => import('./components/ProAuditLedgerTab').then(({ ProAuditLedgerTab }) => ({ default: ProAuditLedgerTab })));
 const ProAutopilotTasksTab = lazy(() => import('./components/ProAutopilotTasksTab').then(({ ProAutopilotTasksTab }) => ({ default: ProAutopilotTasksTab })));
@@ -56,6 +58,14 @@ export default function WorkspaceApp() {
     actions
   } = useTenantData(activeTenantId, globalLanguage, (newTid) => {
     setActiveTenantId(newTid);
+  });
+
+  const rechargePricing = useQuery({
+    queryKey: ['recharge-pricing', activeTenantId],
+    queryFn: () => new ApiService(activeTenantId).getCreditConfig(),
+    enabled: Boolean(account && activeTenantId),
+    staleTime: 5 * 60_000,
+    retry: 1
   });
 
   const getPageInfo = () => {
@@ -376,6 +386,7 @@ export default function WorkspaceApp() {
           onClose={() => setIsRechargeOpen(false)}
           account={account}
           tenantId={activeTenantId}
+          initialConfig={rechargePricing.data}
         />
       )}
     </div>

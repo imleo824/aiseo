@@ -7,7 +7,7 @@ set local search_path = public, extensions;
 -- can continue to execute while SET ROLE is exercising the real RLS boundary.
 grant usage on schema extensions to app_backend, app_worker;
 grant execute on all functions in schema extensions to app_backend, app_worker;
-select plan(90);
+select plan(95);
 
 select is(
   (select count(*) from pg_class
@@ -159,6 +159,16 @@ select is(
   'false',
   'global publishing defaults to automatic delivery'
 );
+select is(
+  (select value ->> 'creditsPerUsdtMicros' from public.system_settings where key = 'payment.custom_pricing'),
+  '100000000',
+  'custom payment pricing has an explicit database rate'
+);
+select is(
+  (select is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'payment_intents' and column_name = 'package_id'),
+  'YES',
+  'custom payment intents do not masquerade as packages'
+);
 select ok(
   not exists (
     select 1 from information_schema.columns
@@ -208,6 +218,23 @@ select is((select credit_balance_micros from public.organizations where id = (se
 select set_config('app.profile_id', '00000000-0000-0000-0000-0000000000a1', true);
 select set_config('app.organization_id', (select organization_id::text from rls_context where label = 'a'), true);
 set local role app_backend;
+select is(
+  (select count(*) from public.system_settings where key = 'payment.custom_pricing'),
+  1::bigint,
+  'authenticated Web context can read only the customer-visible payment rule'
+);
+select is_empty(
+  $$update public.system_settings
+    set value = jsonb_set(value, '{creditsPerUsdtMicros}', '"1"'::jsonb)
+    where key = 'payment.custom_pricing'
+    returning key$$,
+  'ordinary Web profile cannot change custom payment pricing'
+);
+select is(
+  (select value ->> 'creditsPerUsdtMicros' from public.system_settings where key = 'payment.custom_pricing'),
+  '100000000',
+  'denied payment pricing update leaves the configured rate intact'
+);
 select is((select count(*) from public.terms_acceptances where profile_id = '00000000-0000-0000-0000-0000000000a1'), 1::bigint, 'user can export their own global terms acceptance');
 select is((select count(*) from public.notifications), 1::bigint, 'user cannot read another profile private notification in the same organization');
 insert into public.sites (id, organization_id, domain, name, updated_at)

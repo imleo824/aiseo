@@ -1,12 +1,13 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Coins, Copy, ShieldCheck, X, RefreshCw, AlertCircle, ArrowRight } from 'lucide-react';
 import { ApiService } from '../services/api';
-import type { TenantAccount, UsdtPackage } from '../types/seo';
-import { formatDecimal } from '../lib/fixedDecimal';
+import type { CustomPaymentPricing, TenantAccount, UsdtPackage } from '../types/seo';
+import { decimalToMicros, formatDecimal, microsToDecimal } from '../lib/fixedDecimal';
 
 type PaymentIntent = {
   id: string;
-  packageId: string;
+  packageId: string | null;
+  pricingSource: 'PACKAGE' | 'CUSTOM';
   network: 'TRC20';
   recipientAddress: string;
   baseAmountUsdt: string;
@@ -21,10 +22,16 @@ type Props = {
   onClose: () => void;
   account: TenantAccount | null;
   tenantId: string;
+  initialConfig?: Awaited<ReturnType<ApiService['getCreditConfig']>>;
 };
 
-export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenantId }) => {
+export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenantId, initialConfig }) => {
+  const api = useMemo(() => new ApiService(tenantId), [tenantId]);
+  const intentRequestId = useRef(0);
   const [packages, setPackages] = useState<UsdtPackage[]>([]);
+  const [customPricing, setCustomPricing] = useState<CustomPaymentPricing | null>(null);
+  const [selectionMode, setSelectionMode] = useState<'PACKAGE' | 'CUSTOM'>('PACKAGE');
+  const [customAmount, setCustomAmount] = useState('');
   const [selectedPkgId, setSelectedPkgId] = useState('');
   const [intent, setIntent] = useState<PaymentIntent | null>(null);
   const [txHash, setTxHash] = useState('');
@@ -38,55 +45,112 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
 
   const selected = useMemo(() => packages.find(({ id }) => id === selectedPkgId), [packages, selectedPkgId]);
 
-  const createIntentForPackage = useCallback(async (packageId: string) => {
-    if (!packageId) return;
+  const createIntent = useCallback(async (input: { packageId: string } | { customAmountMicros: string }) => {
+    const requestId = ++intentRequestId.current;
     setLoadingIntent(true);
+    setIntent(null);
     setError(null);
     try {
-      const api = new ApiService(tenantId);
-      const newIntent = await api.createPaymentIntent(packageId);
-      setIntent(newIntent);
+      const newIntent = await api.createPaymentIntent(input);
+      if (requestId === intentRequestId.current) setIntent(newIntent);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : '获取充值订单失败，请稍后重试');
+      if (requestId === intentRequestId.current) {
+        setError(requestError instanceof Error ? requestError.message : '获取充值订单失败，请稍后重试');
+      }
     } finally {
-      setLoadingIntent(false);
+      if (requestId === intentRequestId.current) setLoadingIntent(false);
     }
-  }, [tenantId]);
+  }, [api]);
 
   useEffect(() => {
     if (!isOpen) return;
+    let cancelled = false;
     setIntent(null);
+    setPackages([]);
+    setCustomPricing(null);
+    setSelectionMode('PACKAGE');
+    setCustomAmount('');
+    setSelectedPkgId('');
     setTxHash('');
     setError(null);
     setSuccess(null);
     setLoadingPackages(true);
+    setLoadingIntent(false);
 
-    const api = new ApiService(tenantId);
-    api.getCreditConfig()
-      .then(async (result) => {
+    const preparePayment = async () => {
+      try {
+        const result = initialConfig || await api.getCreditConfig();
+        if (cancelled) return;
         setPackages(result.packages);
-        setSelectedPkgId(result.packages[0]?.id || '');
-      })
-      .catch((requestError) => {
+        setCustomPricing(result.customPricing);
+        const defaultPackageId = result.packages[0]?.id || '';
+        setSelectedPkgId(defaultPackageId);
+      } catch (requestError) {
+        if (cancelled) return;
         setError(requestError instanceof Error ? requestError.message : '充值套餐加载失败');
-      })
-      .finally(() => {
-        setLoadingPackages(false);
-      });
-  }, [isOpen, tenantId]);
+      } finally {
+        if (!cancelled) setLoadingPackages(false);
+      }
+    };
 
-  const handleSelectPackage = (pkgId: string) => {
-    if (pkgId === selectedPkgId) return;
-    setSelectedPkgId(pkgId);
+    void preparePayment();
+    return () => {
+      cancelled = true;
+      intentRequestId.current += 1;
+    };
+  }, [api, initialConfig, isOpen]);
+
+  const resetPaymentDetails = () => {
+    intentRequestId.current += 1;
     setIntent(null);
     setTxHash('');
     setError(null);
     setSuccess(null);
+    setLoadingIntent(false);
   };
 
+  const handleSelectPackage = (pkgId: string) => {
+    if ((selectionMode === 'PACKAGE' && pkgId === selectedPkgId) || loadingIntent) return;
+    setSelectionMode('PACKAGE');
+    setSelectedPkgId(pkgId);
+    resetPaymentDetails();
+  };
+
+  const handleSelectCustom = () => {
+    if (loadingIntent || selectionMode === 'CUSTOM') return;
+    setSelectionMode('CUSTOM');
+    resetPaymentDetails();
+  };
+
+  const customAmountMicros = useMemo(() => {
+    if (!/^[1-9]\d*$/.test(customAmount)) return null;
+    try { return decimalToMicros(customAmount); } catch { return null; }
+  }, [customAmount]);
+
+  const customAmountValid = useMemo(() => {
+    if (!customPricing?.active || !customAmountMicros) return false;
+    const amount = BigInt(customAmountMicros);
+    return amount >= BigInt(decimalToMicros(customPricing.minUsdt))
+      && amount <= BigInt(decimalToMicros(customPricing.maxUsdt));
+  }, [customAmountMicros, customPricing]);
+
+  const customCreditEstimate = useMemo(() => {
+    if (!customAmountValid || !customAmountMicros || !customPricing) return '';
+    const credits = BigInt(customAmountMicros) * BigInt(decimalToMicros(customPricing.creditsPerUsdt)) / 1_000_000n;
+    return microsToDecimal(credits);
+  }, [customAmountMicros, customAmountValid, customPricing]);
+
   const handleCreateIntent = async () => {
-    if (!selectedPkgId) return;
-    await createIntentForPackage(selectedPkgId);
+    if (selectionMode === 'PACKAGE') {
+      if (!selectedPkgId) return;
+      await createIntent({ packageId: selectedPkgId });
+      return;
+    }
+    if (!customAmountValid || !customAmountMicros) {
+      setError(`请输入 ${customPricing?.minUsdt || '—'}–${customPricing?.maxUsdt || '—'} 之间的整数 USDT 金额`);
+      return;
+    }
+    await createIntent({ customAmountMicros });
   };
 
   const submitHash = async (event: React.FormEvent) => {
@@ -99,7 +163,7 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
     setSubmittingHash(true);
     setError(null);
     try {
-      await new ApiService(tenantId).submitPaymentTransaction(intent.id, cleanHash);
+      await api.submitPaymentTransaction(intent.id, cleanHash);
       setSuccess('交易已提交至链上核验引擎。系统将校验 TRC20 合约转账、收款地址与精确金额，核验通过后积分自动入账。');
       setTxHash('');
     } catch (requestError) {
@@ -177,7 +241,7 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
           {/* 1. Package selector */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-900">1. 选择充值套餐 (点击即刻切换)</span>
+              <span className="text-xs font-bold text-slate-900">1. 选择套餐或自定义金额</span>
               {loadingPackages && (
                 <span className="text-[11px] text-slate-400 flex items-center gap-1">
                   <RefreshCw className="w-3 h-3 animate-spin" /> 正在加载…
@@ -187,13 +251,14 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
 
             <div className="grid grid-cols-2 gap-2">
               {packages.map((pkg) => {
-                const isSelected = selectedPkgId === pkg.id;
+                const isSelected = selectionMode === 'PACKAGE' && selectedPkgId === pkg.id;
                 return (
                   <button
                     key={pkg.id}
                     type="button"
                     onClick={() => handleSelectPackage(pkg.id)}
-                    className={`p-3 rounded-xl border text-left transition relative cursor-pointer min-h-[64px] ${
+                    disabled={loadingIntent}
+                    className={`p-3 rounded-xl border text-left transition relative cursor-pointer min-h-[64px] disabled:cursor-wait disabled:opacity-70 ${
                       isSelected
                         ? 'bg-slate-950 text-white border-slate-950 shadow-xs ring-2 ring-slate-950/20'
                         : 'bg-slate-50 hover:bg-slate-100/90 text-slate-900 border-slate-200/90'
@@ -218,11 +283,62 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
                   </button>
                 );
               })}
+              {customPricing?.active && (
+                <button
+                  type="button"
+                  onClick={handleSelectCustom}
+                  disabled={loadingIntent}
+                  className={`p-3 rounded-xl border text-left transition relative cursor-pointer min-h-[64px] disabled:cursor-wait disabled:opacity-70 ${
+                    selectionMode === 'CUSTOM'
+                      ? 'bg-slate-950 text-white border-slate-950 shadow-xs ring-2 ring-slate-950/20'
+                      : 'bg-slate-50 hover:bg-slate-100/90 text-slate-900 border-slate-200/90'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[11px] font-semibold ${selectionMode === 'CUSTOM' ? 'text-slate-300' : 'text-slate-500'}`}>自定义金额</span>
+                    {selectionMode === 'CUSTOM' && (
+                      <span className="w-4 h-4 rounded-full bg-emerald-500 text-white grid place-items-center">
+                        <Check className="w-2.5 h-2.5" />
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 text-sm font-black">自行输入 USDT</div>
+                  <div className={`text-[11px] mt-0.5 ${selectionMode === 'CUSTOM' ? 'text-emerald-300' : 'text-slate-600'}`}>
+                    {formatDecimal(customPricing.minUsdt)}–{formatDecimal(customPricing.maxUsdt)} USDT
+                  </div>
+                </button>
+              )}
             </div>
 
-            {!loadingPackages && packages.length === 0 && !error && (
+            {selectionMode === 'CUSTOM' && customPricing?.active && (
+              <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+                <label htmlFor="custom-usdt-amount" className="text-[11px] font-bold text-slate-700">自定义充值金额（整数 USDT）</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="custom-usdt-amount"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[1-9][0-9]*"
+                    value={customAmount}
+                    onChange={(event) => {
+                      setCustomAmount(event.target.value.replace(/\D/g, ''));
+                      resetPaymentDetails();
+                    }}
+                    placeholder={`最低 ${formatDecimal(customPricing.minUsdt)} USDT`}
+                    className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3.5 py-2.5 font-mono text-sm font-bold text-slate-950 outline-none focus:ring-2 focus:ring-slate-950/20"
+                  />
+                  <span className="text-xs font-bold text-slate-600">USDT</span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  每 1 USDT 到账 {formatDecimal(customPricing.creditsPerUsdt)} 积分
+                  {customCreditEstimate ? `，预计到账 ${formatDecimal(customCreditEstimate)} 积分` : ''}
+                </p>
+              </div>
+            )}
+
+            {!loadingPackages && packages.length === 0 && !customPricing?.active && !error && (
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                当前没有可用充值套餐，请联系平台支持。
+                当前没有可用充值方式，请联系平台支持。
               </div>
             )}
           </div>
@@ -237,19 +353,10 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
               </span>
             </div>
 
-            {!intent && selected ? (
-              <button
-                type="button"
-                onClick={() => void handleCreateIntent()}
-                disabled={loadingIntent}
-                className="w-full min-h-[44px] rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loadingIntent ? '正在生成安全订单…' : `确认创建 ${selected.name} 充值订单`}
-              </button>
-            ) : loadingIntent ? (
+            {loadingIntent ? (
               <div className="py-8 text-center space-y-2 bg-white rounded-xl border border-slate-200/90">
                 <RefreshCw className="w-6 h-6 text-slate-400 animate-spin mx-auto" />
-                <p className="text-xs text-slate-500 font-medium">正在生成专属订单收款地址与精确金额…</p>
+                <p className="text-xs text-slate-500 font-medium">正在准备 TRC20 收款地址与精确金额…</p>
               </div>
             ) : intent ? (
               <>
@@ -300,9 +407,14 @@ export const RechargeModal: React.FC<Props> = ({ isOpen, onClose, account, tenan
                 </div>
               </>
             ) : (
-              <div className="py-6 text-center text-xs text-slate-500 bg-white rounded-xl border border-slate-200/90">
-                请先选择充值套餐
-              </div>
+              <button
+                type="button"
+                onClick={() => void handleCreateIntent()}
+                disabled={loadingPackages || (selectionMode === 'PACKAGE' ? !selected : !customAmountValid)}
+                className="w-full min-h-[44px] rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                确认金额并查看充值信息
+              </button>
             )}
           </div>
 

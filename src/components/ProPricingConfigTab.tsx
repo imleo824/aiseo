@@ -9,7 +9,7 @@ import {
   AlertCircle,
   QrCode
 } from 'lucide-react';
-import { ActionPricingItem, UsdtPackage, TenantAccount } from '../types/seo';
+import { ActionPricingItem, CustomPaymentPricing, UsdtPackage, TenantAccount } from '../types/seo';
 import { ApiService } from '../services/api';
 
 interface ProPricingConfigTabProps {
@@ -32,6 +32,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
   // Form states
   const [actionPricing, setActionPricing] = useState<ActionPricingItem[]>([]);
   const [packages, setPackages] = useState<UsdtPackage[]>([]);
+  const [customPricing, setCustomPricing] = useState<CustomPaymentPricing>({ active: true, minUsdt: '10', maxUsdt: '10000', creditsPerUsdt: '100' });
   const [activeTab, setActiveTab] = useState<'ACTION_PRICING' | 'PACKAGES' | 'GLOBAL'>('ACTION_PRICING');
 
   const isAdmin = account?.role === 'ADMIN';
@@ -58,6 +59,7 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
       if (res.packages) {
         setPackages(res.packages);
       }
+      if (res.customPricing) setCustomPricing(res.customPricing);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '加载定价配置失败');
     } finally {
@@ -79,7 +81,8 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
       const api = new ApiService(tenantId);
       const res = await api.updatePricingConfig({
         actionPricing,
-        packages
+        packages,
+        customPricing
       });
 
       setSuccessMsg(res.message || '定价与套餐配置已成功保存生效！');
@@ -378,6 +381,41 @@ export const ProPricingConfigTab: React.FC<ProPricingConfigTabProps> = ({
                   <div className="p-5 rounded-xl bg-white border border-slate-200/90 space-y-4 shadow-2xs">
                     <div className="rounded-xl border border-blue-200/90 bg-blue-50/70 p-4 text-xs leading-relaxed text-blue-950 font-medium">
                       TRC20 收款地址、USDT 合约与 TronGrid 密钥由部署平台 Secret 管理，不允许从浏览器读取或修改。客户创建充值订单后，系统会从服务端返回唯一六位小数应付金额和正式收款地址。
+                    </div>
+                    <div className="space-y-3">
+                      <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs font-bold text-slate-800">
+                        <span>允许客户自定义充值金额</span>
+                        <input
+                          type="checkbox"
+                          disabled={!isAdmin}
+                          checked={customPricing.active}
+                          onChange={(event) => setCustomPricing((current) => ({ ...current, active: event.target.checked }))}
+                          className="h-4 w-4 accent-slate-950"
+                        />
+                      </label>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        {([
+                          ['minUsdt', '最低金额', 'USDT'],
+                          ['maxUsdt', '最高金额', 'USDT'],
+                          ['creditsPerUsdt', '每 1 USDT 到账', '积分']
+                        ] as const).map(([field, label, unit]) => (
+                          <label key={field} className="rounded-xl border border-slate-200 bg-white p-3 text-[11px] font-semibold text-slate-600">
+                            <span>{label}</span>
+                            <div className="mt-1.5 flex items-center gap-1.5">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[1-9][0-9]*"
+                                disabled={!isAdmin}
+                                value={customPricing[field]}
+                                onChange={(event) => setCustomPricing((current) => ({ ...current, [field]: event.target.value }))}
+                                className="min-w-0 flex-1 bg-slate-50 px-2.5 py-2 font-mono text-xs font-bold text-slate-950 outline-none rounded-lg border border-slate-200 disabled:bg-white"
+                              />
+                              <span>{unit}</span>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>

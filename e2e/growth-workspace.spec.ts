@@ -4,6 +4,7 @@ const organizationId = '10000000-0000-4000-8000-000000000001';
 const siteId = '20000000-0000-4000-8000-000000000002';
 const programId = '30000000-0000-4000-8000-000000000003';
 const runId = '40000000-0000-4000-8000-000000000004';
+const paymentPackageId = 'starter';
 
 const stages = (active = false) => [
   { id: 'stage-1', runId, siteId, stage: 'UNDERSTAND', status: active ? 'COMPLETED' : 'PENDING', summary: active ? '已读取 128 个公开页面并完成技术审计。' : undefined, processedCount: active ? 128 : 0, totalCount: active ? 128 : 0, evidence: active ? [{ type: 'SITE_SNAPSHOT' }] : [] },
@@ -55,6 +56,8 @@ const installBusinessApi = async (page: Page) => {
   let started = false;
   let submittedBody: unknown;
   let idempotencyKey = '';
+  let paymentIntentRequests = 0;
+  let paymentIntentBody: unknown;
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -71,6 +74,30 @@ const installBusinessApi = async (page: Page) => {
     }]);
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/drafts`) return reply([]);
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/ledger`) return reply({ balanceMicros: '11090000000', heldMicros: '0', availableMicros: '11090000000', entries: [] });
+    if (method === 'GET' && path === '/api/v1/pricing') return reply({
+      packages: [{ id: paymentPackageId, name: '入门套餐', baseAmountMicros: '50000000', creditMicros: '50000000', active: true }],
+      actions: [],
+      customPricing: { active: true, minAmountMicros: '10000000', maxAmountMicros: '10000000000', creditsPerUsdtMicros: '100000000' }
+    });
+    if (method === 'POST' && path === `/api/v1/organizations/${organizationId}/payment-intents`) {
+      paymentIntentRequests += 1;
+      paymentIntentBody = request.postDataJSON();
+      const isCustom = 'customAmountMicros' in (paymentIntentBody as Record<string, unknown>);
+      return reply({
+        paymentIntent: {
+          id: '70000000-0000-4000-8000-000000000007',
+          packageId: isCustom ? null : paymentPackageId,
+          pricingSource: isCustom ? 'CUSTOM' : 'PACKAGE',
+          network: 'TRC20',
+          recipientAddress: 'TTestRecipientAddress1234567890',
+          baseAmountUsdt: isCustom ? '80' : '50',
+          expectedAmountUsdt: isCustom ? '80.000001' : '50.000001',
+          creditMicros: isCustom ? '8000000000' : '50000000',
+          status: 'AWAITING_TRANSFER',
+          expiresAt: '2026-09-21T12:30:00.000Z'
+        }
+      }, 201);
+    }
     if (method === 'GET' && path === '/api/v1/me/export') return reply({
       schemaVersion: 'personal-data-export-1',
       exportedAt: '2026-09-20T00:00:00.000Z',
@@ -99,7 +126,7 @@ const installBusinessApi = async (page: Page) => {
     }
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: { code: 'UNMOCKED', message: `${method} ${path}`, traceId: 'e2e' } }) });
   });
-  return { submitted: () => submittedBody, idempotencyKey: () => idempotencyKey };
+  return { submitted: () => submittedBody, idempotencyKey: () => idempotencyKey, paymentIntentRequests: () => paymentIntentRequests, paymentIntentBody: () => paymentIntentBody };
 };
 
 test.beforeEach(async ({ page }) => {
@@ -126,6 +153,27 @@ test('公开法律文件可读且不暴露加密乱码', async ({ page }) => {
   await expect(page.getByText(/不承诺特定关键词排名/)).toBeVisible();
   await page.getByRole('link', { name: '返回登录' }).click();
   await expect(page.getByRole('heading', { name: '登录工作区' })).toBeVisible();
+});
+
+test('充值页先选择套餐或自定义金额，提交后展示完整转账信息', async ({ page }) => {
+  const fixture = await installBusinessApi(page);
+  await openAuthenticatedWorkspace(page);
+  await page.getByRole('button', { name: '充值', exact: true }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'USDT 充值' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('入门套餐', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /自定义金额/ })).toBeVisible();
+  await expect.poll(() => fixture.paymentIntentRequests()).toBe(0);
+
+  await dialog.getByRole('button', { name: /自定义金额/ }).click();
+  await dialog.getByLabel('自定义充值金额（整数 USDT）').fill('80');
+  await dialog.getByRole('button', { name: '确认金额并查看充值信息' }).click();
+  await expect(dialog.getByText('80.000001', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('TTestRecipientAddress1234567890', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /确认创建.*充值订单/ })).toHaveCount(0);
+  await expect.poll(() => fixture.paymentIntentRequests()).toBe(1);
+  expect(fixture.paymentIntentBody()).toEqual({ customAmountMicros: '80000000' });
 });
 
 for (const scenario of [

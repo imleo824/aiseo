@@ -3,6 +3,14 @@ import { describe, expect, it, vi } from 'vitest';
 import type { TransactionClient } from './prisma';
 import { billingService } from './billingService';
 
+vi.mock('./env', () => ({
+  env: {
+    trc20RecipientAddress: 'TRecipient',
+    trc20UsdtContract: 'TUsdtContract',
+    paymentIntentMinutes: 30
+  }
+}));
+
 const transaction = (balance: bigint, held: bigint) => {
   const queryRaw = vi.fn().mockResolvedValue([{ pg_advisory_xact_lock: null }]);
   const create = vi.fn().mockResolvedValue({ id: 'hold' });
@@ -89,6 +97,39 @@ const payment = (overrides: Record<string, unknown> = {}) => ({
   status: PaymentStatus.AWAITING_TRANSFER,
   expiresAt: new Date(Date.now() + 60_000),
   ...overrides
+});
+
+describe('payment intent pricing', () => {
+  it('creates a custom intent from the database rate without pretending it is a package', async () => {
+    const createdAt = new Date('2026-09-21T00:00:00.000Z');
+    const create = vi.fn().mockImplementation(({ data }) => Promise.resolve({
+      id: '10000000-0000-4000-8000-000000000010',
+      status: PaymentStatus.AWAITING_TRANSFER,
+      expiresAt: data.expiresAt,
+      ...data
+    }));
+    const tx = {
+      systemSetting: { findUnique: vi.fn().mockResolvedValue({ value: { active: true, minAmountMicros: '10000000', maxAmountMicros: '10000000000', creditsPerUsdtMicros: '100000000' }, updatedAt: createdAt }) },
+      paymentIntent: { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]), create },
+      auditEvent: { create: vi.fn().mockResolvedValue({ id: 'audit' }) },
+      $executeRaw: vi.fn().mockResolvedValue(1)
+    } as unknown as TransactionClient;
+
+    const result = await billingService.createPaymentIntent(tx, '10000000-0000-4000-8000-000000000001', { customAmountMicros: '80000000' });
+
+    expect(result).toMatchObject({ packageId: null, pricingSource: 'CUSTOM', baseAmountUsdt: '80', expectedAmountUsdt: '80.000001', creditMicros: '8000000000' });
+    expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ packageId: null, pricingSource: 'CUSTOM', baseAmountMicros: 80_000_000n, creditMicros: 8_000_000_000n }) });
+  });
+
+  it('rejects custom amounts outside the configured whole-USDT range', async () => {
+    const tx = {
+      systemSetting: { findUnique: vi.fn().mockResolvedValue({ value: { active: true, minAmountMicros: '10000000', maxAmountMicros: '100000000', creditsPerUsdtMicros: '100000000' }, updatedAt: new Date() }) }
+    } as unknown as TransactionClient;
+    await expect(billingService.createPaymentIntent(tx, '10000000-0000-4000-8000-000000000001', { customAmountMicros: '9000001' }))
+      .rejects.toThrow('整数 USDT');
+    await expect(billingService.createPaymentIntent(tx, '10000000-0000-4000-8000-000000000001', { customAmountMicros: '200000000' }))
+      .rejects.toThrow('必须在 10–100 USDT 之间');
+  });
 });
 
 describe('payment transaction submission', () => {
