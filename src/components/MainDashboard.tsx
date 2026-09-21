@@ -392,6 +392,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               <button
                 type="button"
                 role="tab"
+                aria-label="关键词"
                 aria-selected={mode === 'KEYWORD'}
                 aria-controls="growth-input-keyword"
                 onClick={() => setMode('KEYWORD')}
@@ -409,6 +410,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               <button
                 type="button"
                 role="tab"
+                aria-label="参考文章"
                 aria-selected={mode === 'REWRITE'}
                 aria-controls="growth-input-reference"
                 onClick={() => setMode('REWRITE')}
@@ -426,6 +428,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               <button
                 type="button"
                 role="tab"
+                aria-label="竞品网站"
                 aria-selected={mode === 'COMPETITOR'}
                 aria-controls="growth-input-competitor"
                 onClick={() => setMode('COMPETITOR')}

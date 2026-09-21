@@ -49,7 +49,7 @@ const openAuthenticatedWorkspace = async (page: Page) => {
   await page.getByLabel('工作邮箱').fill('owner@example.test');
   await page.getByLabel('密码', { exact: true }).fill('short123');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByText('手动执行', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: '开始执行', exact: true })).toBeVisible();
 };
 
 const installBusinessApi = async (page: Page) => {
@@ -218,14 +218,17 @@ for (const scenario of [
     const fixture = await installBusinessApi(page);
     await openAuthenticatedWorkspace(page);
     await expect(page.locator('select').filter({ hasText: 'TechPulse Media' })).toHaveValue(siteId);
-    if (scenario.tab) await page.getByRole('button', { name: scenario.tab }).click();
+    if (scenario.tab) await page.getByRole('tab', { name: scenario.tab, exact: true }).click();
     await page.getByPlaceholder(scenario.placeholder).fill(scenario.value);
     await page.getByRole('button', { name: '开始执行', exact: true }).click();
     await expect.poll(() => fixture.submitted()).toEqual({ mode: 'ONCE', inputs: [{ type: scenario.type, value: scenario.value }] });
     expect(fixture.idempotencyKey()).toMatch(/^[0-9a-f-]{36}$/i);
+    const discoverStage = page.getByRole('button', { name: /发现机会/ });
+    await expect(discoverStage).toContainText('执行中');
+    await discoverStage.click();
     await expect(page.getByText('正在用真实搜索数据评分候选机会。')).toBeVisible();
-    await expect(page.getByRole('button', { name: /发现机会/ })).toContainText('执行中');
     await page.reload();
+    await page.getByRole('button', { name: /发现机会/ }).click();
     await expect(page.getByText('正在用真实搜索数据评分候选机会。')).toBeVisible();
     await page.getByRole('button', { name: /了解网站/ }).click();
     await expect(page.getByText('了解网站详情')).toBeVisible();
@@ -237,9 +240,9 @@ test('关键词、参考文章与竞品可以组合成同一个增长程序', as
   const fixture = await installBusinessApi(page);
   await openAuthenticatedWorkspace(page);
   await page.getByPlaceholder(/企业级高可用架构/).fill('企业 CRM SEO\nCRM 获客');
-  await page.getByRole('button', { name: '参考文章' }).click();
+  await page.getByRole('tab', { name: '参考文章', exact: true }).click();
   await page.getByPlaceholder(/example.com\/article-a/).fill('https://reference.example.com/research');
-  await page.getByRole('button', { name: '竞品网站' }).click();
+  await page.getByRole('tab', { name: '竞品网站', exact: true }).click();
   await page.getByPlaceholder(/competitor-a.com/).fill('https://competitor-a.example.com\nhttps://competitor-b.example.com');
   await page.getByRole('button', { name: '开始执行', exact: true }).click();
   await expect.poll(() => fixture.submitted()).toEqual({
