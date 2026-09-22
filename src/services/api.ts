@@ -162,16 +162,14 @@ export class ApiService {
   }
 
   private async resolveWorkspace(): Promise<{ me: Me; organizationId: string }> {
-    if (!this.me || !this.organizationId) {
+    if (!this.me) {
       this.me = (await productionApi.get<Me>('/me')).data;
+    }
+    if (!this.organizationId) {
       this.organizationId = this.me.organizations[0]?.id || '';
     }
     if (!this.organizationId) throw new Error('个人工作区尚未完成初始化');
     return { me: this.me, organizationId: this.organizationId };
-  }
-
-  public setTenantId(tenantId: string) {
-    this.organizationId = tenantId;
   }
 
   // Auth & Tenant
@@ -493,7 +491,6 @@ export class ApiService {
   }
 
   public async updateTask(taskId: string, data: Partial<AutomatedTask>) {
-    const { organizationId } = await this.resolveWorkspace();
     const updated = await this.changeGrowthProgram(taskId, data.status === 'ACTIVE' ? 'ACTIVE' : 'PAUSED');
     const sites = await this.getSites();
     return { task: toWorkspaceTask(updated as ProductionTask, sites.sites) };

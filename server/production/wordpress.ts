@@ -734,7 +734,6 @@ export const wordPressService = {
       }
     }));
     const postsRoute = root.routes?.['/wp/v2/posts'];
-    const pagesRoute = root.routes?.['/wp/v2/pages'];
     const postsItemRoute = itemRoute(root.routes, 'posts');
     const pagesItemRoute = itemRoute(root.routes, 'pages');
     const [posts, pages] = await Promise.all([

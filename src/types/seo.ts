@@ -13,7 +13,7 @@ export type NavItem =
   | 'SYSTEM_PAYMENT_MANAGEMENT'
   | 'SYSTEM_BILLING_MANAGEMENT';
 
-export type UsdtNetwork = 'TRC20';
+type UsdtNetwork = 'TRC20';
 
 export interface ActionPricingItem {
   action: CreditActionType | string;
@@ -39,7 +39,7 @@ export interface CustomPaymentPricing {
 
 export type CreditTransactionType = 'RECHARGE' | 'CONSUME' | 'ADJUSTMENT';
 
-export type CreditActionType =
+type CreditActionType =
   | 'USDT_TOPUP'
   | 'GROWTH_RUN'
   | 'ADMIN_ADJUSTMENT';
@@ -70,7 +70,7 @@ export interface CreditTransaction {
   };
 }
 
-export type AccountRole = 'ADMIN' | 'TENANT';
+type AccountRole = 'ADMIN' | 'TENANT';
 
 export interface TenantAccount {
   id: string;
@@ -84,7 +84,7 @@ export interface TenantAccount {
   createdAt: string;
 }
 
-export interface QualityGateResult {
+interface QualityGateResult {
   passed: boolean;
   overallScore: number;
   issues: string[];

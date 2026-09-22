@@ -162,7 +162,8 @@ test('公开法律文件可读且不暴露加密乱码', async ({ page }) => {
 test('充值页先选择套餐或自定义金额，提交后展示完整转账信息', async ({ page }) => {
   const fixture = await installBusinessApi(page);
   await openAuthenticatedWorkspace(page);
-  await page.getByRole('button', { name: '充值', exact: true }).click();
+  await page.getByRole('button', { name: '我的账单', exact: true }).first().click();
+  await page.getByRole('button', { name: '立即充值', exact: true }).click();
 
   const dialog = page.getByRole('dialog', { name: 'USDT 充值' });
   await expect(dialog).toBeVisible();
@@ -201,7 +202,8 @@ test('导航、浏览器返回与未提交的增长线索都能恢复', async ({
 test('充值弹窗支持键盘关闭并把焦点交还触发按钮', async ({ page }) => {
   await installBusinessApi(page);
   await openAuthenticatedWorkspace(page);
-  const rechargeButton = page.getByRole('button', { name: '充值', exact: true });
+  await page.getByRole('button', { name: '我的账单', exact: true }).first().click();
+  const rechargeButton = page.getByRole('button', { name: '立即充值', exact: true });
   await rechargeButton.click();
   await expect(page.getByRole('button', { name: '关闭充值面板' })).toBeFocused();
   await page.keyboard.press('Escape');

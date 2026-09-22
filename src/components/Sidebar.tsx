@@ -1,5 +1,5 @@
 import React from 'react';
-import { WordPressSite, AutomatedTask, NavItem, TenantAccount } from '../types/seo';
+import { WordPressSite, NavItem, TenantAccount } from '../types/seo';
 import {
   Zap,
   Layers,
@@ -9,25 +9,36 @@ import {
   User,
   LogOut,
   Settings,
-  LogIn,
   Cpu,
-  ShieldCheck,
   Bot,
   Database
 } from 'lucide-react';
 import { useDialogInteraction } from '../hooks/useDialogInteraction';
+import { ADMIN_NAV_ITEMS, CUSTOMER_NAV_GROUPS, NAVIGATION } from '../navigation';
 
 interface SidebarProps {
   sites: WordPressSite[];
-  tasks?: AutomatedTask[];
   activeNav: NavItem;
   onSelectNav: (nav: NavItem) => void;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
-  account?: TenantAccount | null;
-  onOpenAuth?: () => void;
-  onLogout?: () => void;
+  account: TenantAccount;
+  onLogout: () => void;
 }
+
+const NAV_ICONS: Record<NavItem, React.ReactNode> = {
+  DASHBOARD: <Zap className="w-4 h-4" />,
+  AUTOPILOT_TASKS: <Bot className="w-4 h-4" />,
+  SITE_MANAGEMENT: <Layers className="w-4 h-4" />,
+  AUDIT_LEDGER: <Activity className="w-4 h-4" />,
+  CREDIT_LEDGER: <Wallet className="w-4 h-4" />,
+  ACCOUNT_DATA: <Database className="w-4 h-4" />,
+  PRICING_CONFIG: <Settings className="w-4 h-4" />,
+  TENANT_MANAGEMENT: <User className="w-4 h-4" />,
+  SYSTEM_PAYMENT_MANAGEMENT: <Wallet className="w-4 h-4" />,
+  SYSTEM_BILLING_MANAGEMENT: <Activity className="w-4 h-4" />,
+  SYSTEM_SERVICES_CONFIG: <Cpu className="w-4 h-4" />
+};
 
 export const Sidebar: React.FC<SidebarProps> = ({
   sites,
@@ -36,94 +47,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpenMobile = false,
   onCloseMobile,
   account,
-  onOpenAuth,
   onLogout
 }) => {
-  const safeSites = sites || [];
   const { dialogRef: mobileDialogRef, onBackdropMouseDown } = useDialogInteraction({
     open: isOpenMobile,
     onClose: onCloseMobile || (() => undefined)
   });
-
-  const navGroups: {
-    title: string;
-    items: { id: NavItem; label: string; icon: React.ReactNode; badge?: string }[];
-  }[] = [
-    {
-      title: '搜索增长',
-      items: [
-        {
-          id: 'DASHBOARD',
-          label: '手动执行',
-          icon: <Zap className="w-4 h-4" />
-        },
-        {
-          id: 'AUTOPILOT_TASKS',
-          label: '自动执行',
-          icon: <Bot className="w-4 h-4" />
-        }
-      ]
-    },
-    {
-      title: '资产与内容',
-      items: [
-        {
-          id: 'SITE_MANAGEMENT',
-          label: '我的站点',
-          icon: <Layers className="w-4 h-4" />,
-          badge: safeSites.length > 0 ? `${safeSites.length}` : undefined
-        },
-        {
-          id: 'AUDIT_LEDGER',
-          label: '我的内容',
-          icon: <Activity className="w-4 h-4" />
-        },
-      ]
-    },
-    {
-      title: '账户与账单',
-      items: [
-        {
-          id: 'CREDIT_LEDGER',
-          label: '我的账单',
-          icon: <Wallet className="w-4 h-4" />
-        },
-        {
-          id: 'ACCOUNT_DATA',
-          label: '账号与数据',
-          icon: <Database className="w-4 h-4" />
-        },
-      ]
-    }
-  ];
-
-  const adminNavItems: { id: NavItem; label: string; icon: React.ReactNode; badge?: string }[] = [
-    {
-      id: 'PRICING_CONFIG',
-      label: '付费配置',
-      icon: <Settings className="w-4 h-4" />
-    },
-    {
-      id: 'TENANT_MANAGEMENT',
-      label: '客户管理',
-      icon: <User className="w-4 h-4" />
-    },
-    {
-      id: 'SYSTEM_PAYMENT_MANAGEMENT',
-      label: '充值监控',
-      icon: <Wallet className="w-4 h-4" />
-    },
-    {
-      id: 'SYSTEM_BILLING_MANAGEMENT',
-      label: '用量审计',
-      icon: <Activity className="w-4 h-4" />
-    },
-    {
-      id: 'SYSTEM_SERVICES_CONFIG',
-      label: '全局设置',
-      icon: <Cpu className="w-4 h-4" />
-    },
-  ];
 
   const handleNavClick = (nav: NavItem) => {
     onSelectNav(nav);
@@ -168,17 +97,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Navigation List */}
         <nav className="px-3 py-3.5 space-y-4">
-          {navGroups.map((group, groupIdx) => (
-            <div key={groupIdx} className="space-y-1">
+          {CUSTOMER_NAV_GROUPS.map((group) => (
+            <div key={group.title} className="space-y-1">
               <div className="px-3 pb-1 text-[10px] font-bold text-slate-400 tracking-wider uppercase">
                 {group.title}
               </div>
-              {group.items.map(item => {
-                const isActive = activeNav === item.id;
+              {group.items.map((id) => {
+                const isActive = activeNav === id;
+                const badge = id === 'SITE_MANAGEMENT' && sites.length > 0 ? `${sites.length}` : undefined;
                 return (
                   <button
-                    key={item.id}
-                    onClick={() => handleNavClick(item.id)}
+                    key={id}
+                    onClick={() => handleNavClick(id)}
                     aria-current={isActive ? 'page' : undefined}
                     className={`w-full flex items-center justify-between px-3 py-2 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all duration-150 cursor-pointer min-h-[44px] sm:min-h-[38px] ${
                       isActive
@@ -187,16 +117,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     }`}
                   >
                     <div className="flex items-center space-x-2.5">
-                      <span className={`shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`}>{item.icon}</span>
-                      <span>{item.label}</span>
+                      <span className={`shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`}>{NAV_ICONS[id]}</span>
+                      <span>{NAVIGATION[id].label}</span>
                     </div>
-                    {item.badge && (
+                    {badge && (
                       <span className={`px-1.5 py-0.5 text-[10px] rounded-md font-mono font-bold ${
                         isActive
                           ? 'bg-slate-800 text-slate-200'
                           : 'bg-slate-100 text-slate-700 border border-slate-200/80'
                       }`}>
-                        {item.badge}
+                        {badge}
                       </span>
                     )}
                   </button>
@@ -205,17 +135,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           ))}
 
-          {account?.role === 'ADMIN' && (
+          {account.role === 'ADMIN' && (
             <div className="pt-2.5 border-t border-slate-100 space-y-1">
               <div className="px-3 pb-1 text-[10px] font-bold text-slate-400 tracking-wider uppercase">
                 管理与配置
               </div>
-              {adminNavItems.map(item => {
-                const isActive = activeNav === item.id;
+              {ADMIN_NAV_ITEMS.map((id) => {
+                const isActive = activeNav === id;
                 return (
                   <button
-                    key={item.id}
-                    onClick={() => handleNavClick(item.id)}
+                    key={id}
+                    onClick={() => handleNavClick(id)}
                     aria-current={isActive ? 'page' : undefined}
                     className={`w-full flex items-center justify-between px-3 py-2 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all duration-150 cursor-pointer min-h-[44px] sm:min-h-[38px] ${
                       isActive
@@ -224,14 +154,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     }`}
                   >
                     <div className="flex items-center space-x-2.5">
-                      <span className="shrink-0">{item.icon}</span>
-                      <span>{item.label}</span>
+                      <span className="shrink-0">{NAV_ICONS[id]}</span>
+                      <span>{NAVIGATION[id].label}</span>
                     </div>
-                    {item.badge && (
-                      <span className="px-1.5 py-0.5 text-[10px] rounded-md font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                        {item.badge}
-                      </span>
-                    )}
                   </button>
                 );
               })}
@@ -246,7 +171,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
             <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-medium text-xs shrink-0 ${
-              account?.role === 'ADMIN'
+              account.role === 'ADMIN'
                 ? 'bg-amber-100 text-amber-700 border border-amber-200/50'
                 : 'bg-slate-200 text-slate-700 border border-slate-300/50'
             }`}>
@@ -254,8 +179,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div className="min-w-0">
               <div className="text-xs font-semibold text-slate-900 truncate flex items-center gap-1.5">
-                <span className="truncate">{account?.username || '未登录'}</span>
-                {account?.role === 'ADMIN' ? (
+                <span className="truncate">{account.username}</span>
+                {account.role === 'ADMIN' ? (
                   <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 text-[9px] font-semibold rounded shrink-0 border border-amber-200/50">
                     管理员
                   </span>
@@ -266,31 +191,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
               </div>
               <div className="text-[10px] text-slate-400 truncate mt-0.5">
-                {account?.companyName || (account?.role === 'ADMIN' ? '管理控制台' : account?.id || '个人工作区')}
+                {account.companyName || (account.role === 'ADMIN' ? '管理控制台' : account.id)}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-1">
-            {account ? (
-              <button
-                type="button"
-                onClick={onLogout}
-                aria-label="退出登录"
-                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors shrink-0 min-h-[36px] min-w-[36px] flex items-center justify-center"
-                title="退出登录"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onOpenAuth}
-                className="px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-100 font-medium rounded-lg transition-colors border border-slate-200 flex items-center gap-1 min-h-[36px]"
-              >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>登录</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={onLogout}
+              aria-label="退出登录"
+              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors shrink-0 min-h-[36px] min-w-[36px] flex items-center justify-center"
+              title="退出登录"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>

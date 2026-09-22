@@ -6,7 +6,7 @@ const POSITIVE_MICROS_PATTERN = /^[1-9]\d{0,18}$/;
 const SIGNED_MICROS_PATTERN = /^-?[1-9]\d{0,18}$/;
 
 export const CUSTOM_PAYMENT_PRICING_SETTING_KEY = 'payment.custom_pricing';
-export const DEFAULT_CUSTOM_PAYMENT_PRICING = {
+const DEFAULT_CUSTOM_PAYMENT_PRICING = {
   active: true,
   minAmountMicros: '10000000',
   maxAmountMicros: '10000000000',
@@ -32,7 +32,7 @@ export const signedAccountingMicrosSchema = z.string()
     return absolute <= POSTGRES_BIGINT_MAX;
   }, '微单位调整金额超过数据库安全范围');
 
-export const paymentPackagePricingSchema = z.object({
+const paymentPackagePricingSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/, '套餐 ID 格式无效'),
   name: z.string().trim().min(1).max(100),
   baseAmountMicros: packageBaseMicrosSchema,
@@ -41,7 +41,7 @@ export const paymentPackagePricingSchema = z.object({
   sortOrder: z.number().int().min(0).max(10_000)
 });
 
-export const actionPricingSchema = z.object({
+const actionPricingSchema = z.object({
   action: z.string().regex(/^[A-Z][A-Z0-9_]{1,79}$/),
   name: z.string().trim().min(1).max(100),
   description: z.string().trim().min(1).max(500),

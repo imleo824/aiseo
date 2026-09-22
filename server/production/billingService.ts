@@ -9,7 +9,7 @@ const USDT_MICROS = 1_000_000n;
 const TX_HASH_PATTERN = /^[a-fA-F0-9]{64}$/;
 const CANONICAL_MICROS_PATTERN = /^[1-9]\d{0,18}$/;
 
-export type PaymentIntentPricingInput =
+type PaymentIntentPricingInput =
   | { packageId: string; customAmountMicros?: never }
   | { packageId?: never; customAmountMicros: string };
 
@@ -24,7 +24,7 @@ export const lockOrganizationBalance = async (tx: TransactionClient, organizatio
   return organization;
 };
 
-export const formatMicros = (amount: bigint, scale = USDT_MICROS): string => {
+const formatMicros = (amount: bigint, scale = USDT_MICROS): string => {
   const whole = amount / scale;
   const fraction = (amount % scale).toString().padStart(6, '0').replace(/0+$/, '');
   return fraction ? `${whole}.${fraction}` : whole.toString();
@@ -32,7 +32,7 @@ export const formatMicros = (amount: bigint, scale = USDT_MICROS): string => {
 
 // The transfer amount is an identifier as well as an amount. Never trim its
 // six fractional digits in customer-facing payment instructions.
-export const formatMicrosFixed = (amount: bigint, scale = USDT_MICROS): string => {
+const formatMicrosFixed = (amount: bigint, scale = USDT_MICROS): string => {
   const whole = amount / scale;
   const fraction = (amount % scale).toString().padStart(6, '0');
   return `${whole}.${fraction}`;

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   CreditTransaction,
   TenantAccount,
@@ -17,20 +17,24 @@ import {
   Globe,
   HelpCircle
 } from 'lucide-react';
-import { ApiService } from '../services/api';
 import { absoluteDecimal, compareDecimals, formatDecimal, sumDecimals } from '../lib/fixedDecimal';
+import type { ApiService } from '../services/api';
 
 interface ProCreditLedgerTabProps {
-  account: TenantAccount | null;
+  account: TenantAccount;
   transactions: CreditTransaction[];
-  tenantId: string;
-  onOpenRecharge?: () => void;
+  pricing?: Awaited<ReturnType<ApiService['getCreditConfig']>>;
+  pricingLoading: boolean;
+  pricingError: boolean;
+  onOpenRecharge: () => void;
 }
 
 export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
   account,
   transactions = [],
-  tenantId,
+  pricing,
+  pricingLoading,
+  pricingError,
   onOpenRecharge,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,30 +42,8 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
   const [timeFilter, setTimeFilter] = useState<'ALL' | 'TODAY' | 'WEEK' | 'MONTH'>('ALL');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showRatesGuide, setShowRatesGuide] = useState(false);
-  const [pricingError, setPricingError] = useState(false);
-
-  // 动态计费标准与业务价格
-  const [systemRate, setSystemRate] = useState<string>('链上精确金额');
-  const [actionPricing, setActionPricing] = useState<ActionPricingItem[]>([]);
-
-  useEffect(() => {
-    const api = new ApiService(tenantId);
-    setPricingError(false);
-    api.getCreditConfig()
-      .then(res => {
-        if (res.rate) setSystemRate(res.rate);
-        if (res.actionPricing && res.actionPricing.length > 0) {
-          setActionPricing(res.actionPricing.map(item => ({
-            action: item.action,
-            name: item.name || item.action,
-            credits: item.credits,
-            desc: item.desc,
-            enabled: item.enabled !== false
-          })));
-        }
-      })
-      .catch(() => setPricingError(true));
-  }, [tenantId]);
+  const systemRate = pricing?.rate || '链上精确金额';
+  const actionPricing: ActionPricingItem[] = pricing?.actionPricing || [];
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -187,7 +169,12 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
                 计价配置暂不可用，请稍后重试。账本余额与既有流水不受影响。
               </div>
             )}
-            {!pricingError && actionPricing.length === 0 && (
+            {pricingLoading && (
+              <div role="status" className="sm:col-span-2 lg:col-span-5 rounded-xl border border-slate-800 bg-slate-900/90 p-4 text-xs text-slate-300">
+                正在读取计费标准…
+              </div>
+            )}
+            {!pricingLoading && !pricingError && actionPricing.length === 0 && (
               <div className="sm:col-span-2 lg:col-span-5 rounded-xl border border-slate-800 bg-slate-900/90 p-4 text-xs text-slate-300">
                 当前没有启用的业务计价项。
               </div>
@@ -224,23 +211,21 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
             <div className="flex items-center justify-between text-slate-500 mb-2">
               <span className="text-xs font-bold text-slate-600">当前可用积分</span>
               <div className="flex items-center gap-2">
-                {onOpenRecharge && (
-                  <button
-                    type="button"
-                    onClick={onOpenRecharge}
-                    className="px-2.5 py-1 bg-slate-950 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-2xs active:scale-95 min-h-[30px]"
-                  >
-                    <Coins className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>立即充值</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={onOpenRecharge}
+                  className="px-2.5 py-1 bg-slate-950 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-2xs active:scale-95 min-h-[30px]"
+                >
+                  <Coins className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>立即充值</span>
+                </button>
                 <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-2xs">
                   <Coins className="w-4 h-4" />
                 </div>
               </div>
             </div>
             <div className="text-3xl font-black text-slate-950 tracking-tight">
-              {formatDecimal(account?.credits ?? '0')}
+              {formatDecimal(account.credits)}
             </div>
           </div>
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
@@ -269,7 +254,7 @@ export const ProCreditLedgerTab: React.FC<ProCreditLedgerTabProps> = ({
               </div>
             </div>
             <div className="text-3xl font-black text-slate-950 tracking-tight">
-              {formatDecimal(account?.totalConsumedCredits ?? stats.totalConsumeAmount)} <span className="text-sm font-semibold text-slate-500">积分</span>
+              {formatDecimal(account.totalConsumedCredits ?? stats.totalConsumeAmount)} <span className="text-sm font-semibold text-slate-500">积分</span>
             </div>
           </div>
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">

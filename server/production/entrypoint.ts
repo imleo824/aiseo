@@ -1,6 +1,6 @@
 import { logger } from '../utils/logger';
 
-export type ProductionServiceKind = 'web' | 'worker';
+type ProductionServiceKind = 'web' | 'worker';
 
 export const resolveProductionServiceKind = (value: string | undefined): ProductionServiceKind => {
   const normalized = value?.trim().toLocaleLowerCase();

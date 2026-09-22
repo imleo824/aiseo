@@ -1,4 +1,4 @@
-export type WorkspaceGrowthDraft = {
+type WorkspaceGrowthDraft = {
   version: 1;
   selectedSiteId: string;
   mode: 'KEYWORD' | 'REWRITE' | 'COMPETITOR';

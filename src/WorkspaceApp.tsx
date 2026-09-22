@@ -7,13 +7,12 @@ import { OnboardingModal } from './components/OnboardingModal';
 import { RechargeModal } from './components/RechargeModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import {
-  Globe,
   ChevronRight,
-  Menu,
-  Coins
+  Menu
 } from 'lucide-react';
 import { useTenantData } from './hooks/useTenantData';
 import { ApiService } from './services/api';
+import { isAdminNavItem, NAVIGATION, navFromSearch, requiresWorkspaceResource } from './navigation';
 
 const ProAuditLedgerTab = lazy(() => import('./components/ProAuditLedgerTab').then(({ ProAuditLedgerTab }) => ({ default: ProAuditLedgerTab })));
 const ProAutopilotTasksTab = lazy(() => import('./components/ProAutopilotTasksTab').then(({ ProAutopilotTasksTab }) => ({ default: ProAutopilotTasksTab })));
@@ -26,20 +25,9 @@ const ProSystemBillingTab = lazy(() => import('./components/ProSystemBillingTab'
 const ProSystemServicesTab = lazy(() => import('./components/ProSystemServicesTab').then(({ ProSystemServicesTab }) => ({ default: ProSystemServicesTab })));
 const AccountDataTab = lazy(() => import('./components/AccountDataTab').then(({ AccountDataTab }) => ({ default: AccountDataTab })));
 
-const NAV_ITEMS = new Set<NavItem>([
-  'DASHBOARD', 'AUTOPILOT_TASKS', 'SITE_MANAGEMENT', 'AUDIT_LEDGER', 'CREDIT_LEDGER',
-  'ACCOUNT_DATA', 'PRICING_CONFIG', 'SYSTEM_SERVICES_CONFIG', 'TENANT_MANAGEMENT',
-  'SYSTEM_PAYMENT_MANAGEMENT', 'SYSTEM_BILLING_MANAGEMENT'
-]);
-const ADMIN_NAV_ITEMS = new Set<NavItem>([
-  'PRICING_CONFIG', 'SYSTEM_SERVICES_CONFIG', 'TENANT_MANAGEMENT',
-  'SYSTEM_PAYMENT_MANAGEMENT', 'SYSTEM_BILLING_MANAGEMENT'
-]);
-
 const navFromLocation = (): NavItem => {
   if (typeof window === 'undefined') return 'DASHBOARD';
-  const requested = new URLSearchParams(window.location.search).get('view') as NavItem | null;
-  return requested && NAV_ITEMS.has(requested) ? requested : 'DASHBOARD';
+  return navFromSearch(window.location.search);
 };
 
 const getDefaultLanguage = (): Language => {
@@ -54,7 +42,7 @@ const getDefaultLanguage = (): Language => {
 export default function WorkspaceApp() {
   const [activeTenantId, setActiveTenantId] = useState<string>('');
   const [activeNav, setActiveNav] = useState<NavItem>(navFromLocation);
-  const [globalLanguage, setGlobalLanguage] = useState<Language>(getDefaultLanguage());
+  const [defaultLanguage] = useState<Language>(getDefaultLanguage);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -73,14 +61,14 @@ export default function WorkspaceApp() {
     refreshing,
     loadError,
     actions
-  } = useTenantData(activeTenantId, globalLanguage, (newTid) => {
+  } = useTenantData(activeTenantId, activeNav, (newTid) => {
     setActiveTenantId(newTid);
   });
 
   const rechargePricing = useQuery({
     queryKey: ['recharge-pricing', activeTenantId],
     queryFn: () => new ApiService(activeTenantId).getCreditConfig(),
-    enabled: Boolean(account && activeTenantId),
+    enabled: Boolean((isRechargeOpen || requiresWorkspaceResource(activeNav, 'pricing')) && account && activeTenantId),
     staleTime: 5 * 60_000,
     retry: 1
   });
@@ -106,75 +94,9 @@ export default function WorkspaceApp() {
   }, []);
 
   useEffect(() => {
-    if (account && account.role !== 'ADMIN' && ADMIN_NAV_ITEMS.has(activeNav)) navigateTo('DASHBOARD', true);
+    if (account && account.role !== 'ADMIN' && isAdminNavItem(activeNav)) navigateTo('DASHBOARD', true);
   }, [account?.role, activeNav, navigateTo]);
-
-  const getPageInfo = () => {
-    switch (activeNav) {
-      case 'DASHBOARD':
-        return {
-          title: '手动执行',
-          desc: '提供一个线索，系统自动分析并执行'
-        };
-      case 'SITE_MANAGEMENT':
-        return {
-          title: '我的站点',
-          desc: '连接和管理您的 WordPress 网站'
-        };
-      case 'AUTOPILOT_TASKS':
-        return {
-          title: '自动执行',
-          desc: '系统定期寻找机会并自动执行'
-        };
-      case 'AUDIT_LEDGER':
-        return {
-          title: '我的内容',
-          desc: '查看内容、发布状态和待确认项目'
-        };
-      case 'CREDIT_LEDGER':
-        return {
-          title: '账单明细',
-          desc: '查看充值和使用记录'
-        };
-      case 'ACCOUNT_DATA':
-        return {
-          title: '账号与数据',
-          desc: '导出个人数据或提交账号删除请求'
-        };
-      case 'PRICING_CONFIG':
-        return {
-          title: '付费价格配置',
-          desc: '管理系统各项 AI 操作和发布动作的积分扣费单价与套餐包'
-        };
-      case 'SYSTEM_SERVICES_CONFIG':
-        return {
-          title: '全局系统设置',
-          desc: '配置发布确认模式与审查策略，并查看大模型和第三方服务的真实状态'
-        };
-      case 'TENANT_MANAGEMENT':
-        return {
-          title: '客户工作区管理',
-          desc: '查看客户工作区、账户状态和管理员积分调整记录'
-        };
-      case 'SYSTEM_PAYMENT_MANAGEMENT':
-        return {
-          title: '充值订单监控',
-          desc: '查看 TRC20 链上核验、确认与入账状态；结算仅由验证 Worker 执行'
-        };
-      case 'SYSTEM_BILLING_MANAGEMENT':
-        return {
-          title: '用量与扣费审计',
-          desc: '审计所有客户工作区在分析、生成和发布环节产生的真实账单流水'
-        };
-      default:
-        return {
-          title: 'TuiTui 推推 (TT)',
-          desc: '简单、高效的自动 SEO 流量增长系统（首期已支持 WordPress）'
-        };
-    }
-  };
-
-  const pageInfo = getPageInfo();
+  const pageInfo = NAVIGATION[activeNav];
 
   if (loading && !account) {
     return (
@@ -229,7 +151,6 @@ export default function WorkspaceApp() {
       {/* SIDEBAR (Desktop sticky + Mobile slide-over) */}
       <Sidebar
         sites={sites}
-        tasks={tasks}
         activeNav={activeNav}
         onSelectNav={navigateTo}
         isOpenMobile={isMobileMenuOpen}
@@ -265,38 +186,6 @@ export default function WorkspaceApp() {
             </div>
           </div>
 
-          <div className="flex items-center space-x-1.5 sm:space-x-2.5 shrink-0">
-            {/* Quick Credit Balance Pill */}
-            {account && (
-              <div className="flex items-center gap-1 sm:gap-2 bg-slate-100/90 text-slate-800 border border-slate-200/90 px-2 sm:px-3 py-1 rounded-xl text-xs sm:text-sm font-medium shadow-2xs transition-all min-h-[38px]">
-                <Coins className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                <span className="font-mono font-bold text-slate-950 text-xs sm:text-sm">{account.credits ?? 0}</span>
-                <span className="text-[10px] text-slate-500 font-medium hidden sm:inline">积分</span>
-                <button
-                  type="button"
-                  onClick={() => setIsRechargeOpen(true)}
-                  className="ml-0.5 sm:ml-1 px-2.5 py-1 bg-slate-950 hover:bg-slate-800 text-white text-[11px] font-bold rounded-lg transition cursor-pointer whitespace-nowrap active:scale-95 shadow-2xs min-h-[30px] flex items-center"
-                >
-                  充值
-                </button>
-              </div>
-            )}
-
-            {/* Global Language Selector */}
-            <div className="flex items-center space-x-1.5 bg-slate-100/90 px-2.5 py-1.5 rounded-xl text-xs sm:text-sm border border-slate-200/90 shadow-2xs transition hover:bg-slate-200/70 min-h-[38px]">
-              <Globe className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-              <select
-                value={globalLanguage}
-                onChange={(e) => setGlobalLanguage(e.target.value as Language)}
-                aria-label="新站默认内容语言"
-                title="新站默认内容语言"
-                className="bg-transparent text-slate-800 focus:outline-none cursor-pointer font-semibold text-xs sm:text-sm"
-              >
-                <option value="zh-CN">CH</option>
-                <option value="en-US">En</option>
-              </select>
-            </div>
-          </div>
           {refreshing && (
             <div role="status" aria-live="polite" className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-slate-100">
               <span className="block h-full w-1/3 animate-pulse rounded-full bg-emerald-500" />
@@ -375,7 +264,9 @@ export default function WorkspaceApp() {
             <ProCreditLedgerTab
               account={account}
               transactions={transactions}
-              tenantId={activeTenantId}
+              pricing={rechargePricing.data}
+              pricingLoading={rechargePricing.isLoading}
+              pricingError={rechargePricing.isError}
               onOpenRecharge={() => setIsRechargeOpen(true)}
             />
           )}
@@ -431,7 +322,6 @@ export default function WorkspaceApp() {
         onOpenMobileDrawer={() => setIsMobileMenuOpen(true)}
         isDrawerOpen={isMobileMenuOpen}
         sites={sites}
-        tasks={tasks}
         account={account}
       />
 
@@ -442,7 +332,7 @@ export default function WorkspaceApp() {
           onClose={() => setIsOnboardingOpen(false)}
           onAddSite={actions.handleAddSite}
           onAuthorizeWordPress={actions.handleAuthorizeWordPress}
-          defaultLanguage={globalLanguage}
+          defaultLanguage={defaultLanguage}
         />
       )}
 

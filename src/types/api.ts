@@ -1,9 +1,9 @@
-export type Organization = { id: string; name: string; creditBalanceMicros: string; totalRechargedMicros: string; totalConsumedMicros: string; role: 'OWNER' | 'ADMIN' | 'EDITOR' | 'VIEWER'; createdAt: string };
+type Organization = { id: string; name: string; creditBalanceMicros: string; totalRechargedMicros: string; totalConsumedMicros: string; role: 'OWNER' | 'ADMIN' | 'EDITOR' | 'VIEWER'; createdAt: string };
 export type Me = { profile: { id: string; email: string; displayName?: string; platformRole: 'USER' | 'PLATFORM_ADMIN'; createdAt: string }; organizations: Organization[] };
 export type WordPressCompatibilityMode = 'RECHECK_REQUIRED' | 'FULL_AUTO' | 'SAFE_AUTO' | 'ANALYSIS_ONLY' | 'BLOCKED';
 export type Site = { id: string; name: string; domain: string; language: 'zh-CN' | 'en-US'; niche?: string; wordpressStatus: string; wordpressUser?: string; wordpressVerifiedAt?: string; wordpressCompatibilityMode: WordPressCompatibilityMode; wordpressCompatibilityCheckedAt?: string; createdAt: string; integrations: Array<{ id: string; provider: 'GSC'; propertyId?: string; status: string; lastSyncedAt?: string; lastErrorMessage?: string }> };
-export type Opportunity = { id: string; siteId: string; title: string; type: string; targetUrl?: string; keyword?: string; searchVolume?: number; keywordDifficulty?: number; roiScoreMicros?: string; expectedValueMicros?: string; confidenceMicros?: string; formulaVersion: string; status: string };
-export type GrowthStageCode = 'UNDERSTAND' | 'DISCOVER' | 'DECIDE' | 'EXECUTE' | 'LEARN';
+type Opportunity = { id: string; siteId: string; title: string; type: string; targetUrl?: string; keyword?: string; searchVolume?: number; keywordDifficulty?: number; roiScoreMicros?: string; expectedValueMicros?: string; confidenceMicros?: string; formulaVersion: string; status: string };
+type GrowthStageCode = 'UNDERSTAND' | 'DISCOVER' | 'DECIDE' | 'EXECUTE' | 'LEARN';
 export type GrowthRunStage = {
   id: string;
   runId: string;
@@ -20,7 +20,7 @@ export type GrowthRunStage = {
   finishedAt?: string;
   updatedAt?: string;
 };
-export type GrowthAction = {
+type GrowthAction = {
   id: string;
   runId: string;
   type: string;
@@ -36,9 +36,9 @@ export type GrowthAction = {
   createdAt: string;
   decision?: { rank: number; scoreMicros: string; rationale: Record<string, unknown> };
 };
-export type ActionEvidence = { id: string; type: string; sourceRef?: string; payload: Record<string, unknown>; createdAt: string };
-export type PageVersion = { id: string; kind: 'BEFORE' | 'AFTER' | 'ROLLBACK'; remotePostId: string; resourceType: string; url: string; title: string; contentChecksum: string; remoteModifiedAt?: string; createdAt: string };
-export type MeasurementSample = { id: string; source: 'GSC' | 'LEADING_INDICATORS'; windowDays: 7 | 14 | 28 | 56; baseline: Record<string, unknown>; measurement: Record<string, unknown>; confidenceMicros: string; outcome: 'NOT_READY' | 'WIN' | 'NEUTRAL' | 'LOSS' | 'INCONCLUSIVE'; observedAt: string };
+type ActionEvidence = { id: string; type: string; sourceRef?: string; payload: Record<string, unknown>; createdAt: string };
+type PageVersion = { id: string; kind: 'BEFORE' | 'AFTER' | 'ROLLBACK'; remotePostId: string; resourceType: string; url: string; title: string; contentChecksum: string; remoteModifiedAt?: string; createdAt: string };
+type MeasurementSample = { id: string; source: 'GSC' | 'LEADING_INDICATORS'; windowDays: 7 | 14 | 28 | 56; baseline: Record<string, unknown>; measurement: Record<string, unknown>; confidenceMicros: string; outcome: 'NOT_READY' | 'WIN' | 'NEUTRAL' | 'LOSS' | 'INCONCLUSIVE'; observedAt: string };
 export type SiteSnapshotSummary = { id: string; status: string; sourceVersion: string; market: Record<string, unknown>; health: Record<string, unknown>; corpusChecksum: string; pageCount: number; auditedPageCount: number; fetchedAt: string; pages?: Array<{ id: string; url: string; resourceType: string; status: string; modifiedAt?: string; title: string; wordCount: number; contentChecksum: string; technicalEvidence: Record<string, unknown> }> };
 export type GrowthCandidate = { id: string; status: 'PROPOSED' | 'SELECTED' | 'DEFERRED' | 'REJECTED' | 'EXECUTED'; rank: number; scoreMicros: string; scoreVersion: string; rationale: Record<string, unknown>; opportunity: Opportunity; action?: Pick<GrowthAction, 'id' | 'type' | 'status' | 'targetUrl'> };
 export type GrowthInputType = 'KEYWORD' | 'REFERENCE_URL' | 'COMPETITOR_SITE';

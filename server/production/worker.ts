@@ -170,11 +170,6 @@ const persistSource = async (tx: Prisma.TransactionClient, input: {
   return created.id;
 };
 
-const brandTermsFromContext = (context: WordPressSiteContext): string[] => [
-  context.site.name,
-  new URL(context.normalizedUrl).hostname.replace(/^www\./, '').split('.')[0]
-].filter((value) => value.trim().length >= 2);
-
 const acquireSiteMutationLease = async (input: {
   organizationId: string;
   siteId: string;
