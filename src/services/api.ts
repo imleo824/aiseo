@@ -12,6 +12,7 @@ import {
 import { api as productionApi } from '../lib/api';
 import { getSupabaseBrowserClient } from '../lib/supabase';
 import { decimalToMicros, microsToDecimal } from '../lib/fixedDecimal';
+import { signOutEverywhere } from '../auth/signOut';
 
 const supabase = getSupabaseBrowserClient();
 import type { Draft, GrowthInput, GrowthProgram, GrowthRun, GrowthStatusRow, JobRun, Ledger, Me, Site as ProductionSite } from '../types/api';
@@ -195,8 +196,7 @@ export class ApiService {
   }
 
   public async logout() {
-    const { error } = await supabase.auth.signOut({ scope: 'global' });
-    if (error) throw error;
+    await signOutEverywhere(supabase.auth);
   }
 
   public async exportPersonalData() {

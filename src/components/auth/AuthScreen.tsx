@@ -3,6 +3,7 @@ import { getSupabaseBrowserClient } from '../../lib/supabase';
 import { useAuth } from '../../auth/AuthProvider';
 import { LegalLinks } from '../LegalLinks';
 import { AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
+import { signOutEverywhere } from '../../auth/signOut';
 
 declare global {
   interface Window {
@@ -102,7 +103,7 @@ export function AuthScreen() {
         if (error) throw error;
         setMessageKind('success');
         setMessage('密码已更新，请重新登录。');
-        await supabase.auth.signOut({ scope: 'global' });
+        await signOutEverywhere(supabase.auth);
         setMode('login');
       }
     } catch (error) {
@@ -215,7 +216,7 @@ export function AuthScreen() {
           </button>
 
           <div className="flex items-center justify-between pt-1 text-xs text-slate-600 border-t border-slate-100">
-            {mode !== 'login' && (
+            {mode !== 'login' && mode !== 'recovery' && (
               <button
                 type="button"
                 onClick={() => changeMode('login')}
