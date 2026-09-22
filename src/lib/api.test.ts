@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const auth = vi.hoisted(() => ({
-  getSession: vi.fn(async () => ({ data: { session: { access_token: 'test-token' } } })),
+  getSession: vi.fn(async () => ({ data: { session: { access_token: 'test-token', user: { id: 'user-a' } } } })),
   signOut: vi.fn(async () => ({ error: null }))
 }));
 
@@ -24,6 +24,12 @@ describe('write request identity', () => {
     const original = await writeRequestFingerprint('POST', '/sites', '{"domain":"example.com"}');
     expect(await writeRequestFingerprint('POST', '/sites', '{"domain":"other.example"}')).not.toBe(original);
     expect(await writeRequestFingerprint('POST', '/organizations', '{"domain":"example.com"}')).not.toBe(original);
+  });
+
+  it('does not reuse a pending write identity across signed-in users', async () => {
+    const userA = await writeRequestFingerprint('POST', '/sites', '{"domain":"example.com"}', 'user-a');
+    const userB = await writeRequestFingerprint('POST', '/sites', '{"domain":"example.com"}', 'user-b');
+    expect(userA).not.toBe(userB);
   });
 });
 

@@ -34,4 +34,19 @@ describe('production runtime integrity', () => {
     expect(exportRoute).not.toContain('request.authUser');
     expect(exportRoute).not.toContain('contentBlob');
   });
+
+  it('stores WordPress authorization before remote verification and clears the callback URL', () => {
+    const apiRouter = source('./apiRouter.ts');
+    const callbackStart = apiRouter.indexOf("apiRouter.get('/integrations/wordpress/callback'");
+    const callbackEnd = apiRouter.indexOf('apiRouter.use(requireAuth)', callbackStart);
+    const callbackRoute = apiRouter.slice(callbackStart, callbackEnd);
+
+    expect(callbackStart).toBeGreaterThanOrEqual(0);
+    expect(callbackEnd).toBeGreaterThan(callbackStart);
+    expect(callbackRoute).toContain('wordpressCredentials: encrypted');
+    expect(callbackRoute).toContain('wordpressStatus: SiteConnectionStatus.VERIFYING');
+    expect(callbackRoute).toContain('response.redirect(303');
+    expect(callbackRoute).not.toContain('wordPressService.testConnection');
+    expect(callbackRoute).not.toContain('scanWordPressCompatibility');
+  });
 });

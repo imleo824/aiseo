@@ -58,6 +58,7 @@ const installBusinessApi = async (page: Page) => {
   let idempotencyKey = '';
   let paymentIntentRequests = 0;
   let paymentIntentBody: unknown;
+  let wordpressVerificationRequests = 0;
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -72,6 +73,10 @@ const installBusinessApi = async (page: Page) => {
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/sites`) return reply([{
       id: siteId, name: 'TechPulse Media', domain: 'https://example.com', language: 'zh-CN', wordpressStatus: 'CONNECTED', wordpressUser: 'editor', wordpressVerifiedAt: '2026-09-01T00:00:00.000Z', createdAt: '2026-09-01T00:00:00.000Z', integrations: []
     }]);
+    if (method === 'POST' && path === `/api/v1/organizations/${organizationId}/sites/${siteId}/test-connection`) {
+      wordpressVerificationRequests += 1;
+      return reply({ connected: true, user: 'editor', siteName: 'TechPulse Media', compatibility: { mode: 'FULL_AUTO' } });
+    }
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/drafts`) return reply([]);
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/ledger`) return reply({ balanceMicros: '11090000000', heldMicros: '0', availableMicros: '11090000000', entries: [] });
     if (method === 'GET' && path === '/api/v1/pricing') return reply({
@@ -140,7 +145,13 @@ const installBusinessApi = async (page: Page) => {
     }
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: { code: 'UNMOCKED', message: `${method} ${path}`, traceId: 'e2e' } }) });
   });
-  return { submitted: () => submittedBody, idempotencyKey: () => idempotencyKey, paymentIntentRequests: () => paymentIntentRequests, paymentIntentBody: () => paymentIntentBody };
+  return {
+    submitted: () => submittedBody,
+    idempotencyKey: () => idempotencyKey,
+    paymentIntentRequests: () => paymentIntentRequests,
+    paymentIntentBody: () => paymentIntentBody,
+    wordpressVerificationRequests: () => wordpressVerificationRequests
+  };
 };
 
 test.beforeEach(async ({ page }) => {
@@ -171,6 +182,19 @@ test('公开法律文件可读且不暴露加密乱码', async ({ page }) => {
   await expect(page.getByText(/不承诺特定关键词排名/)).toBeVisible();
   await page.getByRole('link', { name: '返回登录' }).click();
   await expect(page.getByRole('heading', { name: '登录工作区' })).toBeVisible();
+});
+
+test('WordPress 授权返回后自动验证并立即清理回调参数', async ({ page }) => {
+  const fixture = await installBusinessApi(page);
+  await page.goto(`/?wordpress=verifying&siteId=${siteId}&organizationId=${organizationId}`);
+  await page.getByLabel('工作邮箱').fill('owner@example.test');
+  await page.getByLabel('密码', { exact: true }).fill('short123');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+
+  await expect.poll(() => fixture.wordpressVerificationRequests()).toBe(1);
+  await expect(page).toHaveURL(/\?view=SITE_MANAGEMENT$/);
+  await expect(page).not.toHaveURL(/wordpress=|siteId=|organizationId=/);
+  await expect(page.getByText('WordPress 已连接，系统已完成权限与兼容能力检测。')).toBeVisible();
 });
 
 test('充值页先选择套餐或自定义金额，提交后展示完整转账信息', async ({ page }) => {

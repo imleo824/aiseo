@@ -1,5 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavItem, Language } from './types/seo';
 import { Sidebar } from './components/Sidebar';
 import { MainDashboard } from './components/MainDashboard';
@@ -7,13 +7,18 @@ import { OnboardingModal } from './components/OnboardingModal';
 import { RechargeModal } from './components/RechargeModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import {
+  CheckCircle2,
   ChevronRight,
-  Menu
+  CircleAlert,
+  LoaderCircle,
+  Menu,
+  X
 } from 'lucide-react';
 import { useTenantData } from './hooks/useTenantData';
 import { ApiService } from './services/api';
 import { isAdminNavItem, NAVIGATION, navFromSearch, requiresWorkspaceResource } from './navigation';
-import { rechargePricingQueryKey } from './lib/queryKeys';
+import { rechargePricingQueryKey, tenantQueryRoot } from './lib/queryKeys';
+import { parseIntegrationReturn, sanitizedIntegrationReturnUrl } from './lib/integrationReturn';
 
 const ProAuditLedgerTab = lazy(() => import('./components/ProAuditLedgerTab').then(({ ProAuditLedgerTab }) => ({ default: ProAuditLedgerTab })));
 const ProAutopilotTasksTab = lazy(() => import('./components/ProAutopilotTasksTab').then(({ ProAutopilotTasksTab }) => ({ default: ProAutopilotTasksTab })));
@@ -41,11 +46,15 @@ const getDefaultLanguage = (): Language => {
 };
 
 export default function WorkspaceApp({ authUserId }: { authUserId: string }) {
+  const queryClient = useQueryClient();
   const [activeTenantId, setActiveTenantId] = useState<string>('');
   const [activeNav, setActiveNav] = useState<NavItem>(navFromLocation);
   const [defaultLanguage] = useState<Language>(getDefaultLanguage);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [integrationReturn] = useState(() => parseIntegrationReturn(window.location.search));
+  const [integrationNotice, setIntegrationNotice] = useState<{ kind: 'loading' | 'success' | 'info' | 'error'; message: string } | null>(null);
+  const handledIntegrationReturn = useRef(false);
 
   // Modals
   const [isRechargeOpen, setIsRechargeOpen] = useState(false);
@@ -83,6 +92,44 @@ export default function WorkspaceApp({ authUserId }: { authUserId: string }) {
     window.history[replace ? 'replaceState' : 'pushState']({ view: nextNav }, '', url);
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'auto' }));
   }, []);
+
+  useEffect(() => {
+    if (!integrationReturn || handledIntegrationReturn.current) return;
+    handledIntegrationReturn.current = true;
+    window.history.replaceState(window.history.state, '', sanitizedIntegrationReturnUrl(window.location.href));
+
+    if (integrationReturn.integration === 'GSC') {
+      setIntegrationNotice({ kind: 'success', message: 'Google Search Console 已授权，首轮数据正在后台同步。' });
+      void queryClient.invalidateQueries({ queryKey: tenantQueryRoot(authUserId) });
+      return;
+    }
+    if (integrationReturn.status === 'FAILED') {
+      setIntegrationNotice({ kind: 'error', message: 'WordPress 授权未能完成，请确认站点使用 HTTPS 后重新授权。' });
+      navigateTo('SITE_MANAGEMENT', true);
+      return;
+    }
+    if (integrationReturn.status === 'CANCELLED') {
+      setIntegrationNotice({ kind: 'info', message: '未完成 WordPress 授权，站点配置没有改变。' });
+      navigateTo('SITE_MANAGEMENT', true);
+      return;
+    }
+
+    setIntegrationNotice({ kind: 'loading', message: '授权已接收，正在验证 WordPress 权限与安全兼容能力…' });
+    void new ApiService(integrationReturn.organizationId).testSiteConnection(integrationReturn.siteId)
+      .then(async () => {
+        setActiveTenantId(integrationReturn.organizationId);
+        await queryClient.invalidateQueries({ queryKey: tenantQueryRoot(authUserId) });
+        setIntegrationNotice({ kind: 'success', message: 'WordPress 已连接，系统已完成权限与兼容能力检测。' });
+        navigateTo('SITE_MANAGEMENT', true);
+      })
+      .catch((error: unknown) => {
+        setIntegrationNotice({
+          kind: 'error',
+          message: error instanceof Error ? error.message : 'WordPress 授权已保存，但连接验证失败，请进入站点管理重新检测。'
+        });
+        navigateTo('SITE_MANAGEMENT', true);
+      });
+  }, [authUserId, integrationReturn, navigateTo, queryClient]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -197,6 +244,31 @@ export default function WorkspaceApp({ authUserId }: { authUserId: string }) {
 
         {/* Main Workspace Content Views */}
         <main className="flex-1 p-3 sm:p-5 lg:p-8 pb-24 md:pb-10 w-full max-w-7xl mx-auto">
+          {integrationNotice && (
+            <div
+              role={integrationNotice.kind === 'error' ? 'alert' : 'status'}
+              aria-live={integrationNotice.kind === 'error' ? 'assertive' : 'polite'}
+              className={`mb-4 flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${
+                integrationNotice.kind === 'error'
+                  ? 'border-rose-200 bg-rose-50 text-rose-950'
+                  : integrationNotice.kind === 'success'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
+                    : 'border-sky-200 bg-sky-50 text-sky-950'
+              }`}
+            >
+              {integrationNotice.kind === 'loading'
+                ? <LoaderCircle className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
+                : integrationNotice.kind === 'success'
+                  ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                  : <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />}
+              <span className="min-w-0 flex-1 font-medium leading-5">{integrationNotice.message}</span>
+              {integrationNotice.kind !== 'loading' && (
+                <button type="button" onClick={() => setIntegrationNotice(null)} className="-m-2 min-h-[40px] min-w-[40px] rounded-lg p-2" aria-label="关闭提示">
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          )}
           {loadError && (
             <div role="alert" className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
               <div>

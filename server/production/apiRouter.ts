@@ -1,5 +1,5 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
-import { DraftStatus, GrowthActionStatus, GrowthInputType, GrowthProgramMode, GrowthProgramStatus, GrowthRunStatus, GrowthRunTrigger, JobType, OrganizationRole, ReviewDecision, SiteConnectionStatus } from '@prisma/client';
+import { DraftStatus, GrowthActionStatus, GrowthInputType, GrowthProgramMode, GrowthProgramStatus, GrowthRunStatus, GrowthRunTrigger, JobType, OrganizationRole, ReviewDecision, SiteConnectionStatus, WordPressCompatibilityMode } from '@prisma/client';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { ConflictError, ForbiddenError, NotFoundError, ServiceUnavailableError, ValidationError } from '../domain/errors';
@@ -20,6 +20,7 @@ import { compatibilityProfileResponse, persistWordPressCompatibility, scanWordPr
 import { normalizeSiteDomain } from './siteDomain';
 import { CUSTOM_PAYMENT_PRICING_SETTING_KEY, packageBaseMicrosSchema, parseCustomPaymentPricing, positiveAccountingMicrosSchema, pricingConfigurationSchema, signedAccountingMicrosSchema } from './accounting';
 import { continuousCadenceDays } from './growthPolicy';
+import { logger } from '../utils/logger';
 
 const roleRank: Record<OrganizationRole, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2, OWNER: 3 };
 const idSchema = z.string().uuid();
@@ -212,30 +213,60 @@ apiRouter.get('/integrations/gsc/callback', asyncRoute(async (request, response)
 apiRouter.get('/integrations/wordpress/callback', asyncRoute(async (request, response) => {
   response.setHeader('Cache-Control', 'no-store, max-age=0');
   response.setHeader('Referrer-Policy', 'no-referrer');
-  const state = readWordPressState(String(request.query.state || ''));
-  const siteUrl = String(request.query.site_url || '');
-  const username = String(request.query.user_login || '');
-  const applicationPassword = String(request.query.password || '');
-  if (!siteUrl || !username || !applicationPassword) throw new ValidationError('WordPress 未返回完整授权凭证');
-  const site = await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
-    await assertRole(tx, state.profileId, state.organizationId, OrganizationRole.EDITOR);
-    await consumeOauthState(tx, state.nonce, 'wordpress-oauth-state');
-    const found = await tx.site.findFirst({ where: { id: state.siteId, organizationId: state.organizationId } });
-    if (!found) throw new NotFoundError('站点不存在');
-    const authorizedOrigin = new URL(siteUrl).origin;
-    const expectedOrigin = new URL(found.domain.startsWith('https://') ? found.domain : `https://${found.domain}`).origin;
-    if (authorizedOrigin !== expectedOrigin) throw new ValidationError('WordPress 授权站点与绑定站点不一致');
-    return found;
-  });
-  const encrypted = wordPressService.encrypt({ username, applicationPassword });
-  const verified = await wordPressService.testConnection(site.domain, encrypted);
-  const compatibility = await scanWordPressCompatibility({ domain: site.domain, encryptedCredentials: encrypted });
-  await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
-    await tx.site.update({ where: { id: state.siteId }, data: { wordpressCredentials: encrypted, wordpressCredentialKeyVersion: currentEncryptionKeyVersion(), wordpressStatus: SiteConnectionStatus.CONNECTED, wordpressUser: verified.user, wordpressVerifiedAt: new Date() } });
-    const profile = await persistWordPressCompatibility(tx, { organizationId: state.organizationId, siteId: state.siteId, scan: compatibility });
-    await tx.auditEvent.create({ data: { organizationId: state.organizationId, actorId: state.profileId, action: 'WORDPRESS_AUTHORIZED', targetType: 'site', targetId: state.siteId, metadata: { user: verified.user, siteName: verified.siteName, authorization: 'APPLICATION_PASSWORD_FLOW', compatibilityProfileId: profile.id, compatibilityMode: profile.mode } } });
-  });
-  response.redirect(`/?wordpress=connected&siteId=${encodeURIComponent(state.siteId)}`);
+  try {
+    const state = readWordPressState(String(request.query.state || ''));
+    const siteUrl = String(request.query.site_url || '');
+    const username = String(request.query.user_login || '');
+    const applicationPassword = String(request.query.password || '');
+    if (!siteUrl || !username || !applicationPassword) throw new ValidationError('WordPress 未返回完整授权凭证');
+    let authorizedOrigin: string;
+    try {
+      const authorizedUrl = new URL(siteUrl);
+      if (authorizedUrl.protocol !== 'https:') throw new Error('HTTPS required');
+      authorizedOrigin = authorizedUrl.origin;
+    } catch {
+      throw new ValidationError('WordPress 返回的授权站点地址无效或未使用 HTTPS');
+    }
+    const encrypted = wordPressService.encrypt({ username, applicationPassword });
+    await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
+      await assertRole(tx, state.profileId, state.organizationId, OrganizationRole.EDITOR);
+      await consumeOauthState(tx, state.nonce, 'wordpress-oauth-state');
+      const found = await tx.site.findFirst({ where: { id: state.siteId, organizationId: state.organizationId } });
+      if (!found) throw new NotFoundError('站点不存在');
+      const expectedOrigin = new URL(found.domain.startsWith('https://') ? found.domain : `https://${found.domain}`).origin;
+      if (authorizedOrigin !== expectedOrigin) throw new ValidationError('WordPress 授权站点与绑定站点不一致');
+      await tx.site.update({
+        where: { id: state.siteId },
+        data: {
+          wordpressCredentials: encrypted,
+          wordpressCredentialKeyVersion: currentEncryptionKeyVersion(),
+          wordpressStatus: SiteConnectionStatus.VERIFYING,
+          wordpressUser: null,
+          wordpressVerifiedAt: null,
+          wordpressCompatibilityMode: WordPressCompatibilityMode.RECHECK_REQUIRED,
+          wordpressCompatibilityCheckedAt: null,
+          latestWordpressCompatibilityProfileId: null
+        }
+      });
+      await tx.auditEvent.create({
+        data: {
+          organizationId: state.organizationId,
+          actorId: state.profileId,
+          action: 'WORDPRESS_AUTHORIZATION_RECEIVED',
+          targetType: 'site',
+          targetId: state.siteId,
+          metadata: { authorization: 'APPLICATION_PASSWORD_FLOW', verificationPending: true }
+        }
+      });
+    });
+    response.redirect(303, `/?wordpress=verifying&siteId=${encodeURIComponent(state.siteId)}&organizationId=${encodeURIComponent(state.organizationId)}`);
+  } catch (error) {
+    logger.error('WORDPRESS_AUTH_CALLBACK', 'WordPress authorization callback failed', {
+      traceId: request.traceId,
+      data: error instanceof Error ? { name: error.name, message: error.message } : { name: 'UnknownError' }
+    });
+    response.redirect(303, '/?wordpress=failed');
+  }
 }));
 
 apiRouter.use(requireAuth);
@@ -489,7 +520,7 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/wordpress/authorize
   authorizationUrl.searchParams.set('app_name', 'TuiTui');
   authorizationUrl.searchParams.set('app_id', site.id);
   authorizationUrl.searchParams.set('success_url', `${env.appBaseUrl}/api/v1/integrations/wordpress/callback?state=${encodeURIComponent(state)}`);
-  authorizationUrl.searchParams.set('reject_url', `${env.appBaseUrl}/?wordpress=cancelled&siteId=${encodeURIComponent(siteId)}`);
+  authorizationUrl.searchParams.set('reject_url', `${env.appBaseUrl}/?wordpress=cancelled&siteId=${encodeURIComponent(siteId)}&organizationId=${encodeURIComponent(orgId)}`);
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, (tx) => executeIdempotent({
     tx,
     organizationId: orgId,

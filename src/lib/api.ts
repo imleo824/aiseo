@@ -13,14 +13,14 @@ export class ApiError extends Error {
 
 const isWriteRequest = (method?: string): boolean => Boolean(method && !['GET', 'HEAD'].includes(method.toUpperCase()));
 
-export const writeRequestFingerprint = async (method: string, path: string, body: BodyInit | null | undefined): Promise<string> => {
-  const bytes = new TextEncoder().encode(`${method.toUpperCase()}\n${path}\n${typeof body === 'string' ? body : ''}`);
+export const writeRequestFingerprint = async (method: string, path: string, body: BodyInit | null | undefined, subject = ''): Promise<string> => {
+  const bytes = new TextEncoder().encode(`${subject}\n${method.toUpperCase()}\n${path}\n${typeof body === 'string' ? body : ''}`);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 };
 
-const pendingWriteKey = async (method: string, path: string, body: BodyInit | null | undefined): Promise<{ fingerprint: string; key: string }> => {
-  const fingerprint = await writeRequestFingerprint(method, path, body);
+const pendingWriteKey = async (subject: string, method: string, path: string, body: BodyInit | null | undefined): Promise<{ fingerprint: string; key: string }> => {
+  const fingerprint = await writeRequestFingerprint(method, path, body, subject);
   const storageKey = `aiseo:pending-write:${fingerprint}`;
   let key = pendingWriteKeys.get(fingerprint);
   try {
@@ -49,7 +49,7 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<ApiEnve
   if (init.body) headers.set('content-type', 'application/json');
   let managedWriteFingerprint: string | undefined;
   if (isWriteRequest(init.method) && !headers.has('idempotency-key')) {
-    const pending = await pendingWriteKey(init.method!, path, init.body);
+    const pending = await pendingWriteKey(session.user.id, init.method!, path, init.body);
     managedWriteFingerprint = pending.fingerprint;
     headers.set('idempotency-key', pending.key);
   }

@@ -132,7 +132,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
     if (!editingSiteId || !onTestSiteConnection) return;
     setConnectionTesting(true);
     try { await onTestSiteConnection(editingSiteId); showToast('WordPress 连接与兼容能力检测完成'); }
-    catch (error) { showToast(error instanceof Error ? error.message : 'WordPress 连接验证失败'); }
+    catch (error) { showToast(error instanceof Error ? error.message : 'WordPress 连接验证失败', 'error'); }
     finally { setConnectionTesting(false); }
   };
 
@@ -143,7 +143,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
       const authorization = await onAuthorizeWordPress(siteId);
       window.location.assign(authorization.authorizationUrl);
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '无法启动 WordPress 官方授权');
+      showToast(error instanceof Error ? error.message : '无法启动 WordPress 官方授权', 'error');
       setConnectionTesting(false);
     }
   };
