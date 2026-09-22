@@ -104,7 +104,21 @@ const installBusinessApi = async (page: Page) => {
       scope: 'CURRENT_PROFILE_ONLY',
       profile: { id: authUser.id, email: authUser.email }
     });
+    if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/growth-programs`) return reply([]);
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/sites/${siteId}/growth-programs`) return reply([]);
+    if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/growth-statuses`) return reply([{ siteId, status: started ? {
+      program: { id: programId, siteId, mode: 'ONCE', inputs: [{ id: 'input-1', type: 'KEYWORD', value: 'enterprise crm', position: 0 }], status: 'ACTIVE', deliveredRunCount: 0, consecutiveWins: 0, createdAt: '2026-09-06T00:00:00.000Z' },
+      run: { id: runId, siteId, programId, trigger: 'USER', status: 'RUNNING', currentStage: 'DISCOVER', stages: stages(true), createdAt: '2026-09-06T00:00:00.000Z', updatedAt: '2026-09-06T00:00:05.000Z' },
+      action: null,
+      stages: stages(true),
+      blocker: null,
+      measurement: { gscConnected: false, lastSyncedAt: null, trafficClaimAllowed: false, targetUrl: null },
+      wordpressCompatibility: { mode: 'FULL_AUTO', supportedActions: ['CREATE_CONTENT'], blockedActions: [], blockReasons: [], lastCheckedAt: '2026-09-06T00:00:00.000Z' }
+    } : {
+      program: null, run: null, action: null, stages: [], blocker: null,
+      measurement: { gscConnected: false, lastSyncedAt: null, trafficClaimAllowed: false, targetUrl: null },
+      wordpressCompatibility: { mode: 'FULL_AUTO', supportedActions: ['CREATE_CONTENT'], blockedActions: [], blockReasons: [], lastCheckedAt: '2026-09-06T00:00:00.000Z' }
+    } }]);
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/sites/${siteId}/growth-status`) return reply(started ? {
       program: { id: programId, siteId, mode: 'ONCE', inputs: [{ id: 'input-1', type: 'KEYWORD', value: 'enterprise crm', position: 0 }], status: 'ACTIVE', deliveredRunCount: 0, consecutiveWins: 0, createdAt: '2026-09-06T00:00:00.000Z' },
       run: { id: runId, siteId, programId, trigger: 'USER', status: 'RUNNING', currentStage: 'DISCOVER', stages: stages(true), createdAt: '2026-09-06T00:00:00.000Z', updatedAt: '2026-09-06T00:01:00.000Z' },

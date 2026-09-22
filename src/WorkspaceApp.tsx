@@ -13,6 +13,7 @@ import {
 import { useTenantData } from './hooks/useTenantData';
 import { ApiService } from './services/api';
 import { isAdminNavItem, NAVIGATION, navFromSearch, requiresWorkspaceResource } from './navigation';
+import { rechargePricingQueryKey } from './lib/queryKeys';
 
 const ProAuditLedgerTab = lazy(() => import('./components/ProAuditLedgerTab').then(({ ProAuditLedgerTab }) => ({ default: ProAuditLedgerTab })));
 const ProAutopilotTasksTab = lazy(() => import('./components/ProAutopilotTasksTab').then(({ ProAutopilotTasksTab }) => ({ default: ProAutopilotTasksTab })));
@@ -39,7 +40,7 @@ const getDefaultLanguage = (): Language => {
   return 'zh-CN';
 };
 
-export default function WorkspaceApp() {
+export default function WorkspaceApp({ authUserId }: { authUserId: string }) {
   const [activeTenantId, setActiveTenantId] = useState<string>('');
   const [activeNav, setActiveNav] = useState<NavItem>(navFromLocation);
   const [defaultLanguage] = useState<Language>(getDefaultLanguage);
@@ -61,12 +62,12 @@ export default function WorkspaceApp() {
     refreshing,
     loadError,
     actions
-  } = useTenantData(activeTenantId, activeNav, (newTid) => {
+  } = useTenantData(authUserId, activeTenantId, activeNav, (newTid) => {
     setActiveTenantId(newTid);
   });
 
   const rechargePricing = useQuery({
-    queryKey: ['recharge-pricing', activeTenantId],
+    queryKey: rechargePricingQueryKey(authUserId, activeTenantId),
     queryFn: () => new ApiService(activeTenantId).getCreditConfig(),
     enabled: Boolean((isRechargeOpen || requiresWorkspaceResource(activeNav, 'pricing')) && account && activeTenantId),
     staleTime: 5 * 60_000,
@@ -286,7 +287,7 @@ export default function WorkspaceApp() {
               account={account}
               tenantId={activeTenantId}
               onConfigSaved={() => {
-                actions.loadTenantData();
+                void Promise.all([actions.loadTenantData(), rechargePricing.refetch()]);
               }}
             />
           )}

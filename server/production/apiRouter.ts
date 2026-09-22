@@ -44,6 +44,7 @@ const growthProgramSchema = z.object({
   }),
   budgetLimitMicros: positiveAccountingMicrosSchema.transform((value) => BigInt(value)).optional()
 });
+const growthProgramModeFilterSchema = z.nativeEnum(GrowthProgramMode).optional();
 
 const userId = (request: Request): string => {
   if (!request.authUser) throw new ForbiddenError('认证上下文缺失');
@@ -663,6 +664,23 @@ apiRouter.get('/organizations/:organizationId/sites/:siteId/growth-programs', as
   sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
 }));
 
+apiRouter.get('/organizations/:organizationId/growth-programs', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
+  const mode = growthProgramModeFilterSchema.parse(request.query.mode);
+  const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
+    const rows = await tx.growthProgram.findMany({
+      where: { organizationId: orgId, ...(mode ? { mode } : {}) },
+      include: { inputs: { orderBy: { position: 'asc' } } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: page.take + 1,
+      ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {})
+    });
+    return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
+  });
+  sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
+}));
+
 apiRouter.get('/organizations/:organizationId/growth-programs/:programId', asyncRoute(async (request, response) => {
   const profileId = userId(request), orgId = organizationId(request), programId = idSchema.parse(request.params.programId);
   const program = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
@@ -738,6 +756,68 @@ apiRouter.post('/organizations/:organizationId/growth-programs/:programId/run-no
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);
+}));
+
+apiRouter.get('/organizations/:organizationId/growth-statuses', asyncRoute(async (request, response) => {
+  const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
+  const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
+    const sites = await tx.site.findMany({
+      where: { organizationId: orgId },
+      select: {
+        id: true,
+        wordpressCompatibilityMode: true,
+        wordpressCompatibilityCheckedAt: true,
+        latestWordpressCompatibilityProfile: { select: { id: true, actionCapabilities: true, blockReasons: true, checkedAt: true, expiresAt: true } },
+        growthPrograms: { orderBy: { updatedAt: 'desc' }, take: 1, include: { inputs: { orderBy: { position: 'asc' } } } },
+        growthRuns: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: {
+            program: { include: { inputs: { orderBy: { position: 'asc' } } } },
+            stages: { orderBy: { createdAt: 'asc' } },
+            opportunity: true,
+            siteSnapshot: { select: { id: true, status: true, sourceVersion: true, market: true, health: true, corpusChecksum: true, pageCount: true, auditedPageCount: true, fetchedAt: true } },
+            draft: { select: { id: true, status: true, title: true, slug: true, qualityReport: true, publishedUrl: true, createdAt: true } },
+            action: { include: { evidence: { orderBy: { createdAt: 'asc' } }, measurements: { orderBy: { windowDays: 'asc' } } } }
+          }
+        },
+        integrations: { where: { provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, select: { lastSyncedAt: true }, take: 1 }
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: page.take + 1,
+      ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {})
+    });
+    const rows = sites.slice(0, page.take).map((site) => {
+      const program = site.growthPrograms[0] || null;
+      const run = site.growthRuns[0] || null;
+      const gsc = site.integrations[0] || null;
+      const activeAction = run?.action || null;
+      return {
+        siteId: site.id,
+        status: {
+          program: run?.program || program,
+          run,
+          action: activeAction,
+          stages: run?.stages || [],
+          blocker: run?.errorCode ? { code: run.errorCode, message: run.errorMessage } : null,
+          measurement: { gscConnected: Boolean(gsc), lastSyncedAt: gsc?.lastSyncedAt || null, trafficClaimAllowed: Boolean(gsc), targetUrl: activeAction?.targetUrl || run?.targetUrl || null },
+          wordpressCompatibility: {
+            mode: site.wordpressCompatibilityMode,
+            profileId: site.latestWordpressCompatibilityProfile?.id || null,
+            supportedActions: Object.entries((site.latestWordpressCompatibilityProfile?.actionCapabilities || {}) as Record<string, { supported?: boolean }>).filter(([, value]) => value.supported).map(([key]) => key),
+            blockedActions: Object.entries((site.latestWordpressCompatibilityProfile?.actionCapabilities || {}) as Record<string, { supported?: boolean }>).filter(([, value]) => !value.supported).map(([key]) => key),
+            fallbackReason: activeAction?.fallbackReason || null,
+            blockReasons: site.latestWordpressCompatibilityProfile?.blockReasons || [],
+            lastCheckedAt: site.wordpressCompatibilityCheckedAt,
+            expiresAt: site.latestWordpressCompatibilityProfile?.expiresAt || null
+          }
+        }
+      };
+    });
+    return { rows, nextCursor: sites.length > page.take ? sites[page.take - 1].id : undefined };
+  });
+  sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
 }));
 
 apiRouter.get('/organizations/:organizationId/sites/:siteId/growth-status', asyncRoute(async (request, response) => {

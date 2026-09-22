@@ -14,6 +14,7 @@ import type {
 import type { GrowthInput, GrowthRun, GrowthStatus } from '../types/api';
 import { ApiError } from '../lib/api';
 import { requiresWorkspaceResource } from '../navigation';
+import { rechargePricingQueryRoot, tenantQueryRoot, tenantWorkspaceQueryRoot } from '../lib/queryKeys';
 
 const EMPTY_SITES: WordPressSite[] = [];
 const EMPTY_TASKS: AutomatedTask[] = [];
@@ -22,10 +23,12 @@ type CreditTransactions = Awaited<ReturnType<ReturnType<typeof createApiService>
 const EMPTY_TRANSACTIONS: CreditTransactions = [];
 const EMPTY_TENANTS: TenantAccount[] = [];
 
-export function useTenantData(activeTenantId: string, activeNav: NavItem, onTenantChange?: (newTenantId: string) => void) {
+export function useTenantData(authUserId: string, activeTenantId: string, activeNav: NavItem, onTenantChange?: (newTenantId: string) => void) {
   const queryClient = useQueryClient();
   const api = useMemo(() => createApiService(activeTenantId), [activeTenantId]);
   const workspaceKey = activeTenantId || 'primary';
+  const userQueryKey = tenantQueryRoot(authUserId);
+  const workspaceQueryKey = tenantWorkspaceQueryRoot(authUserId, workspaceKey);
   const needsDrafts = requiresWorkspaceResource(activeNav, 'drafts');
   const needsTasks = requiresWorkspaceResource(activeNav, 'tasks');
   const needsTransactions = requiresWorkspaceResource(activeNav, 'transactions');
@@ -33,7 +36,7 @@ export function useTenantData(activeTenantId: string, activeNav: NavItem, onTena
   const needsGrowthStatus = requiresWorkspaceResource(activeNav, 'growthStatus');
 
   const accountQuery = useQuery({
-    queryKey: ['tenant', workspaceKey, 'account'],
+    queryKey: [...workspaceQueryKey, 'account'],
     queryFn: async () => api.getMe().catch((error: unknown) => {
       if (error instanceof ApiError && error.status === 401) return null;
       throw error;
@@ -45,16 +48,16 @@ export function useTenantData(activeTenantId: string, activeNav: NavItem, onTena
     if (!activeTenantId && accountQuery.data?.tenantId) onTenantChange?.(accountQuery.data.tenantId);
   }, [accountQuery.data?.tenantId, activeTenantId, onTenantChange]);
 
-  const sitesQuery = useQuery({ queryKey: ['tenant', workspaceKey, 'sites'], queryFn: () => api.getSites(), enabled: Boolean(account) });
+  const sitesQuery = useQuery({ queryKey: [...workspaceQueryKey, 'sites'], queryFn: () => api.getSites(), enabled: Boolean(account) });
   const draftsQuery = useQuery({
-    queryKey: ['tenant', workspaceKey, 'drafts'],
+    queryKey: [...workspaceQueryKey, 'drafts'],
     queryFn: () => api.getDrafts(),
     enabled: Boolean(account) && needsDrafts,
     refetchInterval: (query) => query.state.data?.drafts.some(({ status }) => status === 'PUBLISHING' || status === 'ROLLING_BACK') ? 3_000 : false
   });
-  const tasksQuery = useQuery({ queryKey: ['tenant', workspaceKey, 'growth-programs'], queryFn: () => api.getTasks(), enabled: Boolean(account) && needsTasks });
-  const transactionsQuery = useQuery({ queryKey: ['tenant', workspaceKey, 'ledger'], queryFn: () => api.getCreditTransactions(), enabled: Boolean(account) && needsTransactions });
-  const tenantsQuery = useQuery({ queryKey: ['tenant', workspaceKey, 'admin-organizations'], queryFn: () => api.listTenants(), enabled: account?.role === 'ADMIN' && needsTenants });
+  const tasksQuery = useQuery({ queryKey: [...workspaceQueryKey, 'growth-programs'], queryFn: () => api.getTasks(), enabled: Boolean(account) && needsTasks });
+  const transactionsQuery = useQuery({ queryKey: [...workspaceQueryKey, 'ledger'], queryFn: () => api.getCreditTransactions(), enabled: Boolean(account) && needsTransactions });
+  const tenantsQuery = useQuery({ queryKey: [...workspaceQueryKey, 'admin-organizations'], queryFn: () => api.listTenants(), enabled: account?.role === 'ADMIN' && needsTenants });
 
   const sites = sitesQuery.data?.sites || EMPTY_SITES;
   const drafts = draftsQuery.data?.drafts || EMPTY_DRAFTS;
@@ -62,8 +65,8 @@ export function useTenantData(activeTenantId: string, activeNav: NavItem, onTena
   const transactions = transactionsQuery.data?.transactions || EMPTY_TRANSACTIONS;
   const allTenants = tenantsQuery.data?.tenants || EMPTY_TENANTS;
   const growthStatusQuery = useQuery({
-    queryKey: ['tenant', workspaceKey, 'growth-status', sites.map(({ id }) => id).join(',')],
-    queryFn: async () => Promise.all(sites.map(async (site) => ({ siteId: site.id, status: await api.getGrowthStatus(site.id) }))),
+    queryKey: [...workspaceQueryKey, 'growth-statuses'],
+    queryFn: () => api.getGrowthStatuses(),
     enabled: Boolean(account) && needsGrowthStatus && sites.length > 0,
     refetchInterval: (query) => {
       const rows = query.state.data as Array<{ siteId: string; status: GrowthStatus }> | undefined;
@@ -88,13 +91,14 @@ export function useTenantData(activeTenantId: string, activeNav: NavItem, onTena
   const loadError = activeQueries.find((query) => query.isError)?.error;
 
   const invalidateTenantResources = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['tenant'] });
-  }, [queryClient]);
+    await queryClient.invalidateQueries({ queryKey: userQueryKey });
+  }, [queryClient, authUserId]);
 
   const handleLogout = useCallback(async () => {
     await api.logout().catch(() => undefined);
-    queryClient.removeQueries({ queryKey: ['tenant'] });
-  }, [api, queryClient]);
+    queryClient.removeQueries({ queryKey: userQueryKey });
+    queryClient.removeQueries({ queryKey: rechargePricingQueryRoot(authUserId) });
+  }, [api, queryClient, authUserId]);
 
   const handleApprovePublish = async (draftId: string) => {
     await api.approvePublishDraft(draftId);
@@ -159,7 +163,7 @@ export function useTenantData(activeTenantId: string, activeNav: NavItem, onTena
 
   const handleAddSite = async (siteData: { name: string; domain: string; niche?: string; siteType?: SiteType; siteLanguage?: Language }) => {
     const result = await api.createSite({ ...siteData, siteType: siteData.siteType || 'WORDPRESS', siteLanguage: siteData.siteLanguage || 'zh-CN' });
-    await queryClient.invalidateQueries({ queryKey: ['tenant', workspaceKey, 'sites'] });
+    await queryClient.invalidateQueries({ queryKey: [...workspaceQueryKey, 'sites'] });
     return result.site;
   };
 
@@ -167,18 +171,18 @@ export function useTenantData(activeTenantId: string, activeNav: NavItem, onTena
 
   const handleTestSiteConnection = async (siteId: string) => {
     const result = await api.testSiteConnection(siteId);
-    await queryClient.invalidateQueries({ queryKey: ['tenant', workspaceKey, 'sites'] });
+    await queryClient.invalidateQueries({ queryKey: [...workspaceQueryKey, 'sites'] });
     return result.result;
   };
 
   const handleCreateTask = async (taskData: Partial<AutomatedTask>) => {
     await api.createTask(taskData);
-    await queryClient.invalidateQueries({ queryKey: ['tenant', workspaceKey, 'growth-programs'] });
+    await queryClient.invalidateQueries({ queryKey: [...workspaceQueryKey, 'growth-programs'] });
   };
 
   const handleToggleTask = async (taskId: string, currentStatus: 'ACTIVE' | 'PAUSED') => {
     await api.updateTask(taskId, { status: currentStatus === 'ACTIVE' ? 'PAUSED' : 'ACTIVE' });
-    await queryClient.invalidateQueries({ queryKey: ['tenant', workspaceKey, 'growth-programs'] });
+    await queryClient.invalidateQueries({ queryKey: [...workspaceQueryKey, 'growth-programs'] });
   };
 
   const handleRunTaskNow = async (taskId: string) => {

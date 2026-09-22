@@ -14,7 +14,7 @@ import { getSupabaseBrowserClient } from '../lib/supabase';
 import { decimalToMicros, microsToDecimal } from '../lib/fixedDecimal';
 
 const supabase = getSupabaseBrowserClient();
-import type { Draft, GrowthCandidate, GrowthInput, GrowthProgram, GrowthRun, GrowthStatus, JobRun, Ledger, Me, Site as ProductionSite, SiteSnapshotSummary } from '../types/api';
+import type { Draft, GrowthInput, GrowthProgram, GrowthRun, GrowthStatusRow, JobRun, Ledger, Me, Site as ProductionSite } from '../types/api';
 
 type ProductionTask = {
   id: string; siteId: string; inputs: GrowthInput[];
@@ -400,29 +400,14 @@ export class ApiService {
     await productionApi.delete(`/organizations/${organizationId}/sites/${siteId}/gsc`);
   }
 
-  public async listGrowthPrograms(siteId: string): Promise<GrowthProgram[]> {
-    const { organizationId } = await this.resolveWorkspace();
-    return this.listAll<GrowthProgram>(`/organizations/${organizationId}/sites/${siteId}/growth-programs`);
-  }
-
   public async getGrowthRun(runId: string): Promise<GrowthRun> {
     const { organizationId } = await this.resolveWorkspace();
     return (await productionApi.get<GrowthRun>(`/organizations/${organizationId}/growth-runs/${runId}`)).data;
   }
 
-  public async getGrowthStatus(siteId: string): Promise<GrowthStatus> {
+  public async getGrowthStatuses(): Promise<GrowthStatusRow[]> {
     const { organizationId } = await this.resolveWorkspace();
-    return (await productionApi.get<GrowthStatus>(`/organizations/${organizationId}/sites/${siteId}/growth-status`)).data;
-  }
-
-  public async getLatestSiteSnapshot(siteId: string): Promise<SiteSnapshotSummary> {
-    const { organizationId } = await this.resolveWorkspace();
-    return (await productionApi.get<SiteSnapshotSummary>(`/organizations/${organizationId}/sites/${siteId}/site-snapshots/latest`)).data;
-  }
-
-  public async getGrowthCandidates(runId: string): Promise<GrowthCandidate[]> {
-    const { organizationId } = await this.resolveWorkspace();
-    return this.listAll<GrowthCandidate>(`/organizations/${organizationId}/growth-runs/${runId}/candidates`);
+    return this.listAll<GrowthStatusRow>(`/organizations/${organizationId}/growth-statuses`);
   }
 
   public async createGrowthProgram(
@@ -476,8 +461,11 @@ export class ApiService {
 
   // Automated Tasks
   public async getTasks() {
-    const sites = await this.getSites();
-    const programs = (await Promise.all(sites.sites.map((site) => this.listGrowthPrograms(site.id)))).flat().filter((program) => program.mode === 'CONTINUOUS');
+    const { organizationId } = await this.resolveWorkspace();
+    const [sites, programs] = await Promise.all([
+      this.getSites(),
+      this.listAll<GrowthProgram>(`/organizations/${organizationId}/growth-programs?mode=CONTINUOUS`)
+    ]);
     return { tasks: programs.map((program) => toWorkspaceTask(program as ProductionTask, sites.sites)) };
   }
 

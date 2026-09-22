@@ -107,6 +107,7 @@ export type GrowthStatus = {
   measurement: { gscConnected: boolean; lastSyncedAt?: string; trafficClaimAllowed: boolean; targetUrl?: string };
   wordpressCompatibility: { mode: WordPressCompatibilityMode; profileId?: string; supportedActions: string[]; blockedActions: string[]; fallbackReason?: string; blockReasons: string[]; lastCheckedAt?: string; expiresAt?: string };
 };
+export type GrowthStatusRow = { siteId: string; status: GrowthStatus };
 export type Draft = {
   id: string;
   siteId: string;
