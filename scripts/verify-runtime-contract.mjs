@@ -79,6 +79,21 @@ if (!me.data?.profile?.id || !organization?.id || organization.role !== 'OWNER')
 }
 if (organization.creditBalanceMicros !== '0') throw new Error('New personal workspaces must start with zero credit');
 
+const pricing = await expectStatus(await api('/pricing', token), 200, 'read public customer pricing');
+if (!Array.isArray(pricing.data?.packages) || !Array.isArray(pricing.data?.actions) || !pricing.data?.customPricing) {
+  throw new Error(`Pricing endpoint returned an invalid contract: ${JSON.stringify(pricing)}`);
+}
+const organizations = await expectStatus(await api('/organizations', token), 200, 'list authorized organizations');
+if (!Array.isArray(organizations.data) || organizations.data[0]?.id !== organization.id) throw new Error('Organization list does not match the personal workspace');
+const members = await expectStatus(await api(`/organizations/${organization.id}/members`, token), 200, 'list organization members');
+if (!Array.isArray(members.data) || members.data[0]?.profileId !== me.data.profile.id) throw new Error('Organization owner is missing from members endpoint');
+const protectedOwner = await expectStatus(await api(`/organizations/${organization.id}/members`, token, {
+  method: 'POST',
+  headers: { 'idempotency-key': randomUUID() },
+  body: JSON.stringify({ profileId: me.data.profile.id, role: 'ADMIN' })
+}), 409, 'protect organization owner role');
+if (protectedOwner.error?.code !== 'RESOURCE_CONFLICT') throw new Error('Organization owner role could be modified through member management');
+
 const foreignOrganizationId = randomUUID();
 const forbidden = await expectStatus(await api(`/organizations/${foreignOrganizationId}/sites`, token), 403, 'cross-organization request');
 if (forbidden.error?.code !== 'FORBIDDEN') throw new Error('Cross-organization request was not rejected by the authorization boundary');
@@ -93,11 +108,107 @@ const createSite = () => api(`/organizations/${organization.id}/sites`, token, {
 const created = await expectStatus(await createSite(), 201, 'create site');
 const replayed = await expectStatus(await createSite(), 201, 'replay idempotent site creation');
 if (!created.data?.site?.id || replayed.data?.site?.id !== created.data.site.id) throw new Error('Idempotent write did not replay the committed response');
+const siteId = created.data.site.id;
+
+const missingIdempotency = await expectStatus(await api(`/organizations/${organization.id}/sites`, token, {
+  method: 'POST',
+  body: siteBody
+}), 400, 'reject write without idempotency key');
+if (missingIdempotency.error?.code !== 'VALIDATION_FAILED') throw new Error('Missing idempotency key did not return a validation error');
+
+const unknownSiteField = await expectStatus(await api(`/organizations/${organization.id}/sites`, token, {
+  method: 'POST',
+  headers: { 'idempotency-key': randomUUID() },
+  body: JSON.stringify({ name: 'Invalid Site', domain: 'invalid.example.com', language: 'en-US', unexpected: true })
+}), 400, 'reject unknown site input fields');
+if (unknownSiteField.error?.code !== 'VALIDATION_FAILED') throw new Error('Unknown site input was not rejected');
+
+const invalidPagination = await expectStatus(await api(`/organizations/${organization.id}/sites?limit=1.5`, token), 400, 'reject non-integer pagination');
+if (invalidPagination.error?.code !== 'VALIDATION_FAILED') throw new Error('Invalid pagination did not return a validation error');
+
+const sites = await expectStatus(await api(`/organizations/${organization.id}/sites?limit=100`, token), 200, 'list sites');
+if (!Array.isArray(sites.data) || sites.data[0]?.id !== siteId) throw new Error('Created site is missing from site listing');
+
+const updateKey = randomUUID();
+const updateSite = () => api(`/organizations/${organization.id}/sites/${siteId}`, token, {
+  method: 'PUT',
+  headers: { 'idempotency-key': updateKey },
+  body: JSON.stringify({ name: 'Runtime Contract Site Updated' })
+});
+const updated = await expectStatus(await updateSite(), 200, 'update site');
+const updateReplay = await expectStatus(await updateSite(), 200, 'replay idempotent site update');
+if (updated.data?.site?.name !== 'Runtime Contract Site Updated' || updateReplay.data?.site?.id !== siteId) throw new Error('Site update contract or replay is invalid');
+
+const compatibility = await expectStatus(await api(`/organizations/${organization.id}/sites/${siteId}/wordpress/compatibility`, token), 200, 'read WordPress compatibility state');
+if (compatibility.data?.mode !== 'RECHECK_REQUIRED') throw new Error('New site must require a WordPress compatibility check');
+const capabilities = await expectStatus(await api(`/organizations/${organization.id}/sites/${siteId}/wordpress/action-capabilities`, token), 200, 'read WordPress action capabilities');
+if (capabilities.data?.mode !== 'RECHECK_REQUIRED' || !Array.isArray(capabilities.data?.blockReasons)) throw new Error('WordPress capability fallback is invalid');
+
+await expectStatus(await api(`/organizations/${organization.id}/sites/${siteId}/test-connection`, token, {
+  method: 'POST', headers: { 'idempotency-key': randomUUID() }, body: '{}'
+}), 400, 'fail closed when WordPress credentials are absent');
+await expectStatus(await api(`/organizations/${organization.id}/sites/${siteId}/wordpress/recheck`, token, {
+  method: 'POST', headers: { 'idempotency-key': randomUUID() }, body: '{}'
+}), 400, 'fail closed when WordPress compatibility credentials are absent');
+
+const end = new Date(Date.now() - 3 * 86_400_000);
+const start = new Date(end.getTime() - 27 * 86_400_000);
+const date = (value) => value.toISOString().slice(0, 10);
+await expectStatus(await api(`/organizations/${organization.id}/sites/${siteId}/gsc/sync`, token, {
+  method: 'POST',
+  headers: { 'idempotency-key': randomUUID() },
+  body: JSON.stringify({ startDate: date(start), endDate: date(end) })
+}), 409, 'fail closed when GSC is not connected');
+await expectStatus(await api(`/organizations/${organization.id}/sites/${randomUUID()}/gsc`, token, {
+  method: 'DELETE', headers: { 'idempotency-key': randomUUID() }
+}), 404, 'reject GSC disconnect for an unknown site');
+
+const growthInputValidation = await expectStatus(await api(`/organizations/${organization.id}/sites/${siteId}/growth-programs`, token, {
+  method: 'POST',
+  headers: { 'idempotency-key': randomUUID() },
+  body: JSON.stringify({ mode: 'ONCE', inputs: [{ type: 'KEYWORD', value: 'runtime seo', unexpected: true }] })
+}), 400, 'reject unknown growth input fields');
+if (growthInputValidation.error?.code !== 'VALIDATION_FAILED') throw new Error('Unknown growth input was not rejected');
+
+const readContracts = [
+  [`/organizations/${organization.id}/sites/${siteId}/growth-programs`, 'site growth programs'],
+  [`/organizations/${organization.id}/growth-programs`, 'organization growth programs'],
+  [`/organizations/${organization.id}/growth-statuses`, 'growth status collection'],
+  [`/organizations/${organization.id}/opportunities`, 'opportunities'],
+  [`/organizations/${organization.id}/jobs`, 'jobs'],
+  [`/organizations/${organization.id}/drafts`, 'drafts'],
+  [`/organizations/${organization.id}/audit-events`, 'audit events'],
+  [`/organizations/${organization.id}/payment-intents`, 'payment intents']
+];
+for (const [path, label] of readContracts) {
+  const result = await expectStatus(await api(`${path}?limit=100`, token), 200, `read ${label}`);
+  if (!Array.isArray(result.data)) throw new Error(`${label} endpoint did not return a collection`);
+}
+const growthStatus = await expectStatus(await api(`/organizations/${organization.id}/sites/${siteId}/growth-status`, token), 200, 'read site growth status');
+if (!Array.isArray(growthStatus.data?.stages) || !growthStatus.data?.wordpressCompatibility) throw new Error('Site growth status contract is invalid');
+const metrics = await expectStatus(await api(`/organizations/${organization.id}/metrics`, token), 200, 'read organization metrics');
+if (metrics.data?.source !== 'POSTGRES' || metrics.data?.sites !== 1) throw new Error('Organization metrics contract is invalid');
+const ledger = await expectStatus(await api(`/organizations/${organization.id}/ledger?limit=100`, token), 200, 'read immutable ledger');
+if (ledger.data?.balanceMicros !== '0' || ledger.data?.availableMicros !== '0' || !Array.isArray(ledger.data?.entries)) throw new Error('Ledger contract is invalid');
+
+await expectStatus(await api(`/organizations/${organization.id}/sites/${siteId}/site-snapshots/latest`, token), 404, 'missing site snapshot');
+await expectStatus(await api(`/organizations/${organization.id}/growth-programs/${randomUUID()}`, token), 404, 'missing growth program');
+await expectStatus(await api(`/organizations/${organization.id}/growth-runs/${randomUUID()}`, token), 404, 'missing growth run');
+await expectStatus(await api(`/organizations/${organization.id}/jobs/${randomUUID()}`, token), 404, 'missing job');
+await expectStatus(await api('/admin/provider-status', token), 403, 'non-admin provider status boundary');
 
 const exported = await expectStatus(await api('/me/export', token), 200, 'export personal data');
 if (exported.data?.schemaVersion !== 'personal-data-export-1' || exported.data?.profile?.email !== email) {
   throw new Error(`Personal data export returned an invalid contract: ${JSON.stringify(exported)}`);
 }
+
+const deleteSiteKey = randomUUID();
+const deleteSite = () => api(`/organizations/${organization.id}/sites/${siteId}`, token, {
+  method: 'DELETE', headers: { 'idempotency-key': deleteSiteKey }
+});
+const deletedSite = await expectStatus(await deleteSite(), 200, 'delete empty site');
+const deleteReplay = await expectStatus(await deleteSite(), 200, 'replay idempotent site deletion');
+if (deletedSite.data?.deletedId !== siteId || deleteReplay.data?.deletedId !== siteId) throw new Error('Site deletion contract or replay is invalid');
 
 const deletionKey = randomUUID();
 const deletion = await expectStatus(await api('/me', token, {
@@ -112,4 +223,4 @@ if (!deletion.data?.deletionRequested || !deletion.data?.sessionsRevoked || !del
 const revoked = await expectStatus(await api('/me/export', token), 401, 'revoked sensitive session');
 if (revoked.error?.code !== 'UNAUTHORIZED') throw new Error('Revoked session was accepted by a sensitive endpoint');
 
-console.log('Runtime contract passed: Auth, workspace bootstrap, RLS isolation, API errors, idempotent writes, export and account deletion');
+console.log('Runtime contract passed: Auth, workspace bootstrap, owner protection, RLS isolation, strict validation, pagination, site lifecycle, WordPress/GSC fail-closed behavior, growth reads, metrics, ledger, admin boundary, idempotency, export and account deletion');

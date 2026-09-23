@@ -1,5 +1,5 @@
 import { createClient, type User } from '@supabase/supabase-js';
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Request, Response as ExpressResponse } from 'express';
 import { ForbiddenError, UnauthorizedError } from '../domain/errors';
 import { env } from './env';
 import { withRequestScope } from './prisma';
@@ -15,12 +15,19 @@ declare global {
 
 let authClient: ReturnType<typeof createClient> | undefined;
 
+const authFetch = (input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> => {
+  const timeout = AbortSignal.timeout(10_000);
+  const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+  return fetch(input, { ...init, signal });
+};
+
 const getAuthClient = () => {
   if (!env.supabaseUrl || !env.supabasePublishableKey) {
     throw new Error('Supabase Auth is not configured');
   }
   authClient ??= createClient(env.supabaseUrl, env.supabasePublishableKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { fetch: authFetch }
   });
   return authClient;
 };
@@ -41,7 +48,7 @@ export const authenticate = async (request: Request): Promise<User> => {
   return data.user;
 };
 
-export const requireAuth = (request: Request, _response: Response, next: NextFunction): void => {
+export const requireAuth = (request: Request, _response: ExpressResponse, next: NextFunction): void => {
   void authenticate(request).then(() => next(), next);
 };
 

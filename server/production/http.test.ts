@@ -3,11 +3,15 @@ import { RequestTooLargeError, ValidationError } from '../domain/errors';
 import { cursorPage, normalizeHttpError } from './http';
 
 describe('cursor pagination boundary', () => {
-  it('bounds page size and accepts only UUID cursors', () => {
+  it('accepts bounded integer page sizes and UUID cursors', () => {
     const cursor = '10000000-0000-4000-8000-000000000001';
-    expect(cursorPage(cursor, 500)).toEqual({ cursor, take: 100 });
-    expect(cursorPage(undefined, 0)).toEqual({ cursor: undefined, take: 50 });
-    expect(cursorPage(undefined, -10)).toEqual({ cursor: undefined, take: 1 });
+    expect(cursorPage(cursor, '100')).toEqual({ cursor, take: 100 });
+    expect(cursorPage(undefined, undefined)).toEqual({ cursor: undefined, take: 50 });
+    expect(cursorPage(undefined, '')).toEqual({ cursor: undefined, take: 50 });
+  });
+
+  it.each([0, -10, 101, 1.5, '1.5', 'ten', ['10']])('rejects malformed page sizes: %s', (limit) => {
+    expect(() => cursorPage(undefined, limit)).toThrow('分页数量必须是 1 到 100 的整数');
   });
 
   it.each(['not-a-uuid', '1 OR 1=1', ['uuid']])('rejects malformed cursors: %s', (cursor) => {

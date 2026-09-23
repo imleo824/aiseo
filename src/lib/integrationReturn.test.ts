@@ -18,7 +18,11 @@ describe('integration return handling', () => {
   it('recognizes cancellation and GSC synchronization returns', () => {
     expect(parseIntegrationReturn('?wordpress=cancelled')).toEqual({ integration: 'WORDPRESS', status: 'CANCELLED' });
     expect(parseIntegrationReturn('?wordpress=failed')).toEqual({ integration: 'WORDPRESS', status: 'FAILED' });
-    expect(parseIntegrationReturn('?gsc=syncing')).toEqual({ integration: 'GSC', status: 'SYNCING' });
+    expect(parseIntegrationReturn(`?wordpress=failed&siteId=${siteId}&organizationId=${organizationId}`)).toEqual({ integration: 'WORDPRESS', status: 'FAILED', siteId, organizationId });
+    expect(parseIntegrationReturn(`?gsc=syncing&siteId=${siteId}&organizationId=${organizationId}`)).toEqual({ integration: 'GSC', status: 'SYNCING', siteId, organizationId });
+    expect(parseIntegrationReturn(`?gsc=failed&siteId=${siteId}&organizationId=${organizationId}`)).toEqual({ integration: 'GSC', status: 'FAILED', siteId, organizationId });
+    expect(parseIntegrationReturn('?gsc=syncing')).toBeNull();
+    expect(parseIntegrationReturn('?gsc=failed')).toEqual({ integration: 'GSC', status: 'FAILED' });
   });
 
   it('removes integration parameters while preserving navigation and hash', () => {

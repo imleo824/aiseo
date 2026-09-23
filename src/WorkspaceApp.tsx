@@ -100,10 +100,18 @@ export default function WorkspaceApp({ authUserId }: { authUserId: string }) {
     window.history.replaceState(window.history.state, '', sanitizedIntegrationReturnUrl(window.location.href));
 
     if (integrationReturn.integration === 'GSC') {
+      if (integrationReturn.organizationId) setActiveTenantId(integrationReturn.organizationId);
+      if (integrationReturn.status === 'FAILED') {
+        setIntegrationNotice({ kind: 'error', message: 'Google Search Console 授权未能完成，请确认所选账号拥有当前站点的已验证属性后重试。' });
+        navigateTo('SITE_MANAGEMENT', true);
+        return;
+      }
       setIntegrationNotice({ kind: 'success', message: 'Google Search Console 已授权，首轮数据正在后台同步。' });
       void queryClient.invalidateQueries({ queryKey: tenantQueryRoot(authUserId) });
+      navigateTo('SITE_MANAGEMENT', true);
       return;
     }
+    if (integrationReturn.organizationId) setActiveTenantId(integrationReturn.organizationId);
     if (integrationReturn.status === 'FAILED') {
       setIntegrationNotice({ kind: 'error', message: 'WordPress 授权未能完成，请确认站点使用 HTTPS 后重新授权。' });
       navigateTo('SITE_MANAGEMENT', true);
@@ -302,6 +310,7 @@ export default function WorkspaceApp({ authUserId }: { authUserId: string }) {
 
           {activeNav === 'SITE_MANAGEMENT' && (
             <ProSiteManagementTab
+              organizationId={activeTenantId}
               sites={sites}
               onUpdateSite={actions.handleUpdateSiteById}
               onDeleteSite={actions.handleDeleteSite}

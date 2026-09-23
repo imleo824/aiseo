@@ -18,6 +18,7 @@ import {
 import { useDialogInteraction } from '../hooks/useDialogInteraction';
 
 interface ProSiteManagementTabProps {
+  organizationId: string;
   sites: WordPressSite[];
   onUpdateSite: (siteId: string, updated: Partial<WordPressSite>) => Promise<unknown>;
   onDeleteSite?: (siteId: string) => Promise<void>;
@@ -28,6 +29,7 @@ interface ProSiteManagementTabProps {
 }
 
 export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
+  organizationId,
   sites = [],
   onUpdateSite,
   onDeleteSite,
@@ -479,7 +481,7 @@ export const ProSiteManagementTab: React.FC<ProSiteManagementTabProps> = ({
       )}
 
       {gscSite && (
-        <GscConnectionModal site={gscSite} onClose={() => setGscSite(null)} onChanged={onRefreshSites || (async () => undefined)} />
+        <GscConnectionModal organizationId={organizationId} site={gscSite} onClose={() => setGscSite(null)} onChanged={onRefreshSites || (async () => undefined)} />
       )}
 
     </div>

@@ -5,10 +5,11 @@ import type { WordPressSite } from '../types/seo';
 import { useDialogInteraction } from '../hooks/useDialogInteraction';
 
 export const GscConnectionModal: React.FC<{
+  organizationId: string;
   site: WordPressSite;
   onClose: () => void;
   onChanged: () => Promise<void>;
-}> = ({ site, onClose, onChanged }) => {
+}> = ({ organizationId, site, onClose, onChanged }) => {
   const [loading, setLoading] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -24,7 +25,7 @@ export const GscConnectionModal: React.FC<{
     setLoading(true);
     setMessage(null);
     try {
-      const { authorizationUrl } = await createApiService().authorizeGsc(site.id);
+      const { authorizationUrl } = await createApiService(organizationId).authorizeGsc(site.id);
       window.location.assign(authorizationUrl);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'GSC 授权启动失败');
@@ -36,7 +37,7 @@ export const GscConnectionModal: React.FC<{
     setLoading(true);
     setMessage(null);
     try {
-      await createApiService().syncGsc(site.id);
+      await createApiService(organizationId).syncGsc(site.id);
       setMessage('数据同步已开始，完成后会自动更新。');
       await onChanged();
     } catch (error) {
@@ -54,7 +55,7 @@ export const GscConnectionModal: React.FC<{
     }
     setLoading(true);
     try {
-      await createApiService().disconnectGsc(site.id);
+      await createApiService(organizationId).disconnectGsc(site.id);
       await onChanged();
       onClose();
     } catch (error) {

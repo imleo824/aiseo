@@ -39,7 +39,7 @@ const paymentPackagePricingSchema = z.object({
   creditMicros: positiveAccountingMicrosSchema,
   active: z.boolean(),
   sortOrder: z.number().int().min(0).max(10_000)
-});
+}).strict();
 
 const actionPricingSchema = z.object({
   action: z.string().regex(/^[A-Z][A-Z0-9_]{1,79}$/),
@@ -47,14 +47,14 @@ const actionPricingSchema = z.object({
   description: z.string().trim().min(1).max(500),
   creditMicros: positiveAccountingMicrosSchema,
   active: z.boolean()
-});
+}).strict();
 
 export const customPaymentPricingSchema = z.object({
   active: z.boolean(),
   minAmountMicros: packageBaseMicrosSchema,
   maxAmountMicros: packageBaseMicrosSchema,
   creditsPerUsdtMicros: positiveAccountingMicrosSchema
-}).superRefine((value, context) => {
+}).strict().superRefine((value, context) => {
   if (BigInt(value.minAmountMicros) > BigInt(value.maxAmountMicros)) {
     context.addIssue({ code: 'custom', path: ['maxAmountMicros'], message: '自定义充值上限不能小于下限' });
   }
@@ -68,7 +68,7 @@ export const pricingConfigurationSchema = z.object({
   packages: z.array(paymentPackagePricingSchema).min(1, '至少保留一个充值套餐').max(50),
   actions: z.array(actionPricingSchema).min(1, '至少保留一个计价动作').max(100),
   customPricing: customPaymentPricingSchema.default(DEFAULT_CUSTOM_PAYMENT_PRICING)
-}).superRefine((value, context) => {
+}).strict().superRefine((value, context) => {
   const packageIds = new Set<string>();
   for (const item of value.packages) {
     if (packageIds.has(item.id)) context.addIssue({ code: 'custom', path: ['packages'], message: `套餐 ID 重复：${item.id}` });

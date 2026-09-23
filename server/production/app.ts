@@ -8,7 +8,7 @@ import { env } from './env';
 import { errorHandler } from './http';
 import { getQueueConnection } from './queue';
 import { prisma } from './prisma';
-import { EXPECTED_MIGRATION_VERSION, inspectDatabaseSecurity } from './databaseSecurity';
+import { inspectDatabaseSecurity } from './databaseSecurity';
 import { serializePublicRuntimeConfig } from './publicRuntimeConfig';
 
 export const buildContentSecurityPolicy = (input: {
@@ -75,34 +75,33 @@ export const createApp = () => {
   app.get('/api/health/live', (_request, response) => {
     response.json({ data: { status: 'UP', uptimeSeconds: Math.floor(process.uptime()), timestamp: new Date().toISOString() } });
   });
+  app.use('/api/health/ready', createRateLimiter(60_000, 60, 'readiness'));
   app.get('/api/health/ready', async (request, response) => {
-    const checks: Record<string, { ok: boolean; detail?: string }> = {};
+    const checks: Record<string, { ok: boolean }> = {};
     try {
       const status = await inspectDatabaseSecurity(prisma);
       const secure = status.role === 'app_backend' && !status.bypassRls && status.ownedBusinessTables === 0;
-      checks.database = { ok: secure, detail: secure ? status.role : `role=${status.role}, bypassRls=${status.bypassRls}, ownedTables=${status.ownedBusinessTables}` };
-      checks.migration = {
-        ok: status.requiredMigrationPresent,
-        detail: status.requiredMigrationPresent
-          ? `required=${EXPECTED_MIGRATION_VERSION}, latest=${status.migrationVersion || 'missing'}`
-          : `required ${EXPECTED_MIGRATION_VERSION} is missing; latest=${status.migrationVersion || 'missing'}`
-      };
+      checks.database = { ok: secure };
+      checks.migration = { ok: status.requiredMigrationPresent };
     } catch (error) {
-      checks.database = { ok: false, detail: error instanceof Error ? error.message : String(error) };
-      checks.migration = { ok: false, detail: 'database security inspection failed' };
+      checks.database = { ok: false };
+      checks.migration = { ok: false };
+      logger.warn('HEALTH_DATABASE', 'Database readiness check failed', { traceId: request.traceId, data: error });
     }
     try {
       const pong = await getQueueConnection().ping();
       checks.redis = { ok: pong === 'PONG' };
     } catch (error) {
-      checks.redis = { ok: false, detail: error instanceof Error ? error.message : String(error) };
+      checks.redis = { ok: false };
+      logger.warn('HEALTH_REDIS', 'Redis readiness check failed', { traceId: request.traceId, data: error });
     }
     try {
       const heartbeat = await prisma.workerHeartbeat.findFirst({ orderBy: { heartbeatAt: 'desc' } });
       const age = heartbeat ? Date.now() - heartbeat.heartbeatAt.getTime() : Number.POSITIVE_INFINITY;
-      checks.worker = { ok: age < 60_000, detail: heartbeat ? `${Math.floor(age / 1000)}s ago` : 'missing' };
+      checks.worker = { ok: age < 60_000 };
     } catch (error) {
-      checks.worker = { ok: false, detail: error instanceof Error ? error.message : String(error) };
+      checks.worker = { ok: false };
+      logger.warn('HEALTH_WORKER', 'Worker readiness check failed', { traceId: request.traceId, data: error });
     }
     const ready = Object.values(checks).every(({ ok }) => ok);
     response.status(ready ? 200 : 503).json({ data: { status: ready ? 'READY' : 'NOT_READY', checks, traceId: request.traceId } });

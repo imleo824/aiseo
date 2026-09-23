@@ -15,6 +15,23 @@ describe('outbound WordPress network safety', () => {
     await expect(resolvePublicHttpsOrigin('example.com')).rejects.toThrow('私有网络');
   });
 
+  it.each([
+    '100.64.0.1',
+    '192.0.2.10',
+    '198.18.0.1',
+    '203.0.113.8',
+    '224.0.0.1',
+    '::ffff:127.0.0.1',
+    '::ffff:7f00:1',
+    'febf::1',
+    'ff02::1',
+    '2001:db8::1'
+  ])('rejects non-public and special-purpose DNS answers: %s', async (address) => {
+    lookup.mockResolvedValue([{ address, family: address.includes(':') ? 6 : 4 }]);
+    const { resolvePublicHttpsOrigin } = await import('./networkSafety');
+    await expect(resolvePublicHttpsOrigin('example.com')).rejects.toThrow('私有网络');
+  });
+
   it('requires HTTPS and accepts a public hostname', async () => {
     lookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
     const { resolvePublicHttpsOrigin } = await import('./networkSafety');

@@ -25,25 +25,41 @@ export const requireIdempotencyKey = (value?: string): string => {
   return key.toLowerCase();
 };
 
+export async function findIdempotentReplay<T extends Record<string, unknown>>(input: {
+  tx: TransactionClient;
+  organizationId?: string;
+  profileId: string;
+  key: string;
+  body: unknown;
+}): Promise<{ statusCode: number; data: T; replayed: true } | null> {
+  const hash = idempotencyRequestHash(input.body);
+  const existing = await input.tx.idempotencyKey.findFirst({
+    where: { organizationId: input.organizationId ?? null, profileId: input.profileId, key: input.key }
+  });
+  if (!existing) return null;
+  if (existing.expiresAt && existing.expiresAt <= new Date()) {
+    await input.tx.idempotencyKey.delete({ where: { id: existing.id } });
+    return null;
+  }
+  if (existing.requestHash !== hash) throw new ConflictError('Idempotency-Key 已用于不同请求');
+  if (existing.response && existing.statusCode) {
+    return { statusCode: existing.statusCode, data: existing.response as T, replayed: true };
+  }
+  throw new ConflictError('相同请求正在处理');
+}
+
 export async function executeIdempotent<T extends Record<string, unknown>>(input: {
   tx: TransactionClient;
   organizationId?: string;
   profileId: string;
   key: string;
   body: unknown;
+  expiresInMs?: number;
   execute: () => Promise<{ statusCode: number; data: T }>;
 }): Promise<{ statusCode: number; data: T; replayed: boolean }> {
+  const replay = await findIdempotentReplay<T>(input);
+  if (replay) return replay;
   const hash = idempotencyRequestHash(input.body);
-  const existing = await input.tx.idempotencyKey.findFirst({
-    where: { organizationId: input.organizationId ?? null, profileId: input.profileId, key: input.key }
-  });
-  if (existing) {
-    if (existing.requestHash !== hash) throw new ConflictError('Idempotency-Key 已用于不同请求');
-    if (existing.response && existing.statusCode) {
-      return { statusCode: existing.statusCode, data: existing.response as T, replayed: true };
-    }
-    throw new ConflictError('相同请求正在处理');
-  }
   const outcome = await input.execute();
   const persistedResponse = canonicalJsonValue(outcome.data) as Prisma.InputJsonValue;
   await input.tx.idempotencyKey.create({
@@ -54,7 +70,7 @@ export async function executeIdempotent<T extends Record<string, unknown>>(input
       requestHash: hash,
       response: persistedResponse,
       statusCode: outcome.statusCode,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+      expiresAt: new Date(Date.now() + (input.expiresInMs ?? 24 * 60 * 60 * 1000))
     }
   });
   return { ...outcome, replayed: false };

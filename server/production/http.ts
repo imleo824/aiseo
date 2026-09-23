@@ -59,7 +59,18 @@ export const errorHandler = (error: unknown, request: Request, response: Respons
 };
 
 export const cursorPage = (cursor: unknown, limit: unknown): { cursor?: string; take: number } => {
-  const take = Math.min(Math.max(Number(limit) || 50, 1), 100);
+  let take = 50;
+  if (limit !== undefined && limit !== '') {
+    const normalized = typeof limit === 'number'
+      ? limit
+      : typeof limit === 'string' && /^\d+$/.test(limit)
+        ? Number(limit)
+        : Number.NaN;
+    if (!Number.isSafeInteger(normalized) || normalized < 1 || normalized > 100) {
+      throw new ValidationError('分页数量必须是 1 到 100 的整数');
+    }
+    take = normalized;
+  }
   if (cursor !== undefined && (typeof cursor !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cursor))) {
     throw new ValidationError('分页游标无效');
   }
