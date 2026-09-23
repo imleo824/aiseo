@@ -7,7 +7,7 @@ set local search_path = public, extensions;
 -- can continue to execute while SET ROLE is exercising the real RLS boundary.
 grant usage on schema extensions to app_backend, app_worker;
 grant execute on all functions in schema extensions to app_backend, app_worker;
-select plan(95);
+select plan(98);
 
 select is(
   (select count(*) from pg_class
@@ -56,6 +56,7 @@ select ok(has_function_privilege('app_backend', 'private.consume_oauth_state(tex
 select ok(not has_table_privilege('app_backend', 'public.idempotency_keys', 'delete'), 'Web cannot delete arbitrary idempotency records');
 select ok(not has_table_privilege('app_backend', 'public.job_runs', 'update'), 'Web cannot forge job execution status');
 select ok(not has_table_privilege('app_backend', 'public.payment_intents', 'delete'), 'Web cannot delete payment records');
+select ok(has_table_privilege('app_backend', 'public.sites', 'delete'), 'Web may delete an empty site through the owner-only API boundary');
 select ok(not has_table_privilege('app_worker', 'public.profiles', 'update'), 'Worker cannot mutate profile authorization state');
 select ok(not has_table_privilege('app_worker', 'public.payment_intents', 'insert'), 'Worker cannot manufacture payment intents');
 select ok(not has_table_privilege('anon', 'public.growth_programs', 'select,insert,update,delete'), 'anon cannot access growth programs');
@@ -239,6 +240,12 @@ select is((select count(*) from public.terms_acceptances where profile_id = '000
 select is((select count(*) from public.notifications), 1::bigint, 'user cannot read another profile private notification in the same organization');
 insert into public.sites (id, organization_id, domain, name, updated_at)
 values ('00000000-0000-0000-0000-0000000000a3', (select organization_id from rls_context where label = 'a'), 'org-a.example.test', 'Org A site', now());
+insert into public.sites (id, organization_id, domain, name, updated_at)
+values ('00000000-0000-0000-0000-0000000000a0', (select organization_id from rls_context where label = 'a'), 'delete-org-a.example.test', 'Disposable Org A site', now());
+with deleted as (
+  delete from public.sites where id = '00000000-0000-0000-0000-0000000000a0' returning id
+)
+select is((select count(*) from deleted), 1::bigint, 'owner database context can delete its own empty site');
 insert into public.knowledge_content_blobs (id, organization_id, checksum, content)
 values ('00000000-0000-0000-0000-0000000000a9', (select organization_id from rls_context where label = 'a'), repeat('c', 64), 'Verified organization-scoped source bytes');
 insert into public.knowledge_sources (
@@ -409,12 +416,15 @@ select throws_like(
 );
 with changed as (update public.sites set name = 'viewer changed' returning id)
 insert into rls_results select 'viewer_site_update', count(*) from changed;
+with changed as (delete from public.sites returning id)
+insert into rls_results select 'viewer_site_delete', count(*) from changed;
 with changed as (update public.growth_programs set status = 'PAUSED' returning id)
 insert into rls_results select 'viewer_program_update', count(*) from changed;
 with changed as (update public.growth_runs set status = 'CANCELLED' returning id)
 insert into rls_results select 'viewer_run_update', count(*) from changed;
 reset role;
 select is((select affected from rls_results where label = 'viewer_site_update'), 0::bigint, 'viewer cannot UPDATE organization rows');
+select is((select affected from rls_results where label = 'viewer_site_delete'), 0::bigint, 'viewer cannot DELETE organization rows');
 select is((select affected from rls_results where label = 'viewer_program_update'), 0::bigint, 'viewer cannot UPDATE growth programs');
 select is((select affected from rls_results where label = 'viewer_run_update'), 0::bigint, 'viewer cannot UPDATE growth runs');
 
