@@ -14,7 +14,7 @@ import type {
 import type { GrowthInput, GrowthRun, GrowthStatus } from '../types/api';
 import { ApiError } from '../lib/api';
 import { requiresWorkspaceResource } from '../navigation';
-import { rechargePricingQueryRoot, tenantQueryRoot, tenantWorkspaceQueryRoot } from '../lib/queryKeys';
+import { rechargePricingQueryRoot, tenantAccountQueryKey, tenantQueryRoot, tenantWorkspaceQueryRoot } from '../lib/queryKeys';
 
 const EMPTY_SITES: WordPressSite[] = [];
 const EMPTY_TASKS: AutomatedTask[] = [];
@@ -25,10 +25,8 @@ const EMPTY_TENANTS: TenantAccount[] = [];
 
 export function useTenantData(authUserId: string, activeTenantId: string, activeNav: NavItem, onTenantChange?: (newTenantId: string) => void) {
   const queryClient = useQueryClient();
-  const api = useMemo(() => createApiService(activeTenantId), [activeTenantId]);
-  const workspaceKey = activeTenantId || 'primary';
+  const identityApi = useMemo(() => createApiService(), [authUserId]);
   const userQueryKey = tenantQueryRoot(authUserId);
-  const workspaceQueryKey = tenantWorkspaceQueryRoot(authUserId, workspaceKey);
   const needsDrafts = requiresWorkspaceResource(activeNav, 'drafts');
   const needsTasks = requiresWorkspaceResource(activeNav, 'tasks');
   const needsTransactions = requiresWorkspaceResource(activeNav, 'transactions');
@@ -36,13 +34,16 @@ export function useTenantData(authUserId: string, activeTenantId: string, active
   const needsGrowthStatus = requiresWorkspaceResource(activeNav, 'growthStatus');
 
   const accountQuery = useQuery({
-    queryKey: [...workspaceQueryKey, 'account'],
-    queryFn: async () => api.getMe().catch((error: unknown) => {
+    queryKey: tenantAccountQueryKey(authUserId),
+    queryFn: async () => identityApi.getMe().catch((error: unknown) => {
       if (error instanceof ApiError && error.status === 401) return null;
       throw error;
     })
   });
   const account = accountQuery.data?.account || null;
+  const resolvedTenantId = activeTenantId || accountQuery.data?.tenantId || '';
+  const api = useMemo(() => createApiService(resolvedTenantId), [resolvedTenantId]);
+  const workspaceQueryKey = tenantWorkspaceQueryRoot(authUserId, resolvedTenantId);
 
   useEffect(() => {
     if (!activeTenantId && accountQuery.data?.tenantId) onTenantChange?.(accountQuery.data.tenantId);
@@ -87,6 +88,7 @@ export function useTenantData(authUserId: string, activeTenantId: string, active
     ...(needsGrowthStatus && sites.length > 0 ? [growthStatusQuery] : [])
   ];
   const loading = accountQuery.isLoading || (Boolean(account) && activeQueries.some((query) => query.isLoading));
+  const initializing = accountQuery.isLoading || (Boolean(account) && sitesQuery.isLoading);
   const refreshing = !loading && activeQueries.some((query) => query.isFetching);
   const loadError = activeQueries.find((query) => query.isError)?.error;
 
@@ -192,7 +194,7 @@ export function useTenantData(authUserId: string, activeTenantId: string, active
   };
 
   return {
-    sites, tasks, drafts, account, transactions, allTenants, growthStatuses, loading, refreshing, loadError,
+    sites, tasks, drafts, account, transactions, allTenants, growthStatuses, loading, initializing, refreshing, loadError,
     actions: {
       loadTenantData: invalidateTenantResources,
       handleLogout,

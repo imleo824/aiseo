@@ -120,6 +120,7 @@ const toWorkspaceTask = (task: ProductionTask, sites: WordPressSite[]): Automate
 export class ApiService {
   private organizationId = '';
   private me?: Me;
+  private mePromise?: Promise<Me>;
 
   constructor(tenantId?: string) { this.organizationId = tenantId || ''; }
 
@@ -140,7 +141,7 @@ export class ApiService {
   }
 
   private async readLedger(): Promise<Ledger> {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     const entries: Ledger['entries'] = [];
     const seenCursors = new Set<string>();
     let cursor: string | undefined;
@@ -162,20 +163,40 @@ export class ApiService {
     return { ...balances, entries };
   }
 
-  private async resolveWorkspace(): Promise<{ me: Me; organizationId: string }> {
-    if (!this.me) {
-      this.me = (await productionApi.get<Me>('/me')).data;
+  private async readMe(forceRefresh = false): Promise<Me> {
+    if (forceRefresh && !this.mePromise) this.me = undefined;
+    if (this.me) return this.me;
+    this.mePromise ||= productionApi.get<Me>('/me').then(({ data }) => data);
+    try {
+      this.me = await this.mePromise;
+      return this.me;
+    } catch (error) {
+      throw error;
+    } finally {
+      this.mePromise = undefined;
     }
+  }
+
+  private async resolveOrganizationId(): Promise<string> {
+    if (this.organizationId) return this.organizationId;
+    const me = await this.readMe();
+    this.organizationId = me.organizations[0]?.id || '';
+    if (!this.organizationId) throw new Error('个人工作区尚未完成初始化');
+    return this.organizationId;
+  }
+
+  private async resolveWorkspace(forceIdentityRefresh = false): Promise<{ me: Me; organizationId: string }> {
+    const me = await this.readMe(forceIdentityRefresh);
     if (!this.organizationId) {
-      this.organizationId = this.me.organizations[0]?.id || '';
+      this.organizationId = me.organizations[0]?.id || '';
     }
     if (!this.organizationId) throw new Error('个人工作区尚未完成初始化');
-    return { me: this.me, organizationId: this.organizationId };
+    return { me, organizationId: this.organizationId };
   }
 
   // Auth & Tenant
   public async getMe() {
-    const { me, organizationId } = await this.resolveWorkspace();
+    const { me, organizationId } = await this.resolveWorkspace(true);
     const organization = me.organizations.find((item) => item.id === organizationId) || me.organizations[0];
     if (!organization) throw new Error('个人工作区尚未完成初始化');
     return {
@@ -262,7 +283,7 @@ export class ApiService {
   }
 
   public async getCreditTransactions() {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     const ledger = await this.readLedger();
     return { success: true, transactions: ledger.entries.map((entry) => {
       const type = entry.type === 'PURCHASE' ? 'RECHARGE' as const
@@ -276,12 +297,12 @@ export class ApiService {
   }
 
   public async createPaymentIntent(input: { packageId: string } | { customAmountMicros: string }) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     return (await productionApi.post<{ paymentIntent: { id: string; packageId: string | null; pricingSource: 'PACKAGE' | 'CUSTOM'; network: 'TRC20'; recipientAddress: string; baseAmountUsdt: string; expectedAmountUsdt: string; creditMicros: string; status: string; expiresAt: string } }>(`/organizations/${organizationId}/payment-intents`, input)).data.paymentIntent;
   }
 
   public async submitPaymentTransaction(paymentIntentId: string, txHash: string) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     return (await productionApi.post<{ paymentIntent: { id: string; status: string } }>(`/organizations/${organizationId}/payment-intents/${paymentIntentId}/submit-transaction`, { txHash })).data.paymentIntent;
   }
 
@@ -328,13 +349,13 @@ export class ApiService {
 
   // Sites
   public async getSites() {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     const sites = await this.listAll<ProductionSite>(`/organizations/${organizationId}/sites`);
     return { sites: sites.map(toWorkspaceSite) };
   }
 
   public async testSiteConnection(siteId: string) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     const result = (await productionApi.post<{ connected: boolean; user?: string; capabilities?: unknown }>(`/organizations/${organizationId}/sites/${siteId}/test-connection`, {})).data;
     const site = (await this.getSites()).sites.find((item) => item.id === siteId);
     if (!site) throw new Error('站点连接已测试，但站点记录不存在');
@@ -348,14 +369,14 @@ export class ApiService {
     siteType?: SiteType;
     siteLanguage: Language;
   }) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     if (data.siteType && data.siteType !== 'WORDPRESS') throw new Error('当前正式版本仅支持 WordPress');
     const created = (await productionApi.post<{ site: ProductionSite }>(`/organizations/${organizationId}/sites`, { name: data.name, domain: data.domain, language: data.siteLanguage, niche: data.niche })).data.site;
     return { site: toWorkspaceSite(created) };
   }
 
   public async updateSite(siteId: string, updated: Partial<WordPressSite>) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     const payload = { name: updated.name, domain: updated.domain, language: updated.siteLanguage, niche: updated.niche }.valueOf();
     const cleanPayload = Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
     await productionApi.put(`/organizations/${organizationId}/sites/${siteId}`, cleanPayload);
@@ -365,28 +386,28 @@ export class ApiService {
   }
 
   public async deleteSite(siteId: string) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     await productionApi.delete(`/organizations/${organizationId}/sites/${siteId}`);
     return { success: true, deletedId: siteId };
   }
 
   public async authorizeWordPress(siteId: string) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     return (await productionApi.post<{ authorizationUrl: string; expiresInSeconds: number }>(`/organizations/${organizationId}/sites/${siteId}/wordpress/authorize`, {})).data;
   }
 
   public async recheckWordPressCompatibility(siteId: string) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     return (await productionApi.post(`/organizations/${organizationId}/sites/${siteId}/wordpress/recheck`, {})).data;
   }
 
   public async authorizeGsc(siteId: string) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     return (await productionApi.post<{ authorizationUrl: string }>(`/organizations/${organizationId}/sites/${siteId}/gsc/authorize`, {})).data;
   }
 
   public async syncGsc(siteId: string) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     // Search Console final data normally trails real time. Exclude the most
     // recent three days so a manual sync cannot present partial rows as a drop.
     const end = new Date(Date.now() - 3 * 24 * 60 * 60_000);
@@ -396,17 +417,17 @@ export class ApiService {
   }
 
   public async disconnectGsc(siteId: string) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     await productionApi.delete(`/organizations/${organizationId}/sites/${siteId}/gsc`);
   }
 
   public async getGrowthRun(runId: string): Promise<GrowthRun> {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     return (await productionApi.get<GrowthRun>(`/organizations/${organizationId}/growth-runs/${runId}`)).data;
   }
 
   public async getGrowthStatuses(): Promise<GrowthStatusRow[]> {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     return this.listAll<GrowthStatusRow>(`/organizations/${organizationId}/growth-statuses`);
   }
 
@@ -416,52 +437,52 @@ export class ApiService {
     inputs: GrowthInput[],
     onProgress?: (run: GrowthRun) => void
   ) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     const created = (await productionApi.post<{ program: GrowthProgram; run: GrowthRun; job: JobRun }>(`/organizations/${organizationId}/sites/${siteId}/growth-programs`, { mode, inputs })).data;
     onProgress?.(created.run);
     return { program: created.program, run: created.run, draft: created.run.draft ? toWorkspaceDraft(created.run.draft) : undefined };
   }
 
   public async changeGrowthProgram(programId: string, status: 'ACTIVE' | 'PAUSED') {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     const action = status === 'ACTIVE' ? 'resume' : 'pause';
     return (await productionApi.post<{ program: GrowthProgram }>(`/organizations/${organizationId}/growth-programs/${programId}/${action}`, {})).data.program;
   }
 
   // Drafts
   public async getDrafts() {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     const drafts = await this.listAll<Draft>(`/organizations/${organizationId}/drafts`);
     return { drafts: drafts.map(toWorkspaceDraft) };
   }
 
   public async approvePublishDraft(draftId: string) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     const queued = (await productionApi.post<{ draft: Draft; job: JobRun }>(`/organizations/${organizationId}/drafts/${draftId}/approve`, {})).data;
     return { draft: toWorkspaceDraft(queued.draft), job: queued.job };
   }
 
   public async rejectDraft(draftId: string, comment: string) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     const rejected = (await productionApi.post<{ draft: Draft }>(`/organizations/${organizationId}/drafts/${draftId}/reject`, { comment })).data;
     return { draft: toWorkspaceDraft(rejected.draft) };
   }
 
   public async retryPublishDraft(draftId: string) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     const queued = (await productionApi.post<{ draft: Draft; job: JobRun }>(`/organizations/${organizationId}/drafts/${draftId}/retry-publish`, {})).data;
     return { draft: toWorkspaceDraft(queued.draft), job: queued.job };
   }
 
   public async rollbackDraft(draftId: string) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     const queued = (await productionApi.post<{ draft: Draft; job: JobRun }>(`/organizations/${organizationId}/drafts/${draftId}/rollback`, {})).data;
     return { draft: toWorkspaceDraft(queued.draft), job: queued.job };
   }
 
   // Automated Tasks
   public async getTasks() {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     const [sites, programs] = await Promise.all([
       this.getSites(),
       this.listAll<GrowthProgram>(`/organizations/${organizationId}/growth-programs?mode=CONTINUOUS`)
@@ -470,7 +491,7 @@ export class ApiService {
   }
 
   public async createTask(data: Partial<AutomatedTask>) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     if (!data.siteId || data.siteId === 'all') throw new Error('请选择一个已连接的 WordPress 站点');
     const inputs = (data.inputs || []).map(({ type, value }) => ({ type, value: value.trim() })).filter(({ value }) => Boolean(value));
     const created = (await productionApi.post<{ program: GrowthProgram }>(`/organizations/${organizationId}/sites/${data.siteId}/growth-programs`, { mode: 'CONTINUOUS', inputs })).data.program;
@@ -485,7 +506,7 @@ export class ApiService {
   }
 
   public async runTaskNow(taskId: string) {
-    const { organizationId } = await this.resolveWorkspace();
+    const organizationId = await this.resolveOrganizationId();
     const result = (await productionApi.post<{ program: GrowthProgram; run: GrowthRun }>(`/organizations/${organizationId}/growth-programs/${taskId}/run-now`, {})).data;
     const sites = await this.getSites();
     return { success: true, message: '新机会检查已进入后台队列，可离开页面后继续执行', task: toWorkspaceTask(result.program as ProductionTask, sites.sites), run: result.run };

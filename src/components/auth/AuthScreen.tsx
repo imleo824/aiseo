@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { getSupabaseBrowserClient } from '../../lib/supabase';
 import { useAuth } from '../../auth/AuthProvider';
 import { LegalLinks } from '../LegalLinks';
@@ -8,34 +8,97 @@ import { authErrorMessage } from '../../auth/authErrors';
 
 declare global {
   interface Window {
-    turnstile?: { render: (element: HTMLElement, options: { sitekey: string; callback: (token: string) => void; 'expired-callback': () => void }) => string; remove: (id: string) => void };
+    turnstile?: {
+      render: (element: HTMLElement, options: {
+        sitekey: string;
+        callback: (token: string) => void;
+        'error-callback': (errorCode: string) => boolean;
+        'expired-callback': () => void;
+        'timeout-callback': () => void;
+        'unsupported-callback': () => void;
+      }) => string;
+      remove: (id: string) => void;
+    };
   }
 }
 
 const turnstileSiteKey = globalThis.__AISEO_RUNTIME_CONFIG__?.turnstileSiteKey || import.meta.env.VITE_TURNSTILE_SITE_KEY;
 
-function Turnstile({ onToken }: { onToken: (token: string | null) => void }) {
+function Turnstile({ onToken, onFailure }: {
+  onToken: (token: string | null) => void;
+  onFailure: () => void;
+}) {
   const container = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!turnstileSiteKey) return;
+    let active = true;
     const render = () => {
-      if (!container.current || !window.turnstile || widgetId.current) return;
-      widgetId.current = window.turnstile.render(container.current, { sitekey: turnstileSiteKey, callback: (token) => onToken(token), 'expired-callback': () => onToken(null) });
+      if (!active || !container.current || !window.turnstile || widgetId.current) return;
+      try {
+        widgetId.current = window.turnstile.render(container.current, {
+          sitekey: turnstileSiteKey,
+          callback: (token) => onToken(token),
+          'error-callback': () => {
+            onToken(null);
+            onFailure();
+            return true;
+          },
+          'expired-callback': () => onToken(null),
+          'timeout-callback': () => {
+            onToken(null);
+            onFailure();
+          },
+          'unsupported-callback': () => {
+            onToken(null);
+            onFailure();
+          }
+        });
+      } catch {
+        onFailure();
+      }
     };
+    const onScriptError = () => { if (active) onFailure(); };
     const existing = document.querySelector<HTMLScriptElement>('script[data-aiseo-turnstile]');
-    if (existing) { existing.addEventListener('load', render); render(); }
+    let script = existing;
+    if (existing) {
+      existing.addEventListener('load', render);
+      existing.addEventListener('error', onScriptError);
+      if (existing.dataset.aiseoTurnstileFailed === 'true') onFailure();
+      else render();
+    }
     else {
-      const script = document.createElement('script');
+      script = document.createElement('script');
       script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
       script.async = true;
       script.defer = true;
       script.dataset.aiseoTurnstile = 'true';
-      script.addEventListener('load', render);
+      script.addEventListener('load', () => {
+        if (script) script.dataset.aiseoTurnstileLoaded = 'true';
+        render();
+      });
+      script.addEventListener('error', () => {
+        if (script) script.dataset.aiseoTurnstileFailed = 'true';
+        onScriptError();
+      });
       document.head.appendChild(script);
     }
-    return () => { if (widgetId.current && window.turnstile) window.turnstile.remove(widgetId.current); };
-  }, [onToken]);
+    const loadTimeout = window.setTimeout(() => {
+      // A proxy or browser extension can return a successful script response
+      // while stripping its body. Treat a missing runtime as a load failure even
+      // when the script element itself emitted `load`.
+      if (!window.turnstile) onFailure();
+    }, 10_000);
+    return () => {
+      active = false;
+      window.clearTimeout(loadTimeout);
+      existing?.removeEventListener('load', render);
+      existing?.removeEventListener('error', onScriptError);
+      if (widgetId.current && window.turnstile) window.turnstile.remove(widgetId.current);
+      widgetId.current = undefined;
+      if (script?.dataset.aiseoTurnstileFailed === 'true') script.remove();
+    };
+  }, [onFailure, onToken]);
   if (!turnstileSiteKey) return null;
   return <div ref={container} />;
 }
@@ -47,6 +110,7 @@ export function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaError, setCaptchaError] = useState(false);
   const [captchaEpoch, setCaptchaEpoch] = useState(0);
   const [message, setMessage] = useState('');
   const [messageKind, setMessageKind] = useState<'success' | 'error'>('success');
@@ -55,6 +119,11 @@ export function AuthScreen() {
 
   useEffect(() => { if (recovery) setMode('recovery'); }, [recovery]);
   const captchaRequired = Boolean(turnstileSiteKey && mode !== 'recovery');
+  const handleCaptchaToken = useCallback((token: string | null) => {
+    setCaptchaToken(token);
+    if (token) setCaptchaError(false);
+  }, []);
+  const handleCaptchaFailure = useCallback(() => setCaptchaError(true), []);
   const changeMode = (nextMode: typeof mode) => {
     setMode(nextMode);
     setMessage('');
@@ -62,6 +131,7 @@ export function AuthScreen() {
     setPassword('');
     setShowPassword(false);
     setCaptchaToken(null);
+    setCaptchaError(false);
     setCaptchaEpoch((value) => value + 1);
   };
   const submit = async (event: FormEvent) => {
@@ -187,7 +257,31 @@ export function AuthScreen() {
             </div>
           )}
 
-          {mode !== 'recovery' && <Turnstile key={`${mode}-${captchaEpoch}`} onToken={setCaptchaToken} />}
+          {mode !== 'recovery' && (
+            <div className="space-y-2">
+              <Turnstile
+                key={`${mode}-${captchaEpoch}`}
+                onToken={handleCaptchaToken}
+                onFailure={handleCaptchaFailure}
+              />
+              {captchaError && (
+                <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  <span>人机验证加载失败，请检查网络或浏览器拦截设置。</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCaptchaError(false);
+                      setCaptchaToken(null);
+                      setCaptchaEpoch((value) => value + 1);
+                    }}
+                    className="min-h-[36px] shrink-0 rounded-lg bg-amber-900 px-3 py-1.5 font-bold text-white hover:bg-amber-800"
+                  >
+                    重新加载
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {message && (
             <div

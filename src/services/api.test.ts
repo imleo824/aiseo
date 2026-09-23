@@ -45,6 +45,47 @@ describe('API response projections', () => {
     expect(result.account.companyName).toBe('Organization B');
   });
 
+  it('deduplicates concurrent identity reads on the same API service', async () => {
+    apiGet.mockResolvedValue({ data: {
+      profile: { id: 'profile-1', email: 'owner@example.test', displayName: 'Owner', platformRole: 'USER', createdAt: '2026-09-01T00:00:00.000Z' },
+      organizations: [{ id: 'organization-a', name: 'Organization A', creditBalanceMicros: '0', totalRechargedMicros: '0', totalConsumedMicros: '0', role: 'OWNER' }]
+    } });
+    const service = new ApiService();
+
+    await Promise.all([service.getMe(), service.listTenants()]);
+
+    expect(apiGet.mock.calls.filter(([path]) => path === '/me')).toHaveLength(1);
+  });
+
+  it('refreshes account balances on an explicit identity reload', async () => {
+    const me = (creditBalanceMicros: string) => ({ data: {
+      profile: { id: 'profile-1', email: 'owner@example.test', displayName: 'Owner', platformRole: 'USER', createdAt: '2026-09-01T00:00:00.000Z' },
+      organizations: [{ id: 'organization-a', name: 'Organization A', creditBalanceMicros, totalRechargedMicros: creditBalanceMicros, totalConsumedMicros: '0', role: 'OWNER' }]
+    } });
+    apiGet.mockResolvedValueOnce(me('1000000')).mockResolvedValueOnce(me('2000000'));
+    const service = new ApiService();
+
+    const first = await service.getMe();
+    const refreshed = await service.getMe();
+
+    expect(first.account.credits).toBe('1');
+    expect(refreshed.account.credits).toBe('2');
+    expect(apiGet.mock.calls.filter(([path]) => path === '/me')).toHaveLength(2);
+  });
+
+  it('does not reload identity when the organization is already known', async () => {
+    apiGet.mockImplementation(async (path: string) => {
+      if (path === '/organizations/organization-a/sites?limit=100') return { data: [], meta: {} };
+      if (path === '/organizations/organization-a/growth-statuses?limit=100') return { data: [], meta: {} };
+      throw new Error(`unexpected request: ${path}`);
+    });
+    const service = new ApiService('organization-a');
+
+    await Promise.all([service.getSites(), service.getGrowthStatuses()]);
+
+    expect(apiGet).not.toHaveBeenCalledWith('/me');
+  });
+
   it('loads continuous programs once at organization scope instead of once per site', async () => {
     apiGet.mockImplementation(async (path: string) => {
       if (typeof path !== 'string') throw new Error('request path must be a string');

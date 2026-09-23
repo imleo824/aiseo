@@ -59,6 +59,7 @@ const installBusinessApi = async (page: Page) => {
   let paymentIntentRequests = 0;
   let paymentIntentBody: unknown;
   let wordpressVerificationRequests = 0;
+  let meRequests = 0;
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -66,10 +67,13 @@ const installBusinessApi = async (page: Page) => {
     const method = request.method();
     const reply = (data: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify({ data }) });
 
-    if (method === 'GET' && path === '/api/v1/me') return reply({
-      profile: { id: '50000000-0000-4000-8000-000000000005', email: 'owner@example.test', displayName: 'tenant-a', platformRole: 'USER', createdAt: '2026-09-01T00:00:00.000Z' },
-      organizations: [{ id: organizationId, name: 'Tenant A', creditBalanceMicros: '11090000000', totalRechargedMicros: '11090000000', totalConsumedMicros: '0', role: 'OWNER' }]
-    });
+    if (method === 'GET' && path === '/api/v1/me') {
+      meRequests += 1;
+      return reply({
+        profile: { id: '50000000-0000-4000-8000-000000000005', email: 'owner@example.test', displayName: 'tenant-a', platformRole: 'USER', createdAt: '2026-09-01T00:00:00.000Z' },
+        organizations: [{ id: organizationId, name: 'Tenant A', creditBalanceMicros: '11090000000', totalRechargedMicros: '11090000000', totalConsumedMicros: '0', role: 'OWNER' }]
+      });
+    }
     if (method === 'GET' && path === `/api/v1/organizations/${organizationId}/sites`) return reply([{
       id: siteId, name: 'TechPulse Media', domain: 'https://example.com', language: 'zh-CN', wordpressStatus: 'CONNECTED', wordpressUser: 'editor', wordpressVerifiedAt: '2026-09-01T00:00:00.000Z', createdAt: '2026-09-01T00:00:00.000Z', integrations: []
     }]);
@@ -150,7 +154,8 @@ const installBusinessApi = async (page: Page) => {
     idempotencyKey: () => idempotencyKey,
     paymentIntentRequests: () => paymentIntentRequests,
     paymentIntentBody: () => paymentIntentBody,
-    wordpressVerificationRequests: () => wordpressVerificationRequests
+    wordpressVerificationRequests: () => wordpressVerificationRequests,
+    meRequests: () => meRequests
   };
 };
 
@@ -192,6 +197,78 @@ test('登录失败显示可操作提示而不是供应商内部错误', async ({
 
   await expect(page.getByRole('alert')).toContainText('邮箱或密码不正确，请重新输入。');
   await expect(page.getByText('Invalid login credentials')).toHaveCount(0);
+});
+
+test('登录后只加载一次账号身份再直接进入工作区', async ({ page }) => {
+  const fixture = await installBusinessApi(page);
+  await openAuthenticatedWorkspace(page);
+  await expect.poll(() => fixture.meRequests()).toBe(1);
+  await page.waitForTimeout(500);
+  expect(fixture.meRequests()).toBe(1);
+});
+
+test('人机验证加载失败后可以在当前页面恢复并继续登录', async ({ page }) => {
+  await installBusinessApi(page);
+  await page.route('**/runtime-config.js', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/javascript',
+    body: `window.__AISEO_RUNTIME_CONFIG__ = {
+      supabaseUrl: 'https://test.supabase.co',
+      supabasePublishableKey: 'playwright-public-key',
+      turnstileSiteKey: '1x00000000000000000000AA'
+    };`
+  }));
+  await page.route('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/javascript',
+    body: `window.__turnstileRenderCount = 0;
+      window.turnstile = {
+        render: function (_element, options) {
+          window.__turnstileRenderCount += 1;
+          var current = window.__turnstileRenderCount;
+          setTimeout(function () {
+            if (current === 1) options['error-callback']('network-error');
+            else options.callback('playwright-turnstile-token');
+          }, 0);
+          return 'widget-' + current;
+        },
+        remove: function () {}
+      };`
+  }));
+
+  await page.goto('/');
+  const captchaAlert = page.getByRole('alert').filter({ hasText: '人机验证加载失败' });
+  await expect(captchaAlert).toBeVisible();
+  await captchaAlert.getByRole('button', { name: '重新加载' }).click();
+  await expect(captchaAlert).toHaveCount(0);
+
+  await page.getByLabel('工作邮箱').fill('owner@example.test');
+  await page.getByLabel('密码', { exact: true }).fill('short123');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page.getByRole('button', { name: '开始执行', exact: true })).toBeVisible();
+});
+
+test('人机验证脚本被代理清空时不会让登录页静默卡住', async ({ page }) => {
+  await page.clock.install();
+  await page.route('**/runtime-config.js', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/javascript',
+    body: `window.__AISEO_RUNTIME_CONFIG__ = {
+      supabaseUrl: 'https://test.supabase.co',
+      supabasePublishableKey: 'playwright-public-key',
+      turnstileSiteKey: '1x00000000000000000000AA'
+    };`
+  }));
+  await page.route('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/javascript',
+    body: ''
+  }));
+
+  await page.goto('/');
+  await page.clock.fastForward(10_000);
+
+  await expect(page.getByRole('alert').filter({ hasText: '人机验证加载失败' })).toBeVisible();
 });
 
 test('公开法律文件可读且不暴露加密乱码', async ({ page }) => {

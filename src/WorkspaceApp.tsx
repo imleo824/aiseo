@@ -68,6 +68,7 @@ export default function WorkspaceApp({ authUserId }: { authUserId: string }) {
     allTenants,
     growthStatuses,
     loading,
+    initializing,
     refreshing,
     loadError,
     actions
@@ -146,7 +147,7 @@ export default function WorkspaceApp({ authUserId }: { authUserId: string }) {
   }, [account?.role, activeNav, navigateTo]);
   const pageInfo = NAVIGATION[activeNav];
 
-  if (loading && !account) {
+  if (initializing || (loading && !account)) {
     return (
       <main className="min-h-[100dvh] bg-slate-50/80 grid place-items-center p-6" aria-busy="true">
         <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
