@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { getSupabaseBrowserClient } from '../lib/supabase';
-import { nextRecoveryState } from './authFlow';
+import { reduceAuthSessionState, type AuthSessionState } from './authFlow';
 
 type AuthContextValue = {
   session: Session | null;
@@ -14,22 +14,20 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const supabase = getSupabaseBrowserClient();
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [recovery, setRecovery] = useState(false);
+  const [authState, setAuthState] = useState<AuthSessionState>({
+    session: null,
+    loading: true,
+    recovery: false
+  });
 
   useEffect(() => {
-    void supabase.auth.getSession()
-      .then(({ data }) => setSession(data.session))
-      .catch(() => setSession(null))
-      .finally(() => setLoading(false));
     const { data: subscription } = supabase.auth.onAuthStateChange((event, nextSession) => {
-      setSession(nextSession);
-      setRecovery((current) => nextRecoveryState(current, event));
-      setLoading(false);
+      setAuthState((current) => reduceAuthSessionState(current, event, nextSession));
     });
     return () => subscription.subscription.unsubscribe();
-  }, []);
+  }, [supabase]);
+
+  const { session, loading, recovery } = authState;
 
   const value = useMemo<AuthContextValue>(() => ({
     session,

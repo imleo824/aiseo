@@ -1,4 +1,4 @@
-import type { AuthChangeEvent } from '@supabase/supabase-js';
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 
 export type AuthView = 'LOADING' | 'LOGIN' | 'RECOVERY' | 'VERIFY_EMAIL' | 'WORKSPACE';
 
@@ -19,3 +19,19 @@ export const nextRecoveryState = (current: boolean, event: AuthChangeEvent): boo
   if (event === 'SIGNED_OUT') return false;
   return current;
 };
+
+export type AuthSessionState = {
+  session: Session | null;
+  loading: boolean;
+  recovery: boolean;
+};
+
+export const reduceAuthSessionState = (
+  current: AuthSessionState,
+  event: AuthChangeEvent,
+  session: Session | null
+): AuthSessionState => ({
+  session,
+  loading: false,
+  recovery: nextRecoveryState(current.recovery, event)
+});

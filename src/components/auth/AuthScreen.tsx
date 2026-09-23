@@ -4,6 +4,7 @@ import { useAuth } from '../../auth/AuthProvider';
 import { LegalLinks } from '../LegalLinks';
 import { AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { signOutEverywhere } from '../../auth/signOut';
+import { authErrorMessage } from '../../auth/authErrors';
 
 declare global {
   interface Window {
@@ -66,11 +67,15 @@ export function AuthScreen() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (busy) return;
+    if (captchaRequired && !captchaToken) {
+      setMessageKind('error');
+      setMessage('请先完成人机验证。');
+      return;
+    }
     setBusy(true);
     setMessage('');
     const normalizedEmail = email.trim().toLowerCase();
     try {
-      if (captchaRequired && !captchaToken) throw new Error('请先完成人机验证');
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({
           email: normalizedEmail,
@@ -108,7 +113,7 @@ export function AuthScreen() {
       }
     } catch (error) {
       setMessageKind('error');
-      setMessage(error instanceof Error ? error.message : '操作失败');
+      setMessage(authErrorMessage(error));
     }
     finally {
       setBusy(false);

@@ -175,6 +175,25 @@ test('登录注册页只展示有效的必要内容', async ({ page }) => {
   await expect(page.getByLabel('密码', { exact: true })).toBeVisible();
 });
 
+test('登录失败显示可操作提示而不是供应商内部错误', async ({ page }) => {
+  await page.route('**/auth/v1/token?grant_type=password', (route) => route.fulfill({
+    status: 400,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      code: 'invalid_credentials',
+      error_code: 'invalid_credentials',
+      msg: 'Invalid login credentials'
+    })
+  }));
+  await page.goto('/');
+  await page.getByLabel('工作邮箱').fill('owner@example.test');
+  await page.getByLabel('密码', { exact: true }).fill('incorrect-password');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+
+  await expect(page.getByRole('alert')).toContainText('邮箱或密码不正确，请重新输入。');
+  await expect(page.getByText('Invalid login credentials')).toHaveCount(0);
+});
+
 test('公开法律文件可读且不暴露加密乱码', async ({ page }) => {
   await page.goto('/legal/terms');
   await expect(page.getByRole('heading', { name: 'TuiTui 推推服务条款', level: 1 })).toBeVisible();
