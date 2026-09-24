@@ -1,5 +1,5 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
-import { DraftStatus, GrowthActionStatus, GrowthInputType, GrowthProgramMode, GrowthProgramStatus, GrowthRunStatus, GrowthRunTrigger, JobType, OrganizationRole, ReviewDecision, SiteConnectionStatus, WordPressCompatibilityMode } from '@prisma/client';
+import { DraftStatus, GrowthActionStatus, GrowthInputType, GrowthProgramMode, GrowthProgramStatus, GrowthRunStatus, GrowthRunTrigger, JobType, OrganizationRole, Prisma, ReviewDecision, SiteConnectionStatus, WordPressCompatibilityMode } from '@prisma/client';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { ConflictError, ForbiddenError, NotFoundError, ServiceUnavailableError, ValidationError } from '../domain/errors';
@@ -16,12 +16,12 @@ import { wordPressService } from './wordpress';
 import { gscComparisonWindow } from './gscData';
 import { growthProgramService } from './growthProgramService';
 import { parsePublishingConfirmationPolicy, PUBLISH_CONFIRMATION_SETTING_KEY } from './publishingPolicy';
-import { compatibilityProfileResponse, persistWordPressCompatibility, scanWordPressCompatibility } from './wordpressCompatibility';
+import { compatibilityProfileResponse, persistWordPressCompatibility, sameWordPressAuthorization, scanWordPressCompatibility } from './wordpressCompatibility';
 import { normalizeSiteDomain } from './siteDomain';
 import { CUSTOM_PAYMENT_PRICING_SETTING_KEY, packageBaseMicrosSchema, parseCustomPaymentPricing, positiveAccountingMicrosSchema, pricingConfigurationSchema, signedAccountingMicrosSchema } from './accounting';
 import { continuousCadenceDays } from './growthPolicy';
 import { logger } from '../utils/logger';
-import { publicAuditEventSelect, publicDraftSelect, publicGrowthActionDetailSelect, publicGrowthActionStatusSelect, publicJobRunSelect, publicLedgerEntrySelect, publicOpportunitySelect, publicOrganizationSelect, publicPaymentIntentSelect, publicProfileSelect, publicSiteSelect } from './apiSelections';
+import { publicActionPriceSelect, publicAuditEventSelect, publicDraftSelect, publicGrowthActionDetailSelect, publicGrowthActionStatusSelect, publicGrowthDecisionSelect, publicGrowthProgramSelect, publicGrowthRunSelect, publicGrowthRunStageSelect, publicJobRunSelect, publicLedgerEntrySelect, publicOpportunitySelect, publicOrganizationMemberSelect, publicOrganizationSelect, publicPaymentIntentSelect, publicPaymentPackageSelect, publicProfileSelect, publicSiteSelect, publicSiteSnapshotSummarySelect, publicUsageRecordSelect } from './apiSelections';
 
 const roleRank: Record<OrganizationRole, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2, OWNER: 3 };
 const idSchema = z.string().uuid();
@@ -36,7 +36,7 @@ const growthInputSchema = z.discriminatedUnion('type', [
 ]);
 const growthProgramSchema = z.object({
   mode: z.enum(['ONCE', 'CONTINUOUS']),
-  inputs: z.array(growthInputSchema).max(30).default([]).superRefine((inputs, context) => {
+  inputs: z.array(growthInputSchema).min(1, '请至少提供一个关键词、参考文章或竞品站点').max(30).superRefine((inputs, context) => {
     const limits = { KEYWORD: 20, REFERENCE_URL: 5, COMPETITOR_SITE: 5 } as const;
     for (const type of Object.keys(limits) as Array<keyof typeof limits>) {
       if (inputs.filter((input) => input.type === type).length > limits[type]) {
@@ -47,6 +47,26 @@ const growthProgramSchema = z.object({
   budgetLimitMicros: positiveAccountingMicrosSchema.transform((value) => BigInt(value)).optional()
 }).strict();
 const growthProgramModeFilterSchema = z.nativeEnum(GrowthProgramMode).optional();
+
+const publicGrowthRunStatusGraphSelect = {
+  ...publicGrowthRunSelect,
+  program: { select: publicGrowthProgramSelect },
+  stages: { orderBy: { createdAt: 'asc' as const }, select: publicGrowthRunStageSelect },
+  opportunity: { select: publicOpportunitySelect },
+  siteSnapshot: { select: publicSiteSnapshotSummarySelect },
+  draft: { select: { id: true, status: true, title: true, slug: true, qualityReport: true, publishedUrl: true, createdAt: true } },
+  action: { select: publicGrowthActionStatusSelect }
+} satisfies Prisma.GrowthRunSelect;
+
+const publicGrowthRunDetailGraphSelect = {
+  ...publicGrowthRunSelect,
+  program: { select: publicGrowthProgramSelect },
+  stages: { orderBy: { createdAt: 'asc' as const }, select: publicGrowthRunStageSelect },
+  opportunity: { select: publicOpportunitySelect },
+  siteSnapshot: { select: publicSiteSnapshotSummarySelect },
+  draft: { select: publicDraftSelect },
+  action: { select: publicGrowthActionDetailSelect }
+} satisfies Prisma.GrowthRunSelect;
 
 const userId = (request: Request): string => {
   if (!request.authUser) throw new ForbiddenError('认证上下文缺失');
@@ -59,6 +79,23 @@ const assertRole = async (tx: TransactionClient, profileId: string, orgId: strin
   const membership = await tx.organizationMember.findUnique({ where: { organizationId_profileId: { organizationId: orgId, profileId } } });
   if (!membership || roleRank[membership.role] < roleRank[minimum]) throw new ForbiddenError('没有此组织或执行该操作的权限');
   return membership.role;
+};
+
+const assertUnchangedWordPressAuthorization = async (
+  tx: TransactionClient,
+  organizationId: string,
+  siteId: string,
+  expected: { domain: string; wordpressCredentials: Uint8Array }
+) => {
+  const current = await tx.site.findFirst({
+    where: { id: siteId, organizationId },
+    select: { id: true, domain: true, wordpressCredentials: true }
+  });
+  if (!current) throw new NotFoundError('站点不存在');
+  if (!sameWordPressAuthorization(current, expected)) {
+    throw new ConflictError('WordPress 域名或授权凭证在检测期间已更新，请基于最新授权重新检测');
+  }
+  return current;
 };
 
 const organizationFinancialSummaries = async (tx: TransactionClient, organizationIds: string[]) => {
@@ -189,7 +226,17 @@ apiRouter.get('/integrations/gsc/callback', asyncRoute(async (request, response)
     if (!code) throw new ValidationError('Google 未返回授权码');
     const site = await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
       await assertRole(tx, state.profileId, state.organizationId, OrganizationRole.ADMIN);
-      await consumeOauthState(tx, state.nonce, 'gsc-oauth-state');
+      const pendingState = await tx.idempotencyKey.findFirst({
+        where: {
+          organizationId: state.organizationId,
+          profileId: state.profileId,
+          key: state.nonce,
+          requestHash: 'gsc-oauth-state',
+          expiresAt: { gt: new Date() }
+        },
+        select: { id: true }
+      });
+      if (!pendingState) throw new ConflictError('OAuth state 已使用、不存在或已过期');
       const found = await tx.site.findFirst({ where: { id: state.siteId, organizationId: state.organizationId } });
       if (!found) throw new NotFoundError('站点不存在');
       return found;
@@ -198,7 +245,15 @@ apiRouter.get('/integrations/gsc/callback', asyncRoute(async (request, response)
     const propertyId = selectGscProperty(site.domain, await gscProvider.listProperties(credentials.accessToken));
     if (!propertyId) throw new ValidationError('该 Google 账号没有与当前 WordPress 域名匹配的已验证 GSC 属性');
     const storedCredentials = { refreshToken: credentials.refreshToken, scope: credentials.scope };
-    await withRequestScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
+    await withSerializableScope({ profileId: state.profileId, organizationId: state.organizationId }, async (tx) => {
+      await assertRole(tx, state.profileId, state.organizationId, OrganizationRole.ADMIN);
+      await consumeOauthState(tx, state.nonce, 'gsc-oauth-state');
+      const currentSite = await tx.site.findFirst({
+        where: { id: state.siteId, organizationId: state.organizationId },
+        select: { id: true, domain: true }
+      });
+      if (!currentSite) throw new NotFoundError('站点不存在');
+      if (currentSite.domain !== site.domain) throw new ConflictError('站点域名在 GSC 授权期间已更新，请重新授权');
       const connection = await tx.integrationConnection.upsert({ where: { siteId_provider: { siteId: state.siteId, provider: 'GSC' } }, create: { organizationId: state.organizationId, siteId: state.siteId, provider: 'GSC', propertyId, encryptedCredentials: encryptSecret(storedCredentials), keyVersion: currentEncryptionKeyVersion(), status: SiteConnectionStatus.VERIFYING }, update: { propertyId, encryptedCredentials: encryptSecret(storedCredentials), keyVersion: currentEncryptionKeyVersion(), status: SiteConnectionStatus.VERIFYING, lastErrorCode: null, lastErrorMessage: null } });
       const end = new Date(Date.now() - 3 * 86_400_000);
       const start = new Date(end.getTime() - 27 * 86_400_000);
@@ -314,8 +369,8 @@ apiRouter.get('/me', asyncRoute(async (request, response) => {
 apiRouter.get('/pricing', asyncRoute(async (request, response) => {
   const profileId = userId(request);
   const pricing = await withRequestScope({ profileId }, async (tx) => Promise.all([
-    tx.paymentPackage.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
-    tx.actionPrice.findMany({ where: { active: true }, orderBy: { action: 'asc' } }),
+    tx.paymentPackage.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' }, select: publicPaymentPackageSelect }),
+    tx.actionPrice.findMany({ where: { active: true }, orderBy: { action: 'asc' }, select: publicActionPriceSelect }),
     tx.systemSetting.findUnique({ where: { key: CUSTOM_PAYMENT_PRICING_SETTING_KEY } })
   ]));
   sendData(response, { packages: pricing[0], actions: pricing[1], customPricing: parseCustomPaymentPricing(pricing[2]?.value) });
@@ -405,7 +460,7 @@ apiRouter.get('/organizations/:organizationId/members', asyncRoute(async (reques
   const profileId = userId(request), orgId = organizationId(request);
   const members = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    return tx.organizationMember.findMany({ where: { organizationId: orgId }, include: { profile: { select: { id: true, email: true, displayName: true } } }, orderBy: { createdAt: 'asc' } });
+    return tx.organizationMember.findMany({ where: { organizationId: orgId }, select: { ...publicOrganizationMemberSelect, profile: { select: { id: true, email: true, displayName: true } } }, orderBy: { createdAt: 'asc' } });
   });
   sendData(response, members);
 }));
@@ -427,7 +482,8 @@ apiRouter.post('/organizations/:organizationId/members', asyncRoute(async (reque
       const member = await tx.organizationMember.upsert({
         where: { organizationId_profileId: { organizationId: orgId, profileId: input.profileId } },
         create: { organizationId: orgId, profileId: input.profileId, role: input.role },
-        update: { role: input.role }
+        update: { role: input.role },
+        select: publicOrganizationMemberSelect
       });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'MEMBER_UPSERTED', targetType: 'profile', targetId: input.profileId, metadata: { role: input.role } } });
       return { statusCode: 200, data: { member } };
@@ -563,6 +619,10 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/wordpress/authorize
     body: requestBody,
     expiresInMs: 10 * 60_000,
     execute: async () => {
+      await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
+      const currentSite = await tx.site.findFirst({ where: { id: siteId, organizationId: orgId }, select: { domain: true } });
+      if (!currentSite) throw new NotFoundError('站点不存在');
+      if (currentSite.domain !== site.domain) throw new ConflictError('站点域名在 WordPress 授权准备期间已更新，请重新开始授权');
       await tx.idempotencyKey.create({ data: { organizationId: orgId, profileId, key: nonce, requestHash: 'wordpress-oauth-state', expiresAt: new Date(Date.now() + 10 * 60_000) } });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'WORDPRESS_AUTHORIZATION_STARTED', targetType: 'site', targetId: siteId } });
       return { statusCode: 200, data: { authorizationUrl: authorizationUrl.toString(), expiresInSeconds: 600 } };
@@ -596,6 +656,10 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/test-connection', a
     const blockedCompatibility = await scanWordPressCompatibility({ domain: site.domain, encryptedCredentials: site.wordpressCredentials! });
     await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
       await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
+      await assertUnchangedWordPressAuthorization(tx, orgId, siteId, {
+        domain: site.domain,
+        wordpressCredentials: site.wordpressCredentials!
+      });
       await tx.site.update({ where: { id: siteId }, data: { wordpressStatus: SiteConnectionStatus.FAILED, wordpressVerifiedAt: null } });
       await persistWordPressCompatibility(tx, { organizationId: orgId, siteId, scan: blockedCompatibility });
     });
@@ -604,10 +668,22 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/test-connection', a
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: requestBody, execute: async () => {
-      await tx.site.update({ where: { id: siteId }, data: { wordpressStatus: SiteConnectionStatus.CONNECTED, wordpressUser: result.user, wordpressVerifiedAt: new Date() } });
+      await assertUnchangedWordPressAuthorization(tx, orgId, siteId, {
+        domain: site.domain,
+        wordpressCredentials: site.wordpressCredentials!
+      });
+      const connected = compatibility.mode !== WordPressCompatibilityMode.BLOCKED;
+      await tx.site.update({
+        where: { id: siteId },
+        data: {
+          wordpressStatus: connected ? SiteConnectionStatus.CONNECTED : SiteConnectionStatus.FAILED,
+          wordpressUser: result.user,
+          wordpressVerifiedAt: connected ? new Date() : null
+        }
+      });
       const profile = await persistWordPressCompatibility(tx, { organizationId: orgId, siteId, scan: compatibility });
-      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'WORDPRESS_CONNECTION_VERIFIED', targetType: 'site', targetId: siteId, metadata: { user: result.user, compatibilityProfileId: profile.id, compatibilityMode: profile.mode } } });
-      return { statusCode: 200, data: { connected: true, user: result.user, siteName: result.siteName, compatibility: compatibilityProfileResponse(profile) } };
+      await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: connected ? 'WORDPRESS_CONNECTION_VERIFIED' : 'WORDPRESS_CONNECTION_BLOCKED', targetType: 'site', targetId: siteId, metadata: { user: result.user, compatibilityProfileId: profile.id, compatibilityMode: profile.mode } } });
+      return { statusCode: 200, data: { connected, user: result.user, siteName: result.siteName, compatibility: compatibilityProfileResponse(profile) } };
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);
@@ -653,16 +729,25 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/wordpress/recheck',
   }
   const site = preflight.site;
   const compatibility = await scanWordPressCompatibility({ domain: site.domain, encryptedCredentials: site.wordpressCredentials! });
-  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => executeIdempotent({
-    tx, organizationId: orgId, profileId, key, body: requestBody, execute: async () => {
+  const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
+    await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
+    return executeIdempotent({
+      tx, organizationId: orgId, profileId, key, body: requestBody, execute: async () => {
+      await assertUnchangedWordPressAuthorization(tx, orgId, siteId, {
+        domain: site.domain,
+        wordpressCredentials: site.wordpressCredentials!
+      });
       const profile = await persistWordPressCompatibility(tx, { organizationId: orgId, siteId, scan: compatibility });
       if (profile.mode === WordPressCompatibilityMode.BLOCKED) {
         await tx.site.update({ where: { id: siteId }, data: { wordpressStatus: SiteConnectionStatus.FAILED, wordpressVerifiedAt: null } });
+      } else {
+        await tx.site.update({ where: { id: siteId }, data: { wordpressStatus: SiteConnectionStatus.CONNECTED, wordpressVerifiedAt: new Date() } });
       }
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'WORDPRESS_COMPATIBILITY_RECHECKED', targetType: 'site', targetId: siteId, metadata: { compatibilityProfileId: profile.id, compatibilityMode: profile.mode } } });
       return { statusCode: 200, data: compatibilityProfileResponse(profile) };
-    }
-  }));
+      }
+    });
+  });
   sendData(response, outcome.data, outcome.statusCode);
 }));
 
@@ -732,6 +817,19 @@ apiRouter.post('/organizations/:organizationId/sites/:siteId/growth-programs', a
       if (site.wordpressStatus !== SiteConnectionStatus.CONNECTED || !site.wordpressVerifiedAt || !site.wordpressCredentials) {
         throw new ConflictError('请先完成 WordPress 原生授权与真实连接验证');
       }
+      const activeRun = await tx.growthRun.findFirst({
+        where: {
+          organizationId: orgId,
+          siteId,
+          status: { in: [GrowthRunStatus.QUEUED, GrowthRunStatus.RUNNING, GrowthRunStatus.NEEDS_REVIEW] }
+        },
+        select: { id: true, status: true }
+      });
+      if (activeRun) {
+        throw new ConflictError(activeRun.status === GrowthRunStatus.NEEDS_REVIEW
+          ? '该站点已有等待确认的增长交付，请先处理后再开始新任务'
+          : '该站点已有增长任务正在执行，请完成后再开始新任务');
+      }
       await assertExecutionProviders(tx);
       const created = await growthProgramService.create(tx, {
         organizationId: orgId,
@@ -752,7 +850,23 @@ apiRouter.get('/organizations/:organizationId/sites/:siteId/growth-programs', as
   const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
     if (!await tx.site.findFirst({ where: { id: siteId, organizationId: orgId } })) throw new NotFoundError('站点不存在');
-    const rows = await tx.growthProgram.findMany({ where: { organizationId: orgId, siteId }, include: { inputs: { orderBy: { position: 'asc' } }, runs: { orderBy: { createdAt: 'desc' }, take: 1, include: { stages: { orderBy: { createdAt: 'asc' } } } } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    const rows = await tx.growthProgram.findMany({
+      where: { organizationId: orgId, siteId },
+      select: {
+        ...publicGrowthProgramSelect,
+        runs: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            ...publicGrowthRunSelect,
+            stages: { orderBy: { createdAt: 'asc' }, select: publicGrowthRunStageSelect }
+          }
+        }
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: page.take + 1,
+      ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {})
+    });
     return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
   sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
@@ -765,7 +879,7 @@ apiRouter.get('/organizations/:organizationId/growth-programs', asyncRoute(async
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
     const rows = await tx.growthProgram.findMany({
       where: { organizationId: orgId, ...(mode ? { mode } : {}) },
-      include: { inputs: { orderBy: { position: 'asc' } } },
+      select: publicGrowthProgramSelect,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: page.take + 1,
       ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {})
@@ -779,7 +893,22 @@ apiRouter.get('/organizations/:organizationId/growth-programs/:programId', async
   const profileId = userId(request), orgId = organizationId(request), programId = idSchema.parse(request.params.programId);
   const program = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const found = await tx.growthProgram.findFirst({ where: { id: programId, organizationId: orgId }, include: { inputs: { orderBy: { position: 'asc' } }, site: { select: { id: true, name: true, domain: true, wordpressStatus: true, integrations: { where: { provider: 'GSC' }, select: { status: true, lastSyncedAt: true }, take: 1 } } }, runs: { orderBy: { createdAt: 'desc' }, take: 20, include: { stages: { orderBy: { createdAt: 'asc' } }, action: { select: publicGrowthActionStatusSelect } } } } });
+    const found = await tx.growthProgram.findFirst({
+      where: { id: programId, organizationId: orgId },
+      select: {
+        ...publicGrowthProgramSelect,
+        site: { select: { id: true, name: true, domain: true, wordpressStatus: true, integrations: { where: { provider: 'GSC' }, select: { status: true, lastSyncedAt: true }, take: 1 } } },
+        runs: {
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+          select: {
+            ...publicGrowthRunSelect,
+            stages: { orderBy: { createdAt: 'asc' }, select: publicGrowthRunStageSelect },
+            action: { select: publicGrowthActionStatusSelect }
+          }
+        }
+      }
+    });
     if (!found) throw new NotFoundError('增长程序不存在');
     return found;
   });
@@ -791,12 +920,25 @@ const changeProgramStatus = (status: GrowthProgramStatus) => asyncRoute(async (r
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { programId, status }, execute: async () => {
-      const program = await tx.growthProgram.findFirst({ where: { id: programId, organizationId: orgId } });
+      const program = await tx.growthProgram.findFirst({
+        where: { id: programId, organizationId: orgId },
+        include: { site: true }
+      });
       if (!program) throw new NotFoundError('增长程序不存在');
       if (program.mode === GrowthProgramMode.ONCE) throw new ConflictError('一次性执行不支持暂停或恢复；自动计划才可以更改运行状态');
+      if (program.status === status) {
+        const unchanged = await tx.growthProgram.findUniqueOrThrow({ where: { id: programId }, select: publicGrowthProgramSelect });
+        return { statusCode: 200, data: { program: unchanged } };
+      }
       if (status === GrowthProgramStatus.ACTIVE) {
+        if (program.site.wordpressStatus !== SiteConnectionStatus.CONNECTED
+          || !program.site.wordpressVerifiedAt
+          || !program.site.wordpressCredentials) {
+          throw new ConflictError('WordPress 连接不可用，请重新授权并验证后再恢复自动计划');
+        }
         const competingProgram = await tx.growthProgram.findFirst({
           where: {
+            organizationId: orgId,
             siteId: program.siteId,
             mode: GrowthProgramMode.CONTINUOUS,
             status: GrowthProgramStatus.ACTIVE,
@@ -807,7 +949,7 @@ const changeProgramStatus = (status: GrowthProgramStatus) => asyncRoute(async (r
         if (competingProgram) throw new ConflictError('该站点已有正在运行的自动计划，请先暂停现有计划');
         await assertExecutionProviders(tx);
       }
-      const updated = await tx.growthProgram.update({ where: { id: programId }, data: { status, nextRunAt: status === GrowthProgramStatus.ACTIVE ? new Date() : program.nextRunAt, lockedUntil: null, lastError: null }, include: { inputs: { orderBy: { position: 'asc' } } } });
+      const updated = await tx.growthProgram.update({ where: { id: programId }, data: { status, nextRunAt: status === GrowthProgramStatus.ACTIVE ? new Date() : program.nextRunAt, lockedUntil: null, lastError: null }, select: publicGrowthProgramSelect });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: status === GrowthProgramStatus.PAUSED ? 'GROWTH_PROGRAM_PAUSED' : 'GROWTH_PROGRAM_RESUMED', targetType: 'growth_program', targetId: programId } });
       return { statusCode: 200, data: { program: updated } };
     } });
@@ -833,7 +975,7 @@ apiRouter.post('/organizations/:organizationId/growth-programs/:programId/run-no
         throw new ConflictError('WordPress 连接不可用，请重新授权后再执行');
       }
       const activeRun = await tx.growthRun.findFirst({
-        where: { siteId: program.siteId, status: { in: [GrowthRunStatus.QUEUED, GrowthRunStatus.RUNNING, GrowthRunStatus.NEEDS_REVIEW] } },
+        where: { organizationId: orgId, siteId: program.siteId, status: { in: [GrowthRunStatus.QUEUED, GrowthRunStatus.RUNNING, GrowthRunStatus.NEEDS_REVIEW] } },
         select: { id: true }
       });
       if (activeRun) throw new ConflictError('该站点已有执行中或待确认的增长任务');
@@ -853,7 +995,7 @@ apiRouter.post('/organizations/:organizationId/growth-programs/:programId/run-no
       const updated = await tx.growthProgram.update({
         where: { id: programId },
         data: { lastRunAt: now, nextRunAt, lockedUntil: null, lastError: null },
-        include: { inputs: { orderBy: { position: 'asc' } } }
+        select: publicGrowthProgramSelect
       });
       await tx.auditEvent.create({
         data: { organizationId: orgId, actorId: profileId, action: 'GROWTH_PROGRAM_RUN_REQUESTED', targetType: 'growth_program', targetId: programId, metadata: { growthRunId: run.id, nextRunAt } }
@@ -875,18 +1017,11 @@ apiRouter.get('/organizations/:organizationId/growth-statuses', asyncRoute(async
         wordpressCompatibilityMode: true,
         wordpressCompatibilityCheckedAt: true,
         latestWordpressCompatibilityProfile: { select: { id: true, actionCapabilities: true, blockReasons: true, checkedAt: true, expiresAt: true } },
-        growthPrograms: { orderBy: { updatedAt: 'desc' }, take: 1, include: { inputs: { orderBy: { position: 'asc' } } } },
+        growthPrograms: { orderBy: { updatedAt: 'desc' }, take: 1, select: publicGrowthProgramSelect },
         growthRuns: {
           orderBy: { createdAt: 'desc' },
           take: 1,
-          include: {
-            program: { include: { inputs: { orderBy: { position: 'asc' } } } },
-            stages: { orderBy: { createdAt: 'asc' } },
-            opportunity: { select: publicOpportunitySelect },
-            siteSnapshot: { select: { id: true, status: true, sourceVersion: true, market: true, health: true, corpusChecksum: true, pageCount: true, auditedPageCount: true, fetchedAt: true } },
-            draft: { select: { id: true, status: true, title: true, slug: true, qualityReport: true, publishedUrl: true, createdAt: true } },
-            action: { select: publicGrowthActionStatusSelect }
-          }
+          select: publicGrowthRunStatusGraphSelect
         },
         integrations: { where: { provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, select: { lastSyncedAt: true }, take: 1 }
       },
@@ -938,18 +1073,11 @@ apiRouter.get('/organizations/:organizationId/sites/:siteId/growth-status', asyn
     } });
     if (!site) throw new NotFoundError('站点不存在');
     const [program, run, gsc] = await Promise.all([
-      tx.growthProgram.findFirst({ where: { organizationId: orgId, siteId }, orderBy: { updatedAt: 'desc' }, include: { inputs: { orderBy: { position: 'asc' } } } }),
+      tx.growthProgram.findFirst({ where: { organizationId: orgId, siteId }, orderBy: { updatedAt: 'desc' }, select: publicGrowthProgramSelect }),
       tx.growthRun.findFirst({
         where: { organizationId: orgId, siteId },
         orderBy: { createdAt: 'desc' },
-        include: {
-          program: { include: { inputs: { orderBy: { position: 'asc' } } } },
-          stages: { orderBy: { createdAt: 'asc' } },
-          opportunity: { select: publicOpportunitySelect },
-          siteSnapshot: { select: { id: true, status: true, sourceVersion: true, market: true, health: true, corpusChecksum: true, pageCount: true, auditedPageCount: true, fetchedAt: true } },
-          draft: { select: { id: true, status: true, title: true, slug: true, qualityReport: true, publishedUrl: true, createdAt: true } },
-          action: { select: publicGrowthActionStatusSelect }
-        }
+        select: publicGrowthRunStatusGraphSelect
       }),
       tx.integrationConnection.findFirst({ where: { organizationId: orgId, siteId, provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, select: { lastSyncedAt: true } })
     ]);
@@ -983,10 +1111,7 @@ apiRouter.get('/organizations/:organizationId/sites/:siteId/site-snapshots/lates
     const found = await tx.siteSnapshot.findFirst({
       where: { organizationId: orgId, siteId },
       orderBy: { fetchedAt: 'desc' },
-      select: {
-        id: true, status: true, sourceVersion: true, market: true, health: true, corpusChecksum: true,
-        pageCount: true, auditedPageCount: true, fetchedAt: true, createdAt: true
-      }
+      select: publicSiteSnapshotSummarySelect
     });
     if (!found) throw new NotFoundError('站点尚未完成网站理解快照');
     return found;
@@ -1023,7 +1148,7 @@ apiRouter.get('/organizations/:organizationId/growth-runs/:runId/candidates', as
       orderBy: [{ rank: 'asc' }, { id: 'asc' }],
       take: page.take + 1,
       ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}),
-      include: { opportunity: { select: publicOpportunitySelect }, action: { select: { id: true, type: true, status: true, targetUrl: true } } }
+      select: { ...publicGrowthDecisionSelect, opportunity: { select: publicOpportunitySelect }, action: { select: { id: true, type: true, status: true, targetUrl: true } } }
     });
     return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
@@ -1034,7 +1159,7 @@ apiRouter.get('/organizations/:organizationId/growth-runs/:runId', asyncRoute(as
   const profileId = userId(request), orgId = organizationId(request), runId = idSchema.parse(request.params.runId);
   const run = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const found = await tx.growthRun.findFirst({ where: { id: runId, organizationId: orgId }, include: { program: { include: { inputs: { orderBy: { position: 'asc' } } } }, stages: { orderBy: { createdAt: 'asc' } }, opportunity: { select: publicOpportunitySelect }, siteSnapshot: true, draft: { select: publicDraftSelect }, action: { select: publicGrowthActionDetailSelect } } });
+    const found = await tx.growthRun.findFirst({ where: { id: runId, organizationId: orgId }, select: publicGrowthRunDetailGraphSelect });
     if (!found) throw new NotFoundError('增长执行不存在');
     const gsc = await tx.integrationConnection.findFirst({ where: { organizationId: orgId, siteId: found.siteId, provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, select: { lastSyncedAt: true } });
     return { ...found, measurement: { gscConnected: Boolean(gsc), lastSyncedAt: gsc?.lastSyncedAt || null, trafficClaimAllowed: Boolean(gsc) } };
@@ -1339,7 +1464,7 @@ apiRouter.get('/admin/organizations', asyncRoute(async (request, response) => {
 
 apiRouter.get('/admin/pricing', asyncRoute(async (request, response) => {
   const profileId = userId(request);
-  const pricing = await withRequestScope({ profileId }, async (tx) => { await assertPlatformAdmin(tx, profileId); return Promise.all([tx.paymentPackage.findMany({ orderBy: { sortOrder: 'asc' } }), tx.actionPrice.findMany({ orderBy: { action: 'asc' } }), tx.systemSetting.findUnique({ where: { key: CUSTOM_PAYMENT_PRICING_SETTING_KEY } })]); });
+  const pricing = await withRequestScope({ profileId }, async (tx) => { await assertPlatformAdmin(tx, profileId); return Promise.all([tx.paymentPackage.findMany({ orderBy: { sortOrder: 'asc' }, select: publicPaymentPackageSelect }), tx.actionPrice.findMany({ orderBy: { action: 'asc' }, select: publicActionPriceSelect }), tx.systemSetting.findUnique({ where: { key: CUSTOM_PAYMENT_PRICING_SETTING_KEY } })]); });
   sendData(response, { packages: pricing[0], actions: pricing[1], customPricing: parseCustomPaymentPricing(pricing[2]?.value) });
 }));
 
@@ -1409,7 +1534,7 @@ apiRouter.get('/admin/usage', asyncRoute(async (request, response) => {
   const profileId = userId(request), page = cursorPage(request.query.cursor, request.query.limit);
   const result = await withRequestScope({ profileId }, async (tx) => {
     await assertPlatformAdmin(tx, profileId);
-    const rows = await tx.usageRecord.findMany({ include: { organization: { select: { name: true } } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    const rows = await tx.usageRecord.findMany({ select: { ...publicUsageRecordSelect, organization: { select: { name: true } } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
     return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
   sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
@@ -1425,8 +1550,8 @@ apiRouter.post('/admin/organizations/:organizationId/adjustment', asyncRoute(asy
       const amount = BigInt(input.amountMicros);
       const organization = await lockOrganizationBalance(tx, orgId);
       if (!organization || organization.creditBalanceMicros + amount < 0n) throw new ConflictError('调整会导致负余额或组织不存在');
-      const updated = await tx.organization.update({ where: { id: orgId }, data: { creditBalanceMicros: { increment: amount } } });
-      const entry = await tx.ledgerEntry.create({ data: { organizationId: orgId, type: 'ADJUSTMENT', amountMicros: amount, balanceAfterMicros: updated.creditBalanceMicros, reason: input.reason, idempotencyKey: `admin-adjustment:${key}`, metadata: { actorId: profileId } } });
+      const updated = await tx.organization.update({ where: { id: orgId }, data: { creditBalanceMicros: { increment: amount } }, select: { id: true, creditBalanceMicros: true } });
+      const entry = await tx.ledgerEntry.create({ data: { organizationId: orgId, type: 'ADJUSTMENT', amountMicros: amount, balanceAfterMicros: updated.creditBalanceMicros, reason: input.reason, idempotencyKey: `admin-adjustment:${key}`, metadata: { actorId: profileId } }, select: publicLedgerEntrySelect });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'CREDIT_ADJUSTMENT', targetType: 'ledger_entry', targetId: entry.id, metadata: { amountMicros: input.amountMicros, reason: input.reason } } });
       return { statusCode: 200, data: { organization: updated, entry } };
     } });

@@ -19,6 +19,13 @@ export const scanWordPressCompatibility = async (input: {
   }
 };
 
+export const sameWordPressAuthorization = (
+  current: { domain: string; wordpressCredentials: Uint8Array | null },
+  expected: { domain: string; wordpressCredentials: Uint8Array }
+): boolean => current.domain === expected.domain
+  && current.wordpressCredentials !== null
+  && Buffer.from(current.wordpressCredentials).equals(Buffer.from(expected.wordpressCredentials));
+
 export const persistWordPressCompatibility = async (tx: TransactionClient | Prisma.TransactionClient, input: {
   organizationId: string;
   siteId: string;

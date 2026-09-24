@@ -80,6 +80,18 @@ describe('production runtime integrity', () => {
     expect(authorizeRoute).toContain('OrganizationRole.ADMIN');
   });
 
+  it('consumes GSC OAuth state only after remote verification and revalidates the final tenant boundary', () => {
+    const apiRouter = source('./apiRouter.ts');
+    const callbackStart = apiRouter.indexOf("apiRouter.get('/integrations/gsc/callback'");
+    const callbackEnd = apiRouter.indexOf("apiRouter.get('/integrations/wordpress/callback'", callbackStart);
+    const callbackRoute = apiRouter.slice(callbackStart, callbackEnd);
+
+    expect(callbackRoute).toContain('requestHash: \'gsc-oauth-state\'');
+    expect(callbackRoute.indexOf('gscProvider.exchangeCode(code)')).toBeLessThan(callbackRoute.indexOf("consumeOauthState(tx, state.nonce, 'gsc-oauth-state')"));
+    expect(callbackRoute).toContain('currentSite.domain !== site.domain');
+    expect(callbackRoute.match(/OrganizationRole\.ADMIN/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('queues manual GSC synchronization only for a connected property', () => {
     const apiRouter = source('./apiRouter.ts');
     const syncStart = apiRouter.indexOf("apiRouter.post('/organizations/:organizationId/sites/:siteId/gsc/sync'");
@@ -133,5 +145,44 @@ describe('production runtime integrity', () => {
     expect(worker).toContain('heartbeatClaimedJob(workerPrisma, jobRunId, job.attempts');
     expect(worker).toContain('expectedAttempt: staleJob.attempts');
     expect(worker).toContain('forceFinal: true');
+  });
+
+  it('requires a real growth signal, fences all active site runs and validates resume prerequisites', () => {
+    const apiRouter = source('./apiRouter.ts');
+    const createStart = apiRouter.indexOf("apiRouter.post('/organizations/:organizationId/sites/:siteId/growth-programs'");
+    const createEnd = apiRouter.indexOf("apiRouter.get('/organizations/:organizationId/sites/:siteId/growth-programs'", createStart);
+    const createRoute = apiRouter.slice(createStart, createEnd);
+    const statusStart = apiRouter.indexOf('const changeProgramStatus');
+    const statusEnd = apiRouter.indexOf("apiRouter.post('/organizations/:organizationId/growth-programs/:programId/run-now'", statusStart);
+    const statusRoute = apiRouter.slice(statusStart, statusEnd);
+
+    expect(apiRouter).toContain(".min(1, '请至少提供一个关键词、参考文章或竞品站点')");
+    expect(createRoute).toContain('organizationId: orgId');
+    expect(createRoute).toContain('GrowthRunStatus.NEEDS_REVIEW');
+    expect(statusRoute).toContain('program.site.wordpressStatus !== SiteConnectionStatus.CONNECTED');
+    expect(statusRoute).toContain('!program.site.wordpressVerifiedAt');
+    expect(statusRoute).toContain('!program.site.wordpressCredentials');
+    const worker = source('./worker.ts');
+    const reconcileStart = worker.indexOf('const claimedPrograms');
+    const reconcileEnd = worker.indexOf('const [queuedCount, ledgerDifferences]', reconcileStart);
+    const reconcile = worker.slice(reconcileStart, reconcileEnd);
+    expect(reconcile).toContain('organizationId: program.organizationId');
+    expect(reconcile).toContain('siteId: program.siteId');
+    expect(reconcile).not.toContain('where: { programId: id, status:');
+  });
+
+  it('rejects stale WordPress verification results before changing connection state', () => {
+    const apiRouter = source('./apiRouter.ts');
+    const testStart = apiRouter.indexOf("apiRouter.post('/organizations/:organizationId/sites/:siteId/test-connection'");
+    const testEnd = apiRouter.indexOf("apiRouter.get('/organizations/:organizationId/sites/:siteId/wordpress/compatibility'", testStart);
+    const testRoute = apiRouter.slice(testStart, testEnd);
+    const recheckStart = apiRouter.indexOf("apiRouter.post('/organizations/:organizationId/sites/:siteId/wordpress/recheck'");
+    const recheckEnd = apiRouter.indexOf("apiRouter.post('/organizations/:organizationId/sites/:siteId/gsc/authorize'", recheckStart);
+    const recheckRoute = apiRouter.slice(recheckStart, recheckEnd);
+
+    expect(testRoute.match(/assertUnchangedWordPressAuthorization/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(testRoute).toContain('compatibility.mode !== WordPressCompatibilityMode.BLOCKED');
+    expect(recheckRoute).toContain('assertUnchangedWordPressAuthorization');
+    expect(recheckRoute).toContain('SiteConnectionStatus.FAILED');
   });
 });

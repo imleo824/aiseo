@@ -3,13 +3,14 @@ import {
   CreditHoldStatus,
   GrowthInputType,
   GrowthProgramMode,
+  GrowthRunStatus,
   GrowthRunStageCode,
   GrowthRunTrigger,
   JobType
 } from '@prisma/client';
 import type { TransactionClient } from './prisma';
 import { jobService } from './jobService';
-import { publicJobRunSelect } from './apiSelections';
+import { publicGrowthProgramSelect, publicGrowthRunSelect, publicGrowthRunStageSelect, publicJobRunSelect } from './apiSelections';
 import { ConflictError, ValidationError } from '../domain/errors';
 
 export const GROWTH_STAGES = [
@@ -58,6 +59,9 @@ const normalizeValue = (input: GrowthProgramInputSpec): string => {
 };
 
 export const normalizeGrowthProgramInputs = (inputs: GrowthProgramInputSpec[]) => {
+  if (inputs.length === 0) {
+    throw new ValidationError('请至少提供一个关键词、参考文章或竞品站点');
+  }
   const normalized = [] as Array<GrowthProgramInputSpec & { normalizedValue: string; valueFingerprint: string; position: number }>;
   const seen = new Set<string>();
   const counts = new Map<GrowthInputType, number>();
@@ -132,7 +136,17 @@ export const growthProgramService = {
     ]);
     const existing = await tx.growthProgram.findUnique({
       where: { organizationId_inputFingerprint: { organizationId: input.organizationId, inputFingerprint } },
-      include: { inputs: { orderBy: { position: 'asc' } }, runs: { orderBy: { createdAt: 'desc' }, take: 1, include: { stages: { orderBy: { createdAt: 'asc' } } } } }
+      select: {
+        ...publicGrowthProgramSelect,
+        runs: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            ...publicGrowthRunSelect,
+            stages: { orderBy: { createdAt: 'asc' }, select: publicGrowthRunStageSelect }
+          }
+        }
+      }
     });
     if (existing) {
       const run = existing.runs[0] || null;
@@ -141,7 +155,7 @@ export const growthProgramService = {
     await assertInitialBudget(tx, input.budgetLimitMicros);
     if (input.mode === GrowthProgramMode.CONTINUOUS) {
       const active = await tx.growthProgram.findFirst({
-        where: { siteId: input.siteId, mode: GrowthProgramMode.CONTINUOUS, status: 'ACTIVE' },
+        where: { organizationId: input.organizationId, siteId: input.siteId, mode: GrowthProgramMode.CONTINUOUS, status: 'ACTIVE' },
         select: { id: true }
       });
       if (active) throw new ConflictError('该站点已有一个持续增长程序，请先暂停现有程序再创建新的持续程序');
@@ -164,7 +178,7 @@ export const growthProgramService = {
         valueFingerprint,
         position
       })) }
-    }, include: { inputs: { orderBy: { position: 'asc' } } } });
+    }, select: publicGrowthProgramSelect });
     const run = await tx.growthRun.create({ data: {
       organizationId: input.organizationId,
       siteId: input.siteId,
@@ -172,7 +186,7 @@ export const growthProgramService = {
       trigger: GrowthRunTrigger.USER,
       occurrenceKey: input.occurrenceKey,
       stages: { create: GROWTH_STAGES.map((stage) => ({ organizationId: input.organizationId, siteId: input.siteId, stage })) }
-    }, include: { stages: { orderBy: { createdAt: 'asc' } } } });
+    }, select: { ...publicGrowthRunSelect, stages: { orderBy: { createdAt: 'asc' }, select: publicGrowthRunStageSelect } } });
     const job = await jobService.create(tx, {
       organizationId: input.organizationId,
       type: JobType.GROWTH_RUN,
@@ -180,7 +194,11 @@ export const growthProgramService = {
       payload: { growthRunId: run.id },
       priceAction: 'GROWTH_RUN'
     });
-    const linked = await tx.growthRun.update({ where: { id: run.id }, data: { jobRunId: job.id }, include: { stages: { orderBy: { createdAt: 'asc' } } } });
+    const linked = await tx.growthRun.update({
+      where: { id: run.id },
+      data: { jobRunId: job.id },
+      select: { ...publicGrowthRunSelect, stages: { orderBy: { createdAt: 'asc' }, select: publicGrowthRunStageSelect } }
+    });
     await tx.auditEvent.create({ data: {
       organizationId: input.organizationId,
       action: 'GROWTH_PROGRAM_CREATED',
@@ -203,8 +221,22 @@ export const growthProgramService = {
     occurrenceKey: string;
     trigger?: GrowthRunTrigger;
   }) {
-    const existing = await tx.growthRun.findUnique({ where: { programId_occurrenceKey: { programId: input.programId, occurrenceKey: input.occurrenceKey } } });
+    const existing = await tx.growthRun.findUnique({
+      where: { programId_occurrenceKey: { programId: input.programId, occurrenceKey: input.occurrenceKey } },
+      select: { ...publicGrowthRunSelect, stages: { orderBy: { createdAt: 'asc' }, select: publicGrowthRunStageSelect } }
+    });
     if (existing) return existing;
+    const activeSiteRun = await tx.growthRun.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        siteId: input.siteId,
+        status: { in: [GrowthRunStatus.QUEUED, GrowthRunStatus.RUNNING, GrowthRunStatus.NEEDS_REVIEW] }
+      },
+      select: { id: true, programId: true, status: true }
+    });
+    if (activeSiteRun) {
+      throw new ConflictError('该站点已有执行中或待确认的增长任务');
+    }
     await assertScheduledBudget(tx, input.programId);
     const run = await tx.growthRun.create({ data: {
       organizationId: input.organizationId,
@@ -213,7 +245,7 @@ export const growthProgramService = {
       trigger: input.trigger ?? GrowthRunTrigger.SCHEDULED,
       occurrenceKey: input.occurrenceKey,
       stages: { create: GROWTH_STAGES.map((stage) => ({ organizationId: input.organizationId, siteId: input.siteId, stage })) }
-    } });
+    }, select: publicGrowthRunSelect });
     const job = await jobService.create(tx, {
       organizationId: input.organizationId,
       type: JobType.GROWTH_RUN,
@@ -221,6 +253,10 @@ export const growthProgramService = {
       payload: { growthRunId: run.id },
       priceAction: 'GROWTH_RUN'
     });
-    return tx.growthRun.update({ where: { id: run.id }, data: { jobRunId: job.id } });
+    return tx.growthRun.update({
+      where: { id: run.id },
+      data: { jobRunId: job.id },
+      select: { ...publicGrowthRunSelect, stages: { orderBy: { createdAt: 'asc' }, select: publicGrowthRunStageSelect } }
+    });
   }
 };

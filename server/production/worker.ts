@@ -1842,9 +1842,15 @@ const reconcile = async (): Promise<void> => {
     try {
       await workerPrisma.$transaction(async (tx) => {
         const program = await tx.growthProgram.findUniqueOrThrow({ where: { id } });
-        const activeRun = await tx.growthRun.findFirst({ where: { programId: id, status: { in: [GrowthRunStatus.QUEUED, GrowthRunStatus.RUNNING, GrowthRunStatus.NEEDS_REVIEW] } } });
+        const activeRun = await tx.growthRun.findFirst({
+          where: {
+            organizationId: program.organizationId,
+            siteId: program.siteId,
+            status: { in: [GrowthRunStatus.QUEUED, GrowthRunStatus.RUNNING, GrowthRunStatus.NEEDS_REVIEW] }
+          }
+        });
         if (activeRun) {
-          await tx.growthProgram.update({ where: { id }, data: { lockedUntil: null, nextRunAt: new Date(Date.now() + day), lastError: '上一轮仍在执行或等待审批' } });
+          await tx.growthProgram.update({ where: { id }, data: { lockedUntil: null, nextRunAt: new Date(Date.now() + day), lastError: '该站点已有任务在执行或等待确认' } });
           return;
         }
         const occurrenceKey = program.nextRunAt?.toISOString() || new Date().toISOString();

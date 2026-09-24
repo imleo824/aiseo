@@ -19,6 +19,30 @@ export const publicOrganizationSelect = {
   createdAt: true
 } satisfies Prisma.OrganizationSelect;
 
+export const publicOrganizationMemberSelect = {
+  organizationId: true,
+  profileId: true,
+  role: true,
+  createdAt: true
+} satisfies Prisma.OrganizationMemberSelect;
+
+export const publicPaymentPackageSelect = {
+  id: true,
+  name: true,
+  baseAmountMicros: true,
+  creditMicros: true,
+  active: true,
+  sortOrder: true
+} satisfies Prisma.PaymentPackageSelect;
+
+export const publicActionPriceSelect = {
+  action: true,
+  name: true,
+  creditMicros: true,
+  description: true,
+  active: true
+} satisfies Prisma.ActionPriceSelect;
+
 export const publicSiteSelect = {
   id: true,
   name: true,
@@ -104,6 +128,100 @@ export const publicOpportunitySelect = {
   createdAt: true
 } satisfies Prisma.OpportunitySelect;
 
+export const publicGrowthProgramInputSelect = {
+  id: true,
+  type: true,
+  value: true,
+  position: true,
+  createdAt: true
+} satisfies Prisma.GrowthProgramInputSelect;
+
+export const publicGrowthProgramSelect = {
+  id: true,
+  siteId: true,
+  mode: true,
+  status: true,
+  budgetLimitMicros: true,
+  nextRunAt: true,
+  lastRunAt: true,
+  consecutiveWins: true,
+  deliveredRunCount: true,
+  lastError: true,
+  createdAt: true,
+  updatedAt: true,
+  inputs: {
+    orderBy: { position: 'asc' as const },
+    select: publicGrowthProgramInputSelect
+  }
+} satisfies Prisma.GrowthProgramSelect;
+
+export const publicGrowthRunStageSelect = {
+  id: true,
+  siteId: true,
+  runId: true,
+  stage: true,
+  status: true,
+  summary: true,
+  processedCount: true,
+  totalCount: true,
+  evidence: true,
+  errorCode: true,
+  errorMessage: true,
+  startedAt: true,
+  finishedAt: true,
+  createdAt: true,
+  updatedAt: true
+} satisfies Prisma.GrowthRunStageSelect;
+
+export const publicSiteSnapshotSummarySelect = {
+  id: true,
+  status: true,
+  sourceVersion: true,
+  market: true,
+  health: true,
+  corpusChecksum: true,
+  pageCount: true,
+  auditedPageCount: true,
+  fetchedAt: true,
+  createdAt: true
+} satisfies Prisma.SiteSnapshotSelect;
+
+export const publicGrowthRunSelect = {
+  id: true,
+  siteId: true,
+  programId: true,
+  jobRunId: true,
+  opportunityId: true,
+  draftId: true,
+  trigger: true,
+  status: true,
+  currentStage: true,
+  resolvedKeyword: true,
+  selectedActionType: true,
+  targetUrl: true,
+  delivery: true,
+  observation: true,
+  errorCode: true,
+  errorMessage: true,
+  startedAt: true,
+  deliveredAt: true,
+  finishedAt: true,
+  createdAt: true,
+  updatedAt: true
+} satisfies Prisma.GrowthRunSelect;
+
+export const publicGrowthDecisionSelect = {
+  id: true,
+  status: true,
+  rank: true,
+  scoreMicros: true,
+  scoreVersion: true,
+  rationale: true,
+  selectedActionType: true,
+  createdAt: true,
+  updatedAt: true
+} satisfies Prisma.GrowthDecisionSelect;
+
 export const publicAuditEventSelect = {
   id: true,
   actorId: true,
@@ -124,6 +242,17 @@ export const publicLedgerEntrySelect = {
   metadata: true,
   createdAt: true
 } satisfies Prisma.LedgerEntrySelect;
+
+export const publicUsageRecordSelect = {
+  id: true,
+  organizationId: true,
+  jobRunId: true,
+  action: true,
+  amountMicros: true,
+  resultType: true,
+  resultId: true,
+  createdAt: true
+} satisfies Prisma.UsageRecordSelect;
 
 export const publicPaymentIntentSelect = {
   id: true,

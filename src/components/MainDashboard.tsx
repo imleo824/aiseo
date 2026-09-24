@@ -154,8 +154,9 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     return safeSites.find(s => s.id === selectedSiteId) || safeSites[0];
   }, [safeSites, selectedSiteId]);
   const persistedGrowthStatus = selectedSiteId ? growthStatuses[selectedSiteId] : undefined;
-  const persistedRunActive = Boolean(persistedGrowthStatus?.run && ['QUEUED', 'RUNNING'].includes(persistedGrowthStatus.run.status));
+  const persistedRunActive = Boolean(persistedGrowthStatus?.run && ['QUEUED', 'RUNNING', 'NEEDS_REVIEW'].includes(persistedGrowthStatus.run.status));
   const executionActive = isRunning || persistedRunActive;
+  const hasGrowthInput = Boolean(keywordInput.trim() || rewriteInput.trim() || competitorInput.trim());
 
   const setPipelineStep = useCallback((step: number, status: PipelineStepStatus) => {
     setPipelineStepStates((previous) => ({ ...previous, [step]: status }));
@@ -228,6 +229,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
         ...splitUrlSignals(rewriteInput).map((value): GrowthInput => ({ type: 'REFERENCE_URL', value })),
         ...splitUrlSignals(competitorInput).map((value): GrowthInput => ({ type: 'COMPETITOR_SITE', value }))
       ];
+    }
+    if (!inputs.length) {
+      showToast('请至少填写一个关键词、参考文章链接或竞品站点', 'error');
+      return;
     }
     const targetSiteIds = targetSiteId ? [targetSiteId] : safeSites.map(s => s.id);
 
@@ -532,10 +537,13 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             <button
               type="button"
               onClick={() => handleExecuteGenerateAndPublish()}
-              disabled={executionActive || safeSites.length === 0 || activeSite?.connectorStatus !== 'CONNECTED'}
+              disabled={executionActive || !hasGrowthInput || safeSites.length === 0 || activeSite?.connectorStatus !== 'CONNECTED'}
+              aria-describedby="growth-start-requirement"
               className={`w-full py-3.5 sm:py-4 rounded-xl font-extrabold text-sm sm:text-base transition-all flex items-center justify-center gap-2.5 shadow-sm cursor-pointer min-h-[48px] sm:min-h-[52px] active:scale-[0.99] ${
                 executionActive
                   ? 'bg-slate-800 text-slate-300 cursor-wait'
+                  : !hasGrowthInput || safeSites.length === 0 || activeSite?.connectorStatus !== 'CONNECTED'
+                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed shadow-none'
                   : 'bg-slate-950 hover:bg-slate-900 text-white'
               }`}
             >
@@ -547,13 +555,24 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               ) : (
                 <>
                   <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
-                  <span className="truncate">
-                    {activeSite?.connectorStatus !== 'CONNECTED' ? '请先连接 WordPress' : '开始执行'}
-                  </span>
+                  <span className="truncate">开始执行</span>
                   <ArrowRight className="w-4 h-4 shrink-0" />
                 </>
               )}
             </button>
+            {!executionActive && (
+              <p id="growth-start-requirement" className="min-h-4 text-center text-[11px] font-medium text-slate-500">
+                {safeSites.length === 0
+                  ? '请先添加并连接 WordPress 站点'
+                  : activeSite?.connectorStatus !== 'CONNECTED'
+                    ? '请先授权 WordPress'
+                    : !hasGrowthInput
+                      ? '请至少填写一个关键词、参考文章或竞品站点'
+                      : persistedGrowthStatus?.run?.status === 'NEEDS_REVIEW'
+                        ? '请先处理待确认内容'
+                        : '系统会自动选择并执行当前最合适的 SEO 动作'}
+              </p>
+            )}
           </div>
 
         </div>

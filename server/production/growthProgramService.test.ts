@@ -74,9 +74,9 @@ describe('growthProgramService', () => {
     expect(normalized.every(({ valueFingerprint }) => /^[a-f0-9]{64}$/.test(valueFingerprint))).toBe(true);
   });
 
-  it('allows an empty signal set so the worker can discover from the connected site', async () => {
+  it('rejects an empty signal set at the service boundary', async () => {
     const { normalizeGrowthProgramInputs } = await import('./growthProgramService');
-    expect(normalizeGrowthProgramInputs([])).toEqual([]);
+    expect(() => normalizeGrowthProgramInputs([])).toThrow(/至少提供一个/);
   });
 
   it('rejects a configured budget that cannot fund one priced execution', async () => {
@@ -89,7 +89,7 @@ describe('growthProgramService', () => {
       organizationId: '00000000-0000-0000-0000-000000000001',
       siteId: '00000000-0000-0000-0000-000000000002',
       mode: GrowthProgramMode.ONCE,
-      inputs: [],
+      inputs: [{ type: GrowthInputType.KEYWORD, value: 'SEO' }],
       occurrenceKey: 'request-budget',
       budgetLimitMicros: 20_000_000n
     })).rejects.toThrow(/预算上限/);
@@ -98,7 +98,7 @@ describe('growthProgramService', () => {
 
   it('blocks a scheduled paid run before the program can exceed its lifetime budget', async () => {
     const tx = {
-      growthRun: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn(), update: vi.fn() },
+      growthRun: { findUnique: vi.fn().mockResolvedValue(null), findFirst: vi.fn().mockResolvedValue(null), create: vi.fn(), update: vi.fn() },
       growthProgram: { findUniqueOrThrow: vi.fn().mockResolvedValue({ budgetLimitMicros: 50_000_000n, runs: [{ jobRunId: '00000000-0000-0000-0000-000000000010' }] }) },
       actionPrice: { findFirst: vi.fn().mockResolvedValue({ creditMicros: 25_000_000n }) },
       creditHold: { aggregate: vi.fn().mockResolvedValue({ _sum: { amountMicros: 30_000_000n } }) }
@@ -125,6 +125,7 @@ describe('growthProgramService', () => {
     const tx = {
       growthRun: {
         findUnique: vi.fn().mockResolvedValue(null),
+        findFirst: vi.fn().mockResolvedValue(null),
         create: growthRunCreate,
         update: vi.fn().mockResolvedValue({ id: '00000000-0000-0000-0000-000000000005' })
       },
@@ -144,6 +145,33 @@ describe('growthProgramService', () => {
     expect(growthRunCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ trigger: GrowthRunTrigger.USER })
     }));
+  });
+
+  it('blocks a scheduled run while any run on the same site is active', async () => {
+    const tx = {
+      growthRun: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        findFirst: vi.fn().mockResolvedValue({ id: 'active-run', programId: 'other-program', status: 'RUNNING' }),
+        create: vi.fn(),
+        update: vi.fn()
+      }
+    };
+    const { growthProgramService } = await import('./growthProgramService');
+    await expect(growthProgramService.createScheduledRun(tx as never, {
+      organizationId: '00000000-0000-0000-0000-000000000001',
+      siteId: '00000000-0000-0000-0000-000000000002',
+      programId: '00000000-0000-0000-0000-000000000003',
+      occurrenceKey: '2026-09-11T00:00:00.000Z'
+    })).rejects.toThrow(/该站点已有执行中或待确认/);
+    expect(tx.growthRun.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        organizationId: '00000000-0000-0000-0000-000000000001',
+        siteId: '00000000-0000-0000-0000-000000000002',
+        status: { in: ['QUEUED', 'RUNNING', 'NEEDS_REVIEW'] }
+      })
+    }));
+    expect(tx.growthRun.create).not.toHaveBeenCalled();
+    expect(createJob).not.toHaveBeenCalled();
   });
 
   it('rejects non-HTTPS and credential-bearing external URLs', async () => {

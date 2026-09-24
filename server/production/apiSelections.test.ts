@@ -1,13 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
+  publicActionPriceSelect,
   publicAuditEventSelect,
   publicDraftSelect,
   publicGrowthActionDetailSelect,
   publicGrowthActionStatusSelect,
+  publicGrowthDecisionSelect,
+  publicGrowthProgramInputSelect,
+  publicGrowthProgramSelect,
+  publicGrowthRunSelect,
+  publicGrowthRunStageSelect,
   publicJobRunSelect,
   publicLedgerEntrySelect,
+  publicOrganizationMemberSelect,
+  publicPaymentPackageSelect,
   publicPaymentIntentSelect,
-  publicSiteSelect
+  publicSiteSelect,
+  publicUsageRecordSelect
 } from './apiSelections';
 
 describe('public API field allowlists', () => {
@@ -44,5 +53,30 @@ describe('public API field allowlists', () => {
     expect(publicPaymentIntentSelect).not.toHaveProperty('verification');
     expect(publicPaymentIntentSelect).not.toHaveProperty('pricingSnapshot');
     expect(publicPaymentIntentSelect).not.toHaveProperty('tokenContract');
+  });
+
+  it('keeps growth-engine fingerprints, locks and tenant ownership server-side', () => {
+    expect(publicGrowthProgramInputSelect).not.toHaveProperty('organizationId');
+    expect(publicGrowthProgramInputSelect).not.toHaveProperty('normalizedValue');
+    expect(publicGrowthProgramInputSelect).not.toHaveProperty('valueFingerprint');
+    expect(publicGrowthProgramSelect).not.toHaveProperty('organizationId');
+    expect(publicGrowthProgramSelect).not.toHaveProperty('inputFingerprint');
+    expect(publicGrowthProgramSelect).not.toHaveProperty('lockedUntil');
+    expect(publicGrowthProgramSelect).not.toHaveProperty('lastEvidenceFingerprint');
+    expect(publicGrowthRunSelect).not.toHaveProperty('organizationId');
+    expect(publicGrowthRunSelect).not.toHaveProperty('occurrenceKey');
+    expect(publicGrowthRunSelect).not.toHaveProperty('knowledgeSourceIds');
+    expect(publicGrowthRunStageSelect).not.toHaveProperty('organizationId');
+    expect(publicGrowthDecisionSelect).not.toHaveProperty('organizationId');
+    expect(publicGrowthDecisionSelect).not.toHaveProperty('runId');
+    expect(publicGrowthDecisionSelect).not.toHaveProperty('opportunityId');
+  });
+
+  it('uses explicit billing, membership and usage response contracts', () => {
+    expect(publicPaymentPackageSelect).toEqual(expect.objectContaining({ id: true, baseAmountMicros: true, creditMicros: true }));
+    expect(publicActionPriceSelect).toEqual(expect.objectContaining({ action: true, creditMicros: true }));
+    expect(publicOrganizationMemberSelect).not.toHaveProperty('profile');
+    expect(publicUsageRecordSelect).not.toHaveProperty('organization');
+    expect(publicLedgerEntrySelect).not.toHaveProperty('idempotencyKey');
   });
 });
