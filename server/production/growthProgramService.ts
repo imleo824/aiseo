@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import type { TransactionClient } from './prisma';
 import { jobService } from './jobService';
+import { publicJobRunSelect } from './apiSelections';
 import { ConflictError, ValidationError } from '../domain/errors';
 
 export const GROWTH_STAGES = [
@@ -135,7 +136,7 @@ export const growthProgramService = {
     });
     if (existing) {
       const run = existing.runs[0] || null;
-      return { program: existing, run, job: run?.jobRunId ? await tx.jobRun.findUnique({ where: { id: run.jobRunId } }) : null, replayed: true };
+      return { program: existing, run, job: run?.jobRunId ? await tx.jobRun.findUnique({ where: { id: run.jobRunId }, select: publicJobRunSelect }) : null, replayed: true };
     }
     await assertInitialBudget(tx, input.budgetLimitMicros);
     if (input.mode === GrowthProgramMode.CONTINUOUS) {

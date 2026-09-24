@@ -103,6 +103,7 @@ describe('production runtime integrity', () => {
 
     expect(membersRoute).toContain('existing?.role === OrganizationRole.OWNER');
     expect(membersRoute).toContain('ConflictError');
+    expect(membersRoute).toContain('await revalidateSensitiveSession(request)');
     expect(paymentsRoutes.match(/OrganizationRole\.ADMIN/g)).toHaveLength(2);
     expect(paymentsRoutes).not.toContain('OrganizationRole.EDITOR');
   });
@@ -116,5 +117,21 @@ describe('production runtime integrity', () => {
     expect(rollbackRoute).toContain('include: { site: true');
     expect(rollbackRoute).toContain('draft.site.wordpressStatus !== SiteConnectionStatus.CONNECTED');
     expect(rollbackRoute.indexOf('WordPress \u8fde\u63a5\u4e0d\u53ef\u7528')).toBeLessThan(rollbackRoute.indexOf('jobService.create'));
+  });
+
+  it('enforces one active continuous program and fences worker attempts', () => {
+    const apiRouter = source('./apiRouter.ts');
+    const statusStart = apiRouter.indexOf('const changeProgramStatus');
+    const statusEnd = apiRouter.indexOf("apiRouter.post('/organizations/:organizationId/growth-programs/:programId/run-now'", statusStart);
+    const statusRoute = apiRouter.slice(statusStart, statusEnd);
+    const worker = source('./worker.ts');
+
+    expect(statusRoute).toContain('id: { not: program.id }');
+    expect(statusRoute).toContain("mode: GrowthProgramMode.CONTINUOUS");
+    expect(statusRoute).toContain("status: GrowthProgramStatus.ACTIVE");
+    expect(worker).toContain('completeClaimedJob(workerPrisma, jobRunId, job.attempts');
+    expect(worker).toContain('heartbeatClaimedJob(workerPrisma, jobRunId, job.attempts');
+    expect(worker).toContain('expectedAttempt: staleJob.attempts');
+    expect(worker).toContain('forceFinal: true');
   });
 });

@@ -77,6 +77,9 @@ const organization = me.data?.organizations?.[0];
 if (!me.data?.profile?.id || !organization?.id || organization.role !== 'OWNER') {
   throw new Error(`Personal workspace bootstrap returned an invalid contract: ${JSON.stringify(me)}`);
 }
+if ('erasureClaimedAt' in me.data.profile || 'updatedAt' in me.data.profile) {
+  throw new Error('Personal workspace response exposed internal profile lifecycle fields');
+}
 if (organization.creditBalanceMicros !== '0') throw new Error('New personal workspaces must start with zero credit');
 
 const pricing = await expectStatus(await api('/pricing', token), 200, 'read public customer pricing');
@@ -138,6 +141,11 @@ const updateSite = () => api(`/organizations/${organization.id}/sites/${siteId}`
 const updated = await expectStatus(await updateSite(), 200, 'update site');
 const updateReplay = await expectStatus(await updateSite(), 200, 'replay idempotent site update');
 if (updated.data?.site?.name !== 'Runtime Contract Site Updated' || updateReplay.data?.site?.id !== siteId) throw new Error('Site update contract or replay is invalid');
+for (const responseSite of [created.data.site, replayed.data.site, updated.data.site, updateReplay.data.site]) {
+  if ('wordpressCredentials' in responseSite || 'wordpressCredentialKeyVersion' in responseSite || 'latestWordpressCompatibilityProfileId' in responseSite) {
+    throw new Error('Site mutation response exposed private WordPress credential metadata');
+  }
+}
 
 const compatibility = await expectStatus(await api(`/organizations/${organization.id}/sites/${siteId}/wordpress/compatibility`, token), 200, 'read WordPress compatibility state');
 if (compatibility.data?.mode !== 'RECHECK_REQUIRED') throw new Error('New site must require a WordPress compatibility check');

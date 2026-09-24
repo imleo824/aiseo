@@ -2,6 +2,7 @@ import { JobStatus, JobType, Prisma } from '@prisma/client';
 import { NotFoundError } from '../domain/errors';
 import { billingService } from './billingService';
 import type { TransactionClient } from './prisma';
+import { publicJobRunSelect } from './apiSelections';
 
 type CreateJobInput = {
   organizationId: string;
@@ -36,7 +37,7 @@ export const jobService = {
   },
 
   async get(tx: TransactionClient, organizationId: string, jobRunId: string) {
-    const job = await tx.jobRun.findFirst({ where: { id: jobRunId, organizationId } });
+    const job = await tx.jobRun.findFirst({ where: { id: jobRunId, organizationId }, select: publicJobRunSelect });
     if (!job) throw new NotFoundError('异步任务不存在');
     return job;
   }

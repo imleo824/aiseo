@@ -48,6 +48,7 @@ import { persistSiteSnapshot } from './siteSnapshotService';
 import { disconnectWorkerDatabase, workerPrisma } from './workerPrisma';
 import { assertDatabaseSecurity } from './databaseSecurity';
 import { logger } from '../utils/logger';
+import { claimQueuedJob, completeClaimedJob, heartbeatClaimedJob } from './jobClaim';
 import { resolvePublicHttpsOrigin } from '../utils/networkSafety';
 import { ConflictError, ValidationError } from '../domain/errors';
 import { parsePublishingConfirmationPolicy, PUBLISH_CONFIRMATION_SETTING_KEY } from './publishingPolicy';
@@ -1653,13 +1654,33 @@ const processGscSync = async (jobRunId: string): Promise<string> => {
   });
 };
 
-const markFailed = async (jobRunId: string, error: unknown): Promise<void> => {
+const markFailed = async (jobRunId: string, error: unknown, options: {
+  expectedAttempt?: number;
+  forceFinal?: boolean;
+  staleBefore?: Date;
+} = {}): Promise<void> => {
   const message = error instanceof Error ? error.message : String(error);
   await workerPrisma.$transaction(async (tx) => {
     const job = await tx.jobRun.findUnique({ where: { id: jobRunId } });
     if (!job) return;
-    const finalAttempt = job.attempts >= 5;
-    await tx.jobRun.update({ where: { id: jobRunId }, data: { status: finalAttempt ? JobStatus.DEAD_LETTER : JobStatus.QUEUED, queueJobId: finalAttempt ? job.queueJobId : null, errorCode: 'JOB_EXECUTION_FAILED', errorMessage: message.slice(0, 2_000), finishedAt: finalAttempt ? new Date() : null } });
+    const expectedAttempt = options.expectedAttempt ?? job.attempts;
+    const finalAttempt = options.forceFinal === true || job.attempts >= 5;
+    const transitioned = await tx.jobRun.updateMany({
+      where: {
+        id: jobRunId,
+        status: JobStatus.RUNNING,
+        attempts: expectedAttempt,
+        ...(options.staleBefore ? { heartbeatAt: { lt: options.staleBefore } } : {})
+      },
+      data: {
+        status: finalAttempt ? JobStatus.DEAD_LETTER : JobStatus.QUEUED,
+        queueJobId: finalAttempt ? job.queueJobId : null,
+        errorCode: 'JOB_EXECUTION_FAILED',
+        errorMessage: message.slice(0, 2_000),
+        finishedAt: finalAttempt ? new Date() : null
+      }
+    });
+    if (transitioned.count !== 1) return;
     if (!finalAttempt) {
       if (job.type === JobType.WORDPRESS_PUBLISH) {
         await tx.publishAttempt.updateMany({
@@ -1758,15 +1779,17 @@ const reconcile = async (): Promise<void> => {
   const capabilities = productionConfigurationStatus('worker').providers;
   await workerPrisma.workerHeartbeat.upsert({ where: { workerId }, create: { workerId, queues: [PRODUCTION_QUEUE], processVersion: process.env.RAILWAY_GIT_COMMIT_SHA || 'development', capabilities, heartbeatAt: new Date(), startedAt }, update: { heartbeatAt: new Date(), queues: [PRODUCTION_QUEUE], capabilities } });
   await workerPrisma.paymentIntent.updateMany({ where: { status: { in: [PaymentStatus.AWAITING_TRANSFER, PaymentStatus.VERIFYING] }, expiresAt: { lt: new Date() } }, data: { status: PaymentStatus.EXPIRED } });
-  await workerPrisma.jobRun.updateMany({ where: { status: JobStatus.RUNNING, heartbeatAt: { lt: new Date(Date.now() - 10 * 60_000) }, attempts: { lt: 5 } }, data: { status: JobStatus.QUEUED, queueJobId: null, errorCode: 'STALE_WORKER_RECOVERED', errorMessage: 'Recovered from stale worker heartbeat' } });
+  const staleBefore = new Date(Date.now() - 10 * 60_000);
+  await workerPrisma.jobRun.updateMany({ where: { status: JobStatus.RUNNING, heartbeatAt: { lt: staleBefore }, attempts: { lt: 5 } }, data: { status: JobStatus.QUEUED, queueJobId: null, errorCode: 'STALE_WORKER_RECOVERED', errorMessage: 'Recovered from stale worker heartbeat' } });
   const exhaustedStaleJobs = await workerPrisma.jobRun.findMany({
-    where: { status: JobStatus.RUNNING, heartbeatAt: { lt: new Date(Date.now() - 10 * 60_000) }, attempts: { gte: 5 } },
-    select: { id: true }
+    where: { status: JobStatus.RUNNING, heartbeatAt: { lt: staleBefore }, attempts: { gte: 5 } },
+    select: { id: true, attempts: true }
   });
   for (const staleJob of exhaustedStaleJobs) {
-    await workerPrisma.$transaction(async (tx) => {
-      await tx.jobRun.updateMany({ where: { id: staleJob.id, status: JobStatus.RUNNING }, data: { status: JobStatus.DEAD_LETTER, finishedAt: new Date(), errorCode: 'MAX_ATTEMPTS_EXCEEDED' } });
-      await billingService.releaseCreditHold(tx, staleJob.id);
+    await markFailed(staleJob.id, new Error('执行服务心跳超时且已达到最大重试次数'), {
+      expectedAttempt: staleJob.attempts,
+      forceFinal: true,
+      staleBefore
     });
   }
 
@@ -1866,9 +1889,13 @@ export const createProductionWorker = () => new Worker<QueuePayload>(PRODUCTION_
   }
   const jobRunId = queueJob.data.jobRunId;
   if (!jobRunId) throw new Error('队列任务缺少 jobRunId');
-  const job = await workerPrisma.jobRun.update({ where: { id: jobRunId }, data: { status: JobStatus.RUNNING, attempts: { increment: 1 }, startedAt: { set: new Date() }, heartbeatAt: new Date(), errorCode: null, errorMessage: null } });
+  const job = await claimQueuedJob(workerPrisma, jobRunId);
+  if (!job) {
+    logger.warn('WORKER', `Ignored duplicate, premature or stale queue delivery for database job ${jobRunId}`);
+    return;
+  }
   const heartbeatTimer = setInterval(() => {
-    void workerPrisma.jobRun.updateMany({ where: { id: jobRunId, status: JobStatus.RUNNING }, data: { heartbeatAt: new Date() } })
+    void heartbeatClaimedJob(workerPrisma, jobRunId, job.attempts)
       .catch((error) => Sentry.captureException(error, { tags: { subsystem: 'job-heartbeat', jobRunId } }));
   }, 30_000);
   heartbeatTimer.unref();
@@ -1885,9 +1912,12 @@ export const createProductionWorker = () => new Worker<QueuePayload>(PRODUCTION_
       case JobType.GSC_SYNC: resultId = await processGscSync(jobRunId); break;
       default: throw new Error(`Worker 不支持已停用的作业类型 ${job.type}`);
     }
-    if (!deferred) await workerPrisma.jobRun.update({ where: { id: jobRunId }, data: { status: JobStatus.SUCCEEDED, result: resultId ? { resultId } : undefined, finishedAt: new Date(), heartbeatAt: new Date() } });
+    if (!deferred) {
+      const completed = await completeClaimedJob(workerPrisma, jobRunId, job.attempts, resultId);
+      if (!completed) logger.warn('WORKER', `Ignored completion from stale execution attempt ${job.attempts} for database job ${jobRunId}`);
+    }
   } catch (error) {
-    await markFailed(jobRunId, error);
+    await markFailed(jobRunId, error, { expectedAttempt: job.attempts });
     throw error;
   } finally {
     clearInterval(heartbeatTimer);

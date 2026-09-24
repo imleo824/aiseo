@@ -21,6 +21,7 @@ import { normalizeSiteDomain } from './siteDomain';
 import { CUSTOM_PAYMENT_PRICING_SETTING_KEY, packageBaseMicrosSchema, parseCustomPaymentPricing, positiveAccountingMicrosSchema, pricingConfigurationSchema, signedAccountingMicrosSchema } from './accounting';
 import { continuousCadenceDays } from './growthPolicy';
 import { logger } from '../utils/logger';
+import { publicAuditEventSelect, publicDraftSelect, publicGrowthActionDetailSelect, publicGrowthActionStatusSelect, publicJobRunSelect, publicLedgerEntrySelect, publicOpportunitySelect, publicOrganizationSelect, publicPaymentIntentSelect, publicProfileSelect, publicSiteSelect } from './apiSelections';
 
 const roleRank: Record<OrganizationRole, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2, OWNER: 3 };
 const idSchema = z.string().uuid();
@@ -114,7 +115,7 @@ const queueWordPressPublish = async (input: {
   const draft = await input.tx.contentDraft.update({
     where: { id: input.draftId },
     data: { status: DraftStatus.PUBLISHING },
-    include: { reviews: true, publishAttempts: true }
+    select: publicDraftSelect
   });
   await input.tx.growthAction.update({ where: { id: input.actionId }, data: { status: GrowthActionStatus.EXECUTING } });
   await input.tx.growthRun.update({
@@ -294,8 +295,8 @@ apiRouter.get('/me', asyncRoute(async (request, response) => {
   const result = await withRequestScope({ profileId }, async (tx) => {
     await tx.$executeRaw`SELECT private.ensure_personal_workspace()`;
     const [profile, memberships] = await Promise.all([
-      tx.profile.findUniqueOrThrow({ where: { id: profileId } }),
-      tx.organizationMember.findMany({ where: { profileId }, include: { organization: true }, orderBy: { createdAt: 'asc' } })
+      tx.profile.findUniqueOrThrow({ where: { id: profileId }, select: publicProfileSelect }),
+      tx.organizationMember.findMany({ where: { profileId }, select: { role: true, organizationId: true, organization: { select: publicOrganizationSelect } }, orderBy: { createdAt: 'asc' } })
     ]);
     const totals = await organizationFinancialSummaries(tx, memberships.map(({ organizationId }) => organizationId));
     return {
@@ -396,7 +397,7 @@ apiRouter.delete('/me', asyncRoute(async (request, response) => {
 
 apiRouter.get('/organizations', asyncRoute(async (request, response) => {
   const profileId = userId(request);
-  const organizations = await withRequestScope({ profileId }, (tx) => tx.organizationMember.findMany({ where: { profileId }, include: { organization: true }, orderBy: { createdAt: 'asc' } }));
+  const organizations = await withRequestScope({ profileId }, (tx) => tx.organizationMember.findMany({ where: { profileId }, select: { role: true, organization: { select: publicOrganizationSelect } }, orderBy: { createdAt: 'asc' } }));
   sendData(response, organizations.map(({ organization, role }) => ({ ...organization, role })));
 }));
 
@@ -410,6 +411,7 @@ apiRouter.get('/organizations/:organizationId/members', asyncRoute(async (reques
 }));
 
 apiRouter.post('/organizations/:organizationId/members', asyncRoute(async (request, response) => {
+  await revalidateSensitiveSession(request);
   const profileId = userId(request), orgId = organizationId(request), key = idempotencyKey(request), input = parseBody(memberSchema, request);
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
@@ -438,7 +440,7 @@ apiRouter.get('/organizations/:organizationId/sites', asyncRoute(async (request,
   const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
   const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const rows = await tx.site.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}), select: { id: true, name: true, domain: true, language: true, niche: true, wordpressStatus: true, wordpressUser: true, wordpressVerifiedAt: true, wordpressCompatibilityMode: true, wordpressCompatibilityCheckedAt: true, createdAt: true, integrations: { select: { id: true, provider: true, propertyId: true, status: true, lastSyncedAt: true, lastErrorCode: true, lastErrorMessage: true } } } });
+    const rows = await tx.site.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}), select: publicSiteSelect });
     return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
   sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
@@ -450,7 +452,7 @@ apiRouter.post('/organizations/:organizationId/sites', asyncRoute(async (request
   const outcome = await withSerializableScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.EDITOR);
     return executeIdempotent({ tx, organizationId: orgId, profileId, key, body: { ...input, domain }, execute: async () => {
-      const site = await tx.site.create({ data: { organizationId: orgId, name: input.name, domain, language: input.language, niche: input.niche || null } });
+      const site = await tx.site.create({ data: { organizationId: orgId, name: input.name, domain, language: input.language, niche: input.niche || null }, select: publicSiteSelect });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_CREATED', targetType: 'site', targetId: site.id } });
       return { statusCode: 201, data: { site } };
     } });
@@ -498,7 +500,7 @@ apiRouter.put('/organizations/:organizationId/sites/:siteId', asyncRoute(async (
           } : {})
         }).filter(([, val]) => val !== undefined)
       );
-      const site = await tx.site.update({ where: { id: siteId }, data: updateData });
+      const site = await tx.site.update({ where: { id: siteId }, data: updateData, select: publicSiteSelect });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'SITE_UPDATED', targetType: 'site', targetId: siteId, metadata: { fields: Object.keys(input), domainChanged } } });
       return { statusCode: 200, data: { site } };
     } });
@@ -777,7 +779,7 @@ apiRouter.get('/organizations/:organizationId/growth-programs/:programId', async
   const profileId = userId(request), orgId = organizationId(request), programId = idSchema.parse(request.params.programId);
   const program = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const found = await tx.growthProgram.findFirst({ where: { id: programId, organizationId: orgId }, include: { inputs: { orderBy: { position: 'asc' } }, site: { select: { id: true, name: true, domain: true, wordpressStatus: true, integrations: { where: { provider: 'GSC' }, select: { status: true, lastSyncedAt: true }, take: 1 } } }, runs: { orderBy: { createdAt: 'desc' }, take: 20, include: { stages: { orderBy: { createdAt: 'asc' } }, action: true } } } });
+    const found = await tx.growthProgram.findFirst({ where: { id: programId, organizationId: orgId }, include: { inputs: { orderBy: { position: 'asc' } }, site: { select: { id: true, name: true, domain: true, wordpressStatus: true, integrations: { where: { provider: 'GSC' }, select: { status: true, lastSyncedAt: true }, take: 1 } } }, runs: { orderBy: { createdAt: 'desc' }, take: 20, include: { stages: { orderBy: { createdAt: 'asc' } }, action: { select: publicGrowthActionStatusSelect } } } } });
     if (!found) throw new NotFoundError('增长程序不存在');
     return found;
   });
@@ -792,7 +794,19 @@ const changeProgramStatus = (status: GrowthProgramStatus) => asyncRoute(async (r
       const program = await tx.growthProgram.findFirst({ where: { id: programId, organizationId: orgId } });
       if (!program) throw new NotFoundError('增长程序不存在');
       if (program.mode === GrowthProgramMode.ONCE) throw new ConflictError('一次性执行不支持暂停或恢复；自动计划才可以更改运行状态');
-      if (status === GrowthProgramStatus.ACTIVE) await assertExecutionProviders(tx);
+      if (status === GrowthProgramStatus.ACTIVE) {
+        const competingProgram = await tx.growthProgram.findFirst({
+          where: {
+            siteId: program.siteId,
+            mode: GrowthProgramMode.CONTINUOUS,
+            status: GrowthProgramStatus.ACTIVE,
+            id: { not: program.id }
+          },
+          select: { id: true }
+        });
+        if (competingProgram) throw new ConflictError('该站点已有正在运行的自动计划，请先暂停现有计划');
+        await assertExecutionProviders(tx);
+      }
       const updated = await tx.growthProgram.update({ where: { id: programId }, data: { status, nextRunAt: status === GrowthProgramStatus.ACTIVE ? new Date() : program.nextRunAt, lockedUntil: null, lastError: null }, include: { inputs: { orderBy: { position: 'asc' } } } });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: status === GrowthProgramStatus.PAUSED ? 'GROWTH_PROGRAM_PAUSED' : 'GROWTH_PROGRAM_RESUMED', targetType: 'growth_program', targetId: programId } });
       return { statusCode: 200, data: { program: updated } };
@@ -868,10 +882,10 @@ apiRouter.get('/organizations/:organizationId/growth-statuses', asyncRoute(async
           include: {
             program: { include: { inputs: { orderBy: { position: 'asc' } } } },
             stages: { orderBy: { createdAt: 'asc' } },
-            opportunity: true,
+            opportunity: { select: publicOpportunitySelect },
             siteSnapshot: { select: { id: true, status: true, sourceVersion: true, market: true, health: true, corpusChecksum: true, pageCount: true, auditedPageCount: true, fetchedAt: true } },
             draft: { select: { id: true, status: true, title: true, slug: true, qualityReport: true, publishedUrl: true, createdAt: true } },
-            action: { include: { evidence: { orderBy: { createdAt: 'asc' } }, measurements: { orderBy: { windowDays: 'asc' } } } }
+            action: { select: publicGrowthActionStatusSelect }
           }
         },
         integrations: { where: { provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, select: { lastSyncedAt: true }, take: 1 }
@@ -931,10 +945,10 @@ apiRouter.get('/organizations/:organizationId/sites/:siteId/growth-status', asyn
         include: {
           program: { include: { inputs: { orderBy: { position: 'asc' } } } },
           stages: { orderBy: { createdAt: 'asc' } },
-          opportunity: true,
+          opportunity: { select: publicOpportunitySelect },
           siteSnapshot: { select: { id: true, status: true, sourceVersion: true, market: true, health: true, corpusChecksum: true, pageCount: true, auditedPageCount: true, fetchedAt: true } },
           draft: { select: { id: true, status: true, title: true, slug: true, qualityReport: true, publishedUrl: true, createdAt: true } },
-          action: { include: { evidence: { orderBy: { createdAt: 'asc' } }, measurements: { orderBy: { windowDays: 'asc' } } } }
+          action: { select: publicGrowthActionStatusSelect }
         }
       }),
       tx.integrationConnection.findFirst({ where: { organizationId: orgId, siteId, provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, select: { lastSyncedAt: true } })
@@ -1009,7 +1023,7 @@ apiRouter.get('/organizations/:organizationId/growth-runs/:runId/candidates', as
       orderBy: [{ rank: 'asc' }, { id: 'asc' }],
       take: page.take + 1,
       ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}),
-      include: { opportunity: true, action: { select: { id: true, type: true, status: true, targetUrl: true } } }
+      include: { opportunity: { select: publicOpportunitySelect }, action: { select: { id: true, type: true, status: true, targetUrl: true } } }
     });
     return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
@@ -1020,7 +1034,7 @@ apiRouter.get('/organizations/:organizationId/growth-runs/:runId', asyncRoute(as
   const profileId = userId(request), orgId = organizationId(request), runId = idSchema.parse(request.params.runId);
   const run = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const found = await tx.growthRun.findFirst({ where: { id: runId, organizationId: orgId }, include: { program: { include: { inputs: { orderBy: { position: 'asc' } } } }, stages: { orderBy: { createdAt: 'asc' } }, opportunity: true, siteSnapshot: true, draft: { include: { reviews: true, publishAttempts: true } }, action: { include: { evidence: true, pageVersions: true, measurements: { orderBy: { windowDays: 'asc' } } } } } });
+    const found = await tx.growthRun.findFirst({ where: { id: runId, organizationId: orgId }, include: { program: { include: { inputs: { orderBy: { position: 'asc' } } } }, stages: { orderBy: { createdAt: 'asc' } }, opportunity: { select: publicOpportunitySelect }, siteSnapshot: true, draft: { select: publicDraftSelect }, action: { select: publicGrowthActionDetailSelect } } });
     if (!found) throw new NotFoundError('增长执行不存在');
     const gsc = await tx.integrationConnection.findFirst({ where: { organizationId: orgId, siteId: found.siteId, provider: 'GSC', status: SiteConnectionStatus.CONNECTED }, select: { lastSyncedAt: true } });
     return { ...found, measurement: { gscConnected: Boolean(gsc), lastSyncedAt: gsc?.lastSyncedAt || null, trafficClaimAllowed: Boolean(gsc) } };
@@ -1032,7 +1046,7 @@ apiRouter.get('/organizations/:organizationId/opportunities', asyncRoute(async (
   const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
   const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const rows = await tx.opportunity.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    const rows = await tx.opportunity.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}), select: publicOpportunitySelect });
     return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
   sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
@@ -1042,7 +1056,7 @@ apiRouter.get('/organizations/:organizationId/jobs', asyncRoute(async (request, 
   const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
   const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const rows = await tx.jobRun.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    const rows = await tx.jobRun.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}), select: publicJobRunSelect });
     return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
   sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
@@ -1058,7 +1072,7 @@ apiRouter.get('/organizations/:organizationId/drafts', asyncRoute(async (request
   const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
   const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const rows = await tx.contentDraft.findMany({ where: { organizationId: orgId }, include: { reviews: true, publishAttempts: true }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    const rows = await tx.contentDraft.findMany({ where: { organizationId: orgId }, select: publicDraftSelect, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
     return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
   sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
@@ -1084,7 +1098,7 @@ apiRouter.post('/organizations/:organizationId/drafts/:draftId/approve', asyncRo
       await tx.draftReview.create({ data: { draftId, reviewerId: profileId, decision: ReviewDecision.APPROVED, comment: input.comment } });
       const queued = await queueWordPressPublish({ tx, organizationId: orgId, draftId, runId: run.id, actionId: action.id, automated: false });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'DRAFT_APPROVED_AND_QUEUED', targetType: 'content_draft', targetId: draftId, metadata: { growthRunId: run.id, growthActionId: action.id, jobRunId: queued.job.id, attemptNumber: queued.attempt.attemptNumber } } });
-      return { statusCode: 202, data: queued };
+      return { statusCode: 202, data: { draft: queued.draft, job: queued.job } };
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);
@@ -1124,7 +1138,7 @@ apiRouter.post('/organizations/:organizationId/drafts/:draftId/retry-publish', a
       await tx.auditEvent.create({
         data: { organizationId: orgId, actorId: profileId, action: 'DRAFT_PUBLISH_RETRY_QUEUED', targetType: 'content_draft', targetId: draftId, metadata: { growthRunId: run.id, growthActionId: action.id, jobRunId: queued.job.id, attemptNumber: queued.attempt.attemptNumber } }
       });
-      return { statusCode: 202, data: queued };
+      return { statusCode: 202, data: { draft: queued.draft, job: queued.job } };
     } });
   });
   sendData(response, outcome.data, outcome.statusCode);
@@ -1147,7 +1161,7 @@ apiRouter.post('/organizations/:organizationId/drafts/:draftId/reject', asyncRou
       const updated = await tx.contentDraft.update({
         where: { id: draftId },
         data: { status: DraftStatus.REJECTED },
-        include: { reviews: true, publishAttempts: true }
+        select: publicDraftSelect
       });
       await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.CANCELLED } });
       await tx.growthRun.update({ where: { id: run.id }, data: { status: GrowthRunStatus.CANCELLED, finishedAt: new Date(), errorCode: 'CUSTOMER_REJECTED', errorMessage: input.comment } });
@@ -1176,7 +1190,7 @@ apiRouter.post('/organizations/:organizationId/drafts/:draftId/rollback', asyncR
       const updated = await tx.contentDraft.update({
         where: { id: draftId },
         data: { status: DraftStatus.ROLLING_BACK },
-        include: { reviews: true, publishAttempts: true }
+        select: publicDraftSelect
       });
       await tx.growthAction.update({ where: { id: action.id }, data: { status: GrowthActionStatus.EXECUTING } });
       await tx.auditEvent.create({ data: { organizationId: orgId, actorId: profileId, action: 'DRAFT_ROLLBACK_QUEUED', targetType: 'content_draft', targetId: draftId, metadata: { actionId: action.id, jobRunId: job.id } } });
@@ -1190,7 +1204,7 @@ apiRouter.get('/organizations/:organizationId/audit-events', asyncRoute(async (r
   const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
   const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.ADMIN);
-    const rows = await tx.auditEvent.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    const rows = await tx.auditEvent.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}), select: publicAuditEventSelect });
     return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
   sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
@@ -1212,7 +1226,7 @@ apiRouter.get('/organizations/:organizationId/payment-intents', asyncRoute(async
   const profileId = userId(request), orgId = organizationId(request), page = cursorPage(request.query.cursor, request.query.limit);
   const result = await withRequestScope({ profileId, organizationId: orgId }, async (tx) => {
     await assertRole(tx, profileId, orgId, OrganizationRole.VIEWER);
-    const rows = await tx.paymentIntent.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    const rows = await tx.paymentIntent.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}), select: publicPaymentIntentSelect });
     return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
   sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
@@ -1252,7 +1266,7 @@ apiRouter.get('/organizations/:organizationId/ledger', asyncRoute(async (request
     const [organization, holds, entries] = await Promise.all([
       tx.organization.findUniqueOrThrow({ where: { id: orgId }, select: { creditBalanceMicros: true } }),
       tx.creditHold.aggregate({ where: { organizationId: orgId, status: 'HELD' }, _sum: { amountMicros: true } }),
-      tx.ledgerEntry.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) })
+      tx.ledgerEntry.findMany({ where: { organizationId: orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}), select: publicLedgerEntrySelect })
     ]);
     const held = holds._sum.amountMicros || 0n;
     return { balanceMicros: organization.creditBalanceMicros, heldMicros: held, availableMicros: organization.creditBalanceMicros - held, entries: entries.slice(0, page.take), nextCursor: entries.length > page.take ? entries[page.take - 1].id : undefined };
@@ -1385,7 +1399,7 @@ apiRouter.get('/admin/payments', asyncRoute(async (request, response) => {
   const profileId = userId(request), page = cursorPage(request.query.cursor, request.query.limit);
   const result = await withRequestScope({ profileId }, async (tx) => {
     await assertPlatformAdmin(tx, profileId);
-    const rows = await tx.paymentIntent.findMany({ include: { organization: { select: { name: true } } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+    const rows = await tx.paymentIntent.findMany({ select: { ...publicPaymentIntentSelect, organizationId: true, organization: { select: { name: true } } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: page.take + 1, ...(page.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
     return { rows: rows.slice(0, page.take), nextCursor: rows.length > page.take ? rows[page.take - 1].id : undefined };
   });
   sendData(response, result.rows, 200, { nextCursor: result.nextCursor });
